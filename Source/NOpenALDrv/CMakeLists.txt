@@ -10,8 +10,9 @@ set(SRC_FILES "NOpenALDrv.cpp")
 # is raw modules; depackers pull archive deps + bloat). NOTE: libxmp's BUILD_STATIC option collides by name
 # with the engine's own BUILD_STATIC ("single binary"); under libxmp's capped policy (CMP0077 OLD) its
 # option() would reset the inherited value and disable its static build (-> its "both disabled" FATAL_ERROR),
-# so we FORCE the cache vars here (ON matches the engine's static/Emscripten intent). Reused verbatim from
-# engine-unreal1's NOpenALDrv (web) + extended to the native branch below.
+# so we force the cache var for its configure and restore the engine's afterward (see the save/restore
+# around BUILD_STATIC below). Ported from engine-unreal1's NOpenALDrv (which carries the same latent
+# collision) + extended to the native branch below.
 include(FetchContent)
 set(LIBXMP_SOURCE_DIR "" CACHE PATH "Local libxmp checkout. Empty => fetch from git.")
 set(LIBXMP_GIT_REPOSITORY "https://github.com/libxmp/libxmp.git" CACHE STRING "Upstream libxmp git repo")
@@ -23,7 +24,13 @@ else()
   message(STATUS "libxmp: fetching ${LIBXMP_GIT_REPOSITORY}@${LIBXMP_GIT_TAG}")
   FetchContent_Declare(libxmp GIT_REPOSITORY "${LIBXMP_GIT_REPOSITORY}" GIT_TAG "${LIBXMP_GIT_TAG}" GIT_SHALLOW TRUE)
 endif()
-set(BUILD_STATIC ON  CACHE BOOL "" FORCE)   # libxmp static lib (see note above re: name collision)
+# libxmp's BUILD_STATIC (its own option) collides with the engine's BUILD_STATIC. Save the engine's
+# cached value, force ON for libxmp's configure, and RESTORE it after MakeAvailable (below) — otherwise
+# the FORCE persists and poisons the engine on the next *reconfigure* of this build dir: the top-level
+# read (LIB_TYPE) flips to STATIC and the NOpenGLES/XOpenGL glad-clash guard fires. libxmp runs under
+# CMP0077 OLD, so the value must be in the cache before its option() (a normal variable won't take).
+set(_UFRONT_SAVED_BUILD_STATIC "$CACHE{BUILD_STATIC}")
+set(BUILD_STATIC ON  CACHE BOOL "" FORCE)   # libxmp static lib (restored after MakeAvailable)
 set(BUILD_SHARED OFF CACHE BOOL "" FORCE)
 set(BUILD_LITE   OFF CACHE BOOL "" FORCE)
 set(LIBXMP_DISABLE_DEPACKERS ON CACHE BOOL "" FORCE)
@@ -32,6 +39,8 @@ set(WITH_UNIT_TESTS OFF CACHE BOOL "" FORCE)
 set(CMAKE_POLICY_VERSION_MINIMUM 3.10)  # libxmp's old cmake_minimum_required vs CMake 4.x
 FetchContent_MakeAvailable(libxmp)
 unset(CMAKE_POLICY_VERSION_MINIMUM)
+# Restore the engine's BUILD_STATIC so a reconfigure of this build dir isn't poisoned by libxmp's FORCE.
+set(BUILD_STATIC "${_UFRONT_SAVED_BUILD_STATIC}" CACHE BOOL "Link everything into a single binary" FORCE)
 if(NOT TARGET xmp_static)
   message(FATAL_ERROR "libxmp: expected static target 'xmp_static' was not created.")
 endif()
