@@ -21,9 +21,38 @@ option(BUILD_EDITOR "Build Editor (GUI support requires Windows)" ON)
 option(BUILD_NOPENGLDRV "Build NOpenGLDrv" OFF)
 option(BUILD_PVRDRV "Build PVRDrv (Dreamcast only)" OFF)
 option(BUILD_NULLSOUNDDRV "Build SoundDrv (Null driver)" ON)
+option(BUILD_NOPENALDRV "Build NOpenALDrv (OpenAL SFX + libxmp .umx music; web + native Linux)" OFF)
 option(BUILD_AICADRV "Build AICADrv (Dreamcast AICA sound driver)" OFF)
 option(BUILD_DCUTIL "Build DCUtil" ON)
 option(BUILD_STATIC "Link everything into a single binary" OFF)
+
+# ufront 2.9 — HW render devices: orthogonal per-renderer toggles + configurable source folders.
+# NOpenGLESDrv (GLES2/WebGL1) is the historical device; XOpenGLDrv (OldUnreal, WebGL2/GLES3) and
+# OpenGLDrv/UTGLR (via gl4es, WebGL1) are the 2.9 additions. Defaults are platform-aware: web ships
+# XOpenGL + UTGLR and drops NOpenGLES (NOpenGLES + XOpenGLDrv both vendor a `glad` -> duplicate globals,
+# so they cannot co-link under --whole-archive); native (.so) defaults to NOpenGLES only. Any combo is
+# selectable via -D (subject to the FATAL_ERROR guard near the driver subdirs). See XOpenGLDrv/ENGINE_CHANGES.md.
+if(EMSCRIPTEN)
+  set(_UFRONT_DEF_NOPENGLES OFF)
+  set(_UFRONT_DEF_XOPENGL ON)
+  set(_UFRONT_DEF_GL4ES ON)
+else()
+  set(_UFRONT_DEF_NOPENGLES ON)
+  set(_UFRONT_DEF_XOPENGL OFF)
+  set(_UFRONT_DEF_GL4ES OFF)
+endif()
+option(BUILD_NOPENGLESDRV "Build NOpenGLESDrv (GLES2 -> WebGL1)" ${_UFRONT_DEF_NOPENGLES})
+option(BUILD_XOPENGLDRV "Build XOpenGLDrv (OldUnreal GL -> WebGL2/GLES3)" ${_UFRONT_DEF_XOPENGL})
+option(BUILD_SOFTDRV "Build SoftDrv (CPU software renderer; -SOFTWARERENDERER). Pure software, no glad -> coexists with XOpenGL." ON)
+option(BUILD_NULLDRV "Build NullDrv (GPU-free no-op render device; -NULLRENDERER). No GL context -> headless / dedicated-server run." ON)
+option(USE_GL4ES "Build OpenGLDrv (UTGLR) against gl4es (desktop GL -> GLES2) for the WebGL path" ${_UFRONT_DEF_GL4ES})
+# OpenGLDrv/UTGLR uses the reserved BUILD_NOPENGLDRV slot; USE_GL4ES (its WebGL backend) implies it.
+if(USE_GL4ES)
+  set(BUILD_NOPENGLDRV ON)
+endif()
+# Driver sources are vendored in-tree; override to build a driver from an external checkout.
+set(XOPENGL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/XOpenGLDrv" CACHE PATH "XOpenGLDrv source dir")
+set(UTGLR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/OpenGLDrv" CACHE PATH "OpenGLDrv/UTGLR source dir")
 
 
 option(DREAMCAST_USE_FATFS "Try to load data from SD or IDE" OFF)
@@ -41,7 +70,7 @@ if(PLATFORM_DREAMCAST)
   set(BUILD_STATIC ON)
   set(USE_SDL OFF)
   set(LOW_MEMORY ON)
-  set(BUILD_EDITOR OFF) 
+  set(BUILD_EDITOR OFF)
   set(BUILD_NOPENALDRV OFF)
   set(BUILD_NULLSOUNDDRV OFF)
   set(BUILD_AICADRV ON)
@@ -49,6 +78,44 @@ if(PLATFORM_DREAMCAST)
   set(BUILD_GLDCDRV OFF)
   set(BUILD_PVRDRV ON)
   set(BUILD_DCUTIL OFF)
+endif()
+
+# ufront step 2.7b — Emscripten / WebAssembly build (the web port). Mirrors engine-unreal1's EMSCRIPTEN
+# branch. Emscripten can't load UT99's .so packages, has no x86 asm, and gets SDL2/GLES2 from its own
+# ports — so force the web-safe configuration here (the wasm/wasm-perf presets then need no extra -D flags).
+if(EMSCRIPTEN)
+  set(BUILD_STATIC ON)            # single binary via UNREAL_STATIC + --whole-archive (like Dreamcast)
+  set(USE_SDL ON)                 # NSDLDrv (SDL2 window/GL context -> WebGL); provided by -sUSE_SDL=2
+  set(LOW_MEMORY OFF)
+  set(BUILD_EDITOR ON)            # ufront (bots parity): the stripped Editor package links only Engine+Core;
+                                  # UT99 loads bot/character meshes+skins through Editor classes, so standalone
+                                  # DM bots abort on package load without it (the engine-unreal1 "2.6f" finding
+                                  # — "Included the Editor package"). Paired with the exception-safe UnObj.cpp
+                                  # NULL-returns below (bot skins fail soft, incl. the absent BossSkins). The
+                                  # Editor-compile fixes (PUSH_HIT sizeof->decltype, Min<INT>, UnParams
+                                  # duplicate-guard) are already in-tree.
+  set(BUILD_DCUTIL OFF)
+  set(BUILD_PVRDRV OFF)           # Dreamcast render
+  set(BUILD_AICADRV OFF)          # Dreamcast audio
+  # (2.9) web render devices come from the platform-aware options above: XOpenGLDrv + OpenGLDrv/UTGLR
+  # (via gl4es); NOpenGLESDrv dropped (glad clash). BUILD_NOPENGLDRV is driven by USE_GL4ES.
+  set(BUILD_NULLSOUNDDRV ON)      # SoundDrv null (silent audio) — the config's shipped AudioDevice default
+  set(BUILD_NOPENALDRV ON)        # ufront 2.12: real web+native audio — OpenAL SFX + libxmp .umx music.
+                                  # The launcher (UnrealTournament/Src/Launch.cpp) overrides the ini's null
+                                  # AudioDevice -> NOpenALDrv.NOpenALAudioSubsystem on Emscripten.
+  add_definitions(-DASM=0)        # Core/Render use their portable (non-x86) code paths
+  # ufront 2.7c: UE1 assumes Win32 /Zp4 struct packing — the reflected C++ class sizes must equal the
+  # UnrealScript-declared property sizes (checked: sizeof(UFireTexture)==GetPropertiesSize()). On native
+  # x86-32 the default layout happens to match, but wasm32 (like Android ARM32) does not — force it, per
+  # UTA's fix. Applied to ALL sources so every class layout is uniform.
+  add_compile_options(-fpack-struct=4 -Wno-address-of-packed-member)
+  # clang (Emscripten) rejects passing a non-POD FString through variadic debugf/appErrorf as an ERROR;
+  # GCC tolerates it. Downgrade to a warning (mostly script-export/debug paths). Mirrors engine-unreal1.
+  add_compile_options(-Wno-error=non-pod-varargs -Wno-non-pod-varargs)
+  # Exceptions: rely on Emscripten's default (exception CATCHING disabled). -fexceptions overflows V8's
+  # call stack via invoke_ trampolines through UE1's deep package loader; -fwasm-exceptions is incompatible
+  # with ASYNCIFY (the main-loop yield). Normal boot never throws; recoverable load failures are patched to
+  # resolve to NULL one site at a time (step 2.7c, mirroring engine-unreal1/engine-ut2004); errors abort.
 endif()
 
 
@@ -264,7 +331,17 @@ add_subdirectory(Engine)
 add_subdirectory(Render)
 add_subdirectory(IpDrv)
 add_subdirectory(Fire)
-#add_subdirectory(UCC)
+# ufront 2.12 Part B: ucc command-line tool (dedicated server / make / commandlets) — native-only executable.
+if(NOT EMSCRIPTEN)
+  add_subdirectory(UCC)
+endif()
+
+# ufront step 2.7d — the WebRTC net driver is a WEB-ONLY package (its transport is the glue webrtc_* ABI,
+# baked via vendor/glue/webrtc-shim.js — not BSD sockets). Auto-switched from IpDrv.TcpNetDriver in Launch.cpp.
+if(EMSCRIPTEN)
+  add_subdirectory(WebRTCDrv)
+  list(APPEND INSTALL_TARGETS WebRTCDrv)
+endif()
 
 if(USE_SDL)
   # SDL2
@@ -276,14 +353,81 @@ else(TARGET_IS_DREAMCAST)
   list(APPEND INSTALL_TARGETS KOSDrv)
 endif()
 
+# ufront 2.9 — static/wasm builds link under --whole-archive; NOpenGLESDrv and XOpenGLDrv both vendor a
+# `glad` (duplicate globals), so they cannot co-link there. Native (.so) builds can carry both.
+if(BUILD_STATIC AND BUILD_NOPENGLESDRV AND BUILD_XOPENGLDRV)
+  message(FATAL_ERROR "NOpenGLESDrv and XOpenGLDrv cannot both be built into a static/wasm binary "
+                      "(duplicate glad globals under --whole-archive). Enable at most one for static "
+                      "(web ships XOpenGLDrv). See Source/XOpenGLDrv/ENGINE_CHANGES.md.")
+endif()
+
 if(BUILD_NOPENGLDRV)
-  add_subdirectory(OpenGLDrv)
+  # gl4es (desktop GL -> GLES2) for the OpenGLDrv/UTGLR WebGL path. Fetched when USE_GL4ES (native gl4es
+  # validation) or EMSCRIPTEN (the WebGL target). Source configurable via GL4ES_SOURCE_DIR. Mirrors
+  # engine-ut2004/GL4ESDrv. See Source/OpenGLDrv/PORTING.md.
+  if(USE_GL4ES OR EMSCRIPTEN)
+    set(GL4ES_SOURCE_DIR "" CACHE PATH "Local gl4es checkout (vanilla or fork). Empty => fetch from git.")
+    set(GL4ES_GIT_REPOSITORY "https://github.com/ptitSeb/gl4es.git" CACHE STRING "Upstream (vanilla) gl4es git repo")
+    set(GL4ES_GIT_TAG "master" CACHE STRING "gl4es git tag/branch/commit to fetch (pin for reproducibility)")
+    include(FetchContent)
+    if(GL4ES_SOURCE_DIR)
+      message(STATUS "gl4es: using local source ${GL4ES_SOURCE_DIR}")
+      FetchContent_Declare(GL4ES SOURCE_DIR "${GL4ES_SOURCE_DIR}")
+    else()
+      message(STATUS "gl4es: fetching ${GL4ES_GIT_REPOSITORY}@${GL4ES_GIT_TAG}")
+      FetchContent_Declare(GL4ES GIT_REPOSITORY "${GL4ES_GIT_REPOSITORY}" GIT_TAG "${GL4ES_GIT_TAG}" GIT_SHALLOW TRUE)
+    endif()
+    # Static lib, GLES2 target, no X11/EGL (NSDLDrv owns the context), explicit init.
+    set(NOX11 ON CACHE BOOL "" FORCE)
+    set(NOEGL ON CACHE BOOL "" FORCE)
+    set(STATICLIB ON CACHE BOOL "" FORCE)
+    set(DEFAULT_ES 2 CACHE STRING "" FORCE)
+    set(NO_INIT_CONSTRUCTOR ON CACHE BOOL "" FORCE)
+    set(CMAKE_POLICY_VERSION_MINIMUM 3.10)  # gl4es' old cmake_minimum_required vs CMake 4.x
+    FetchContent_MakeAvailable(GL4ES)
+    unset(CMAKE_POLICY_VERSION_MINIMUM)
+    if(NOT TARGET GL)
+      message(FATAL_ERROR "gl4es: expected static target 'GL' was not created.")
+    endif()
+    # gl4es hardcodes its archive output; redirect per build dir so native/wasm don't collide.
+    set_target_properties(GL PROPERTIES
+      ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib"
+      LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/lib")
+    if(NOT TARGET gl4es::GL)
+      add_library(gl4es::GL ALIAS GL)  # namespaced handle; never silently falls back to system -lGL
+    endif()
+  endif()
+
+  add_subdirectory(${UTGLR_SOURCE_DIR} OpenGLDrv)
   list(APPEND INSTALL_TARGETS OpenGLDrv)
 endif()
 
-if(NOT PLATFORM_DREAMCAST)
+if(NOT PLATFORM_DREAMCAST AND BUILD_NOPENGLESDRV)
   add_subdirectory(NOpenGLESDrv)
   list(APPEND INSTALL_TARGETS NOpenGLESDrv)
+endif()
+
+# ufront 2.9 — XOpenGLDrv (OldUnreal GL -> WebGL2/GLES3). All v400 adaptations gated `#if ENGINE_VERSION==400`
+# in the driver; see Source/XOpenGLDrv/ENGINE_CHANGES.md.
+if(NOT PLATFORM_DREAMCAST AND BUILD_XOPENGLDRV)
+  add_subdirectory(${XOPENGL_SOURCE_DIR} XOpenGLDrv)
+  list(APPEND INSTALL_TARGETS XOpenGLDrv)
+endif()
+
+# ufront (ut99 software renderer): SoftDrv (CPU rasterizer) ported from the original UT99 v400 source.
+# Pure software (no glad) -> coexists with XOpenGL/UTGLR on web (not subject to the glad-clash guard);
+# selected via -SOFTWARERENDERER (the launcher switch table already names SoftDrv.SoftwareRenderDevice).
+if(NOT PLATFORM_DREAMCAST AND BUILD_SOFTDRV)
+  add_subdirectory(SoftDrv)
+  list(APPEND INSTALL_TARGETS SoftDrv)
+endif()
+
+# ufront (null render device): NullDrv (no-op URenderDevice) — GPU-free, no GL context. Selected via
+# -NULLRENDERER for a headless / "poor-man's dedicated server" run (host listens, empty tab). Additive like
+# SoftDrv; the launcher switch table names NullDrv.NullRenderDevice.
+if(NOT PLATFORM_DREAMCAST AND BUILD_NULLDRV)
+  add_subdirectory(NullDrv)
+  list(APPEND INSTALL_TARGETS NullDrv)
 endif()
 
 if(BUILD_PVRDRV)
@@ -294,6 +438,14 @@ endif()
 if(BUILD_NULLSOUNDDRV)
   add_subdirectory(SoundDrv)
   list(APPEND INSTALL_TARGETS SoundDrv)
+endif()
+
+# ufront 2.12 (web + native audio): NOpenALDrv — OpenAL SFX + a FetchContent'd libxmp static lib for .umx
+# tracker music, pumped from Update() (single music path, no background thread). Ported from engine-unreal1,
+# adapted to UT99 v400's UAudioSubsystem. Selected by the launcher on Emscripten (-> NOpenALAudioSubsystem).
+if(BUILD_NOPENALDRV)
+  add_subdirectory(NOpenALDrv)
+  list(APPEND INSTALL_TARGETS NOpenALDrv)
 endif()
 
 if(BUILD_AICADRV)

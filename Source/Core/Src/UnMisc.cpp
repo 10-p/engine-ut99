@@ -685,6 +685,15 @@ CORE_API void VARARGS appThrowf( const TCHAR* Fmt, ... )
 {
 	static TCHAR TempStr[4096];
 	GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
+#ifdef __EMSCRIPTEN__
+	// ufront 2.7b/2.7c: exception CATCHING is disabled in the web build (-fexceptions overflows V8 on the
+	// deep package loader), so any throw that escapes a guard/unguard aborts the module with a bare
+	// "Exception thrown, catching not enabled". Echo the reason to stdout->console FIRST, so an otherwise
+	// anonymous Aborted() becomes a named "[appThrowf] <reason>" — that names each uncatchable throw site
+	// to patch one-by-one (resolve-to-NULL), mirroring engine-unreal1/engine-ut2004.
+	printf("[appThrowf] %s\n", TempStr);
+	fflush(stdout);
+#endif
 	throw( TempStr );
 }
 

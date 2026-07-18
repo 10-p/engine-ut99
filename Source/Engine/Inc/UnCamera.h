@@ -304,7 +304,10 @@ class ENGINE_API UViewport : public UPlayer
 };
 
 // Viewport hit-testing macros.
-#define PUSH_HIT(frame,expr) if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PushHit(expr,sizeof(expr));
+// ufront 2.7d: sizeof(expr) where expr is a temporary hit-proxy (e.g. HMenuToggleButton()) parses under
+// clang (Emscripten) as sizeof of a FUNCTION TYPE — "invalid application of sizeof to a function type".
+// sizeof(decltype(expr)) is equivalent (GCC computed the same) and unambiguous across compilers.
+#define PUSH_HIT(frame,expr) if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PushHit(expr,sizeof(decltype(expr)));
 #define POP_HIT(frame)       if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PopHit(0);
 #define POP_HIT_FORCE(frame) if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PopHit(1);
 

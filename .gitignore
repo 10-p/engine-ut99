@@ -1,0 +1,13 @@
+# ut99dc upstream build artifacts
+Intermediate
+Lib
+Bin
+*.log
+Source/.vs
+build/
+
+# ufront web port (step 2.7): out-of-tree build dirs + local smoke scratch (never tracked)
+/build-native/
+/build-wasm/
+/build-wasm-perf/
+__smoke.html

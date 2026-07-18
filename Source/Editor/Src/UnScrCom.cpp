@@ -1348,7 +1348,7 @@ void FScriptCompiler::CompileConst( UStruct* Scope )
 
 	// Format constant.
 	TCHAR Value[1024];
-	appStrncpy( Value, Start, Min(1024,Input+InputPos-Start+1) );
+	appStrncpy( Value, Start, Min<INT>(1024,Input+InputPos-Start+1) );
 
 	// Create constant.
 	UConst* NewConst = new(Scope,ConstName)UConst(NULL,Value);

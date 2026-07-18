@@ -1998,7 +1998,17 @@ void UObject::SafeLoadError( DWORD LoadFlags, const TCHAR* Error, const TCHAR* F
 
 	guard(UObject::SafeLoadError);
 	if( !(LoadFlags & LOAD_Quiet)  ) debugf( NAME_Warning, TempStr );
+#ifndef __EMSCRIPTEN__
 	if(   LoadFlags & LOAD_Throw   ) appThrowf( TEXT("%s"), Error   );
+#else
+	// ufront (bots parity / "2.6f", mirrors engine-unreal1 + engine-ut2004): do NOT re-throw on LOAD_Throw.
+	// The web build disables exception CATCHING and a throw cannot unwind across Asyncify-transformed frames,
+	// so a re-thrown load error escapes every caller's catch and aborts the WASM module. Callers already turn
+	// a NULL result into a graceful failure; not re-throwing lets a lazy load (e.g. a bot character skin, incl.
+	// the absent BossSkins) fail soft instead of aborting the match. The [appThrowf] diagnostic (UnMisc.cpp)
+	// names any remaining hard-throw site.
+	(void)Error;
+#endif
 	if(   LoadFlags & LOAD_NoFail  ) appErrorf( TEXT("%s"), TempStr );
 	if( !(LoadFlags & LOAD_NoWarn) ) GWarn->Logf( TEXT("%s"), TempStr );
 	unguard;
@@ -2040,20 +2050,32 @@ ULinkerLoad* UObject::GetPackageLinker
 		{
 			// Resolve filename from package name.
 			if( !InOuter )
+#ifdef __EMSCRIPTEN__
+				return NULL; // ufront (2.6f): fail soft (catching off — a throw aborts across Asyncify frames)
+#else
 				appThrowf( LocalizeError("PackageResolveFailed") );
+#endif
 			if( !appFindPackageFile( InOuter->GetName(), CompatibleGuid, NewFilename ) )
 			{
 				// See about looking in the dll.
 				if( (LoadFlags & LOAD_AllowDll) && InOuter->IsA(UPackage::StaticClass()) && ((UPackage*)InOuter)->DllHandle )
 					return NULL;
+#ifdef __EMSCRIPTEN__
+				return NULL; // ufront (2.6f): package not found -> NULL (callers handle it), not a hard abort
+#else
 				appThrowf( LocalizeError("PackageNotFound"), InOuter->GetName() );
+#endif
 			}
 		}
 		else
 		{
 			// Verify that the file exists.
 			if( !appFindPackageFile( InFilename, CompatibleGuid, NewFilename ) )
+#ifdef __EMSCRIPTEN__
+				return NULL; // ufront (2.6f): missing package/map file -> NULL (graceful), not a hard abort
+#else
 				appThrowf( LocalizeError("FileNotFound"), InFilename );
+#endif
 
 			// Resolve package name from filename.
 			TCHAR Tmp[256], *T=Tmp;
@@ -2217,7 +2239,19 @@ UObject* UObject::StaticLoadObject( UClass* ObjectClass, UObject* InOuter, const
 		if( !Result )
 			Result = StaticFindObject( ObjectClass, InOuter, InName );
 		if( !Result )
+#ifdef __EMSCRIPTEN__
+		{
+			// 2.6g (mirrors engine-unreal1): don't throw on object-not-found. Exception CATCHING is disabled
+			// on the web build (a throw can't unwind across Asyncify frames -> module abort), so the catch
+			// below can't be relied on. Return NULL — what the native catch path ultimately yields here — so
+			// callers fail soft (a missing map, an absent bot-skin/mesh texture, ...). Skips the package-remap
+			// retry on web (rare for the fixed bundled package set), same as unreal1.
+			EndLoad();
+			return NULL;
+		}
+#else
 			appThrowf( LocalizeError("ObjectNotFound"), ObjectClass->GetName(), InOuter ? InOuter->GetPathName() : TEXT("None"), InName );
+#endif
 		EndLoad();
 	}
 	catch( const TCHAR* Error )
@@ -3240,9 +3274,60 @@ UObject* UObject::StaticConstructObject
 		}
 		else
 		{
+#ifndef __EMSCRIPTEN__
+			// ufront (2.12 Part B) — native segfault-on-quit fix. The value-init ClassConstructor
+			// (new(X)TClass()) zero-initialises the WHOLE object for classes with no user-provided default
+			// ctor, wiping the UObject header (Index/Class/Outer/Name/ObjectFlags) that StaticAllocateObject
+			// set up. The Actor branch above already save/restores this; non-actor CLASS_Config classes
+			// (render devices, audio/net drivers, client) were left wiped, so at shutdown PurgeGarbage ->
+			// UViewport::Destroy -> `delete RenDev` -> ~UObject crashes: Class==NULL faults ExitProperties
+			// (UnObj.cpp:1163) and the zeroed Index makes IsValid() fail "Other object in slot" (:373). That
+			// is the owner-reported native "segfault on quit" (gdb-confirmed 2026-07-16). Save the header,
+			// and if the ctor actually wiped it (Class went NULL) for a native CLASS_Config class, restore the
+			// WHOLE header (not just Class -- the stale Index is what trips IsValid) + re-load the wiped
+			// CPF_Config feature flags. Self-detecting: classes with a real ctor (Class survives, e.g. the
+			// Render subsystem) fall through untouched. Web keeps the lighter Class-only repair below and
+			// never runs PurgeGarbage on exit (the page navigates away), so its preprocessor output is
+			// unchanged by this native-only branch.
+			INT      SavedIndex = Result->Index;
+			UClass*  SavedClass = Result->Class;
+			UObject* SavedOuter = Result->Outer;
+			FName    SavedName  = Result->Name;
+			DWORD    SavedFlags = Result->ObjectFlags;
+			(*InClass->ClassConstructor)( Result );
+			if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
+			{
+				Result->Index       = SavedIndex;
+				Result->Class       = SavedClass;
+				Result->Outer       = SavedOuter;
+				Result->Name        = SavedName;
+				Result->ObjectFlags = SavedFlags;
+				Result->LoadConfig();
+			}
+#else
 			// Not an Actor - just call the constructor normally
 			(*InClass->ClassConstructor)( Result );
+#endif
 		}
+
+#ifdef __EMSCRIPTEN__
+		// ufront (2.12): the value-init ClassConstructor (new(X)TClass()) zero-initialises the WHOLE object
+		// for native classes that lack a user-provided default ctor -- wiping the UObject header (incl. the
+		// Class pointer) AND all property data that StaticAllocateObject/InitProperties had set up. The
+		// "STUPID HACK" above save/restores that for Actor classes only; non-actor native config classes
+		// (render devices, audio/net drivers, client) come out with Class==NULL and their inherited
+		// CPF_Config feature flags (Coronas, VolumetricLighting, DetailTextures, ...) zeroed. Detect exactly
+		// the wiped objects (Class got nulled) and, for native CLASS_Config classes, restore the class
+		// pointer and re-load config onto the live instance from its own [Pkg.Class] ini section. Objects the
+		// ctor did NOT wipe (Class survived -- they have a real C++ ctor, e.g. the Render subsystem) are left
+		// untouched, so this needs no per-type allowlist. Native (non-web) binds packages normally and never
+		// hits the StaticFindObject/no-bind path, hence the __EMSCRIPTEN__ guard.
+		if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
+		{
+			Result->Class = InClass;
+			Result->LoadConfig();
+		}
+#endif
 	}
 	return Result;
 #else

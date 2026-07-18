@@ -20,6 +20,10 @@
 #error "Unsupported platform."
 #endif
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>  // ufront 2.12: EM_ASM for the return-to-launcher reload on normal exit (appRequestExit)
+#endif
+
 // Standard includes.
 #include <stdio.h>
 #include <stdlib.h>
@@ -191,6 +195,21 @@ CORE_API void appRequestExit( UBOOL Force )
 		// Tell the platform specific code we want to exit cleanly from the main loop.
 		//!UNIX No quit message in UNIX.
 		GIsRequestingExit = 1;
+#ifdef __EMSCRIPTEN__
+		// ufront 2.12 (web): a NORMAL exit (Exit menu / `exit` console command / RELAUNCH route here; the crash
+		// path is the Force branch above — exit(1), typically via the error device — NOT this one) returns the
+		// page to the launcher instead of leaving a dead canvas. Navigate to location.pathname, which strips any
+		// autostart query (?map=…) so the shared frontend shows the launcher (its autostart gate keys off
+		// location.search). Deferred via setTimeout(0) so it fires after the blocking ASYNCIFY main loop unwinds.
+		// Crashes never reach here, so their console/error stays on screen. Mirrors engine-unreal1/engine-ut2004.
+		EM_ASM({
+			if( typeof window !== 'undefined' )
+			{
+				console.log('[SHELL] Engine exit requested, returning to launcher');
+				setTimeout(function(){ window.location.href = window.location.pathname; }, 0);
+			}
+		});
+#endif
 	}
 	unguard;
 }
@@ -620,7 +639,12 @@ CORE_API const char* appBaseDir()
 	if( !BaseDir[0] )
 	{
 		// Get directory this executable was launched from.
-#if defined(PLATFORM_SDL)
+#if defined(__EMSCRIPTEN__)
+		// ufront 2.7b: SDL_GetBasePath() returns "/" under Emscripten. The launcher chdir's to /System, so
+		// use getcwd() — config + the package-search Paths then resolve like a native install.
+		if( getcwd( BaseDir, sizeof(BaseDir) ) )
+			appStrcat( BaseDir, "/" );
+#elif defined(PLATFORM_SDL)
 		char* BasePath = SDL_GetBasePath();
 		appStrncpy( BaseDir, BasePath, sizeof(BaseDir) );
 		SDL_free( BasePath );

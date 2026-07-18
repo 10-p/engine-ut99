@@ -82,7 +82,9 @@ void ShowBanner( FOutputDevice& Warn )
 }
 int main( int argc, char* argv[] )
 {
-	#if !_MSC_VER
+	// ufront 2.12 (native ucc): __Context (the legacy setjmp exception context) was removed in the modern
+	// ut99 native port — the modernized Launch.cpp never initializes it. Guarded out to build against Core.
+	#if !_MSC_VER && defined(UE_LEGACY_CONTEXT)
 		__Context::StaticInit();
 	#endif
 
@@ -180,7 +182,8 @@ int main( int argc, char* argv[] )
 				Class = UObject::StaticLoadClass( UCommandlet::StaticClass(), NULL, *(Token+TEXT("Commandlet")), NULL, LoadFlags, NULL );
 			if( !Class )
 			{
-				for( INT i=0; i<List.Num(); i++ )
+				INT i; // ufront 2.12: hoisted out of the for (retail code relied on MSVC's old for-scope; used below)
+				for( i=0; i<List.Num(); i++ )
 				{
 					FString Str = List(i).Object;
 					while( Str.InStr(TEXT("."))>=0 )

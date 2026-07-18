@@ -6,6 +6,8 @@
 		* Created by Tim Sweeney
 =============================================================================*/
 
+#include <stdio.h> // fputs/stdout for the GLog->stdout echo (ufront 2.8); already transitive via UnFile.h, explicit here.
+
 //
 // ANSI file output device.
 //
@@ -79,6 +81,23 @@ public:
 					WriteRaw( Data );
 					WriteRaw( LINE_TERMINATOR );
 #endif
+				}
+				// ufront 2.8: mirror every non-suppressed line to stdout so the browser console receives it
+				// (the host's Module.print forwards stdout -> console.log). UT99 otherwise logs only to the
+				// MEMFS this.program.log; this restores the standard UE1 GLog->console behaviour that
+				// engine-unreal1 + engine-ut2004 already have — a live-crash-visible human/dev feature.
+				// Deliberately NOT #ifdef __EMSCRIPTEN__'d: on native it prints to the terminal, on web
+				// Module.print routes it to the console, mirroring unreal1's FGlobalPlatform::WriteBinary
+				// fputs(stdout). Trailing '\n' flushes Emscripten's line-buffered stdout (one console.log
+				// per line). Same Event!=NAME_Title filter as the file write above, so console == the .log.
+				// (The prior echo lived in the never-compiled Src/FOutputDeviceFile.cpp — the live sink is
+				// THIS inline Serialize; that orphan .cpp is deleted in the same change.)
+				if( Event != NAME_Title )
+				{
+					fputs( FName::SafeString(Event), stdout );
+					fputs( ": ", stdout );
+					fputs( Data, stdout );
+					fputc( '\n', stdout );
 				}
 				if( GLogHook )
 					GLogHook->Serialize( Data, Event );

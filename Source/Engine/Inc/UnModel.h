@@ -13,8 +13,16 @@
 //
 // Model objects are used for brushes and for the level itself.
 //
+// ufront 2.7c: ut99dc hardcoded the Dreamcast (16 MB) BSP limits (4096/8192); real UT maps (e.g. the
+// CityIntro cinematic) exceed them and trip `check(Nodes.Num()<=MAX_NODES)` in the renderer. The web build
+// has ALLOW_MEMORY_GROWTH, so restore the stock UT99 limits — keep the reduction only for Dreamcast.
+#ifdef PLATFORM_DREAMCAST
 enum {MAX_NODES  = 4096};
 enum {MAX_POINTS = 8192};
+#else
+enum {MAX_NODES  = 65536};
+enum {MAX_POINTS = 128000};
+#endif
 class ENGINE_API UModel : public UPrimitive
 {
 #ifndef NODECALS

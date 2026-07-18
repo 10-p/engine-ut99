@@ -377,6 +377,9 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 	if( RenderClass )
 	{
 		Viewport->RenDev = ConstructObject<URenderDevice>( RenderClass );
+		// (On web the device's inherited CPF_Config feature flags -- Coronas, VolumetricLighting,
+		// ShinySurfaces, DetailTextures, HighDetailActors -- are loaded centrally in
+		// UObject::StaticConstructObject, which repairs the value-init ClassConstructor wipe; see UnObj.cpp.)
 		if( Engine->Audio && !GIsEditor )
 			Engine->Audio->SetViewport( NULL );
 		if( Viewport->RenDev->Init( Viewport, Viewport->SizeX, Viewport->SizeY, Viewport->ColorBytes, Fullscreen ) )

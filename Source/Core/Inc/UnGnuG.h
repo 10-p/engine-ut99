@@ -27,6 +27,13 @@
 #include <ctype.h>
 #include <malloc.h>
 #include <dirent.h>
+#include <limits.h>
+// ufront 2.7b (web port): emscripten's musl libc doesn't pull PATH_MAX transitively the way the native
+// Linux headers do; UnUnix.cpp + the launcher use fixed TCHAR[PATH_MAX] buffers. Guard so native/DC (which
+// already define it) are untouched.
+#ifndef PATH_MAX
+#define PATH_MAX 4096
+#endif
 #ifdef PLATFORM_WIN32
 #include <minwindef.h>
 #endif

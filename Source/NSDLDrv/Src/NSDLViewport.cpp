@@ -170,6 +170,18 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 {
 	guard(UNSDLViewport::UNSDLViewport);
 
+	// ufront 2.12 (web+native keyboard): populate the scancode->EInputKey KeyMap here.
+	// KeyMap is a runtime-filled static (unlike the const-initialized MouseButtonMap), and its only
+	// filler, InitKeyMap(), was wired to UNSDLViewport::InternalClassInitializer -- a UE1 *v200* class
+	// hook that this v400 engine NEVER invokes (v400's IMPLEMENT_CLASS calls StaticConstructor instead;
+	// see Core/Inc/UnObjBas.h). So InitKeyMap() never ran, KeyMap stayed all-zero, every SDL_KEYDOWN
+	// mapped to 0 and CauseInputEvent() early-returned -> keyboard was dead on BOTH web and native since
+	// the DC-derived port began, while the const MouseButtonMap kept the mouse working. Calling it from
+	// the ctor (idempotent memset+fill of a static array) guarantees it runs before any TickInput. The
+	// dead InternalClassInitializer is left in place; converting it (and UNSDLClient's) to a proper v400
+	// StaticConstructor is a separate cleanup. (engine-unreal1 is v200, so its hook fires -> it was fine.)
+	InitKeyMap();
+
 	// Set color bytes based on screen resolution.
 	SDL_DisplayMode Mode;
 	SDL_GetDesktopDisplayMode( InClient->DefaultDisplay, &Mode );
@@ -265,6 +277,11 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 	UBOOL DoOpenGL=0;
 	UBOOL NoHard=ParseParam( appCmdLine(), "nohard" );
 	SDL_GLprofile GLProfile = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY;
+	// ufront 2.9: on Emscripten the GL context version is chosen by the selected render-device NAME —
+	// XOpenGLDrv targets WebGL2/GLES3 (major 3); every other device (NOpenGLESDrv, OpenGLDrv/UTGLR via
+	// gl4es) targets WebGL1/GLES2 (major 2). Set from the resolved device name below; used in the
+	// __EMSCRIPTEN__ context block. One viewport hosts all devices — no second NSDL package needed.
+	INT WebGLESMajor = 2;
 
 	// Clamp invalid sizes – SDL textures can't be 0x0
 	// If no size specified, try to read from config
@@ -309,6 +326,10 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		}
 		if( DoOpenGL && Temp.InStr(TEXT("GLES")) != INDEX_NONE )
 			GLProfile = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY;
+		// ufront 2.9: XOpenGLDrv wants a WebGL2/GLES3 context (its name has no "GLES", so the compat line
+		// above skips it). Every other OPENGL device stays WebGL1/GLES2 (major 2).
+		if( DoOpenGL && Temp.InStr(TEXT("XOPENGL")) != INDEX_NONE )
+			WebGLESMajor = 3;
 	}
 
 	// User window of launcher if no parent window was specified.
@@ -337,7 +358,11 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		}
 		else
 		{
-			Flags = SDL_WINDOW_HIDDEN;
+			// ufront 2.12 (dynamic resolution): resizable so the OS window / browser canvas can be resized
+			// and the viewport follows. The WINDOWEVENT_RESIZED handler in TickInput() syncs the engine
+			// viewport + framebuffer; on the web SDL2's Emscripten backend maps the window to the CSS
+			// 100vw/100vh canvas and emits those events automatically. Mirrors engine-ut2004 SDL2Drv.
+			Flags = SDL_WINDOW_HIDDEN | SDL_WINDOW_RESIZABLE;
 		}
 		if( DoOpenGL )
 		{
@@ -347,6 +372,14 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		// Set OpenGL attributes if needed.
 		if( DoOpenGL )
 		{
+#ifdef __EMSCRIPTEN__
+			// ufront 2.7c: WebGL is GLES2 — request an ES 2.0 context. ut99dc's default GLProfile for the
+			// "NOpenGLES" device is COMPATIBILITY (desktop-GL compat), which emscripten's WebGL rejects
+			// ("Could not create EGL context (context attributes are not supported)"). Force ES 2.0 here.
+			SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, WebGLESMajor );
+			SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
+			SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
+#else
 			if( GLProfile == SDL_GL_CONTEXT_PROFILE_ES )
 			{
 				// Request GLES2.
@@ -354,6 +387,7 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 				SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
 			}
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, GLProfile );
+#endif
 		}
 
 		// Set position and size.
@@ -448,6 +482,26 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		{
 			DisplaySize.w = DisplayMode.w;
 			DisplaySize.h = DisplayMode.h;
+		}
+
+		// ufront 2.12 (dynamic resolution): adopt the real drawable size instead of the ini size. On the
+		// web SDL2's Emscripten backend maps the window to the CSS-sized (100vw/100vh) canvas, so this is
+		// the browser viewport; natively it is the created size. Match the drawing buffer (canvas
+		// width/height) + software framebuffer to it; WINDOWEVENT_RESIZED (TickInput) keeps it in sync.
+		int RealW = 0, RealH = 0;
+		SDL_GetWindowSize( hWnd, &RealW, &RealH );
+		if( RealW > 0 && RealH > 0 && ( Align( RealW, 4 ) != NewX || RealH != NewY ) )
+		{
+			NewX = Align( RealW, 4 );
+			NewY = RealH;
+			SDL_SetWindowSize( hWnd, NewX, NewY );
+			if( SDLRen && SDLTex )
+			{
+				SDL_DestroyTexture( SDLTex );
+				SDLTex = SDL_CreateTexture( SDLRen, SDLTexFormat, SDL_TEXTUREACCESS_STREAMING, NewX, NewY );
+				if( !SDLTex )
+					appErrorf( "Could not create framebuffer texture: %s", SDL_GetError() );
+			}
 		}
 	}
 
@@ -772,8 +826,18 @@ void UNSDLViewport::EndFullscreen()
 {
 	guard(UNSDLViewport::EndFullscreen);
 
+	// ufront 2.12 (web resolution): only restore the saved size when actually LEAVING fullscreen with a
+	// valid saved size. ResizeViewport()'s windowed branch calls EndFullscreen() unconditionally right after
+	// a SetClientSize(NewX,NewY); if we were never fullscreen, SavedX/SavedY are 0 and SetClientSize(0,0)
+	// hits its "<=0 -> 320x240" clamp -> it CLOBBERS the just-adopted CSS-canvas size back to 320x240. On the
+	// web that 320x240 is the WebGL drawing buffer (canvas.width/height), so the game rendered at 320x240 and
+	// the browser upscaled it -> blurry on every renderer; only a real browser resize re-synced it (masking
+	// the cause). Guarding on the fullscreen flag makes EndFullscreen a no-op for a plain windowed resize.
+	// (Native fullscreen toggle unaffected: MakeFullscreen sets the flag + a valid SavedX/SavedY first.)
+	const UBOOL WasFullscreen = hWnd && ( SDL_GetWindowFlags( hWnd ) & SDL_WINDOW_FULLSCREEN );
 	SDL_SetWindowFullscreen( hWnd, 0 );
-	SetClientSize( SavedX, SavedY, false );
+	if( WasFullscreen && SavedX > 0 && SavedY > 0 )
+		SetClientSize( SavedX, SavedY, false );
 
 	unguard;
 }
@@ -801,9 +865,17 @@ void UNSDLViewport::SetMouseCapture( UBOOL Capture, UBOOL Clip, UBOOL OnlyFocus 
 	guard(UNSDLViewport::SetMouseCapture);
 
 	// If only focus, reject.
+#ifndef __EMSCRIPTEN__
 	if( OnlyFocus )
 		if( hWnd != SDL_GetMouseFocus() )
 			return;
+#else
+	// ufront 2.12 (web mouse): skip the focus gate on the web. The canvas fills the window and SDL2's
+	// Emscripten port defers the pointer lock to the next click anyway, so gating the menu->game capture
+	// transition on SDL_GetMouseFocus() (which can be stale on the transition frame) would drop the lock
+	// intent. UT2004's SetMouseCapture is likewise focus-agnostic. Mirrors engine-unreal1.
+	(void)OnlyFocus;
+#endif
 
 	// If capturing, windows requires clipping in order to keep focus.
 	Clip |= Capture;
@@ -917,8 +989,18 @@ UBOOL UNSDLViewport::TickInput()
 			case SDL_MOUSEMOTION:
 				if( !SDL_GetRelativeMouseMode() )
 				{
-					// If cursor isn't captured, just do MousePosition.
+					// Absolute (menu / cursor-visible) mode. MousePosition feeds WindowsMouseX/Y (used by the
+					// Dreamcast KOSViewport path, not the PC UWindow menu). ufront 2.12 (bug M): UT99's UWindow
+					// menu moves its cursor from the IK_MouseX/IK_MouseY *axis* input (relayed to aMouseX/aMouseY),
+					// which was only emitted in the relative branch below -- so in a menu (where the pointer-lock
+					// Tick driver releases relative capture) the menu cursor stayed frozen at 0,0 and no button was
+					// reachable, even though the correct absolute coords WERE arriving. Emit the axis deltas here
+					// too (SDL provides xrel/yrel in absolute mode) so the menu cursor tracks the mouse. In-game is
+					// always the relative branch (capture is armed whenever a level is up), so this only affects
+					// menus -- no double-feed to the player pawn. Mirrors how the captured/relative case drives it.
 					Client->Engine->MousePosition( this, 0, Ev.motion.x, Ev.motion.y );
+					if( Ev.motion.xrel ) CauseInputEvent( IK_MouseX, IST_Axis, Ev.motion.xrel );
+					if( Ev.motion.yrel ) CauseInputEvent( IK_MouseY, IST_Axis, -Ev.motion.yrel );
 				}
 				else
 				{
@@ -932,6 +1014,22 @@ UBOOL UNSDLViewport::TickInput()
 						if( Ev.motion.xrel ) CauseInputEvent( IK_MouseX, IST_Axis, Ev.motion.xrel );
 						if( Ev.motion.yrel ) CauseInputEvent( IK_MouseY, IST_Axis, -Ev.motion.yrel );
 					}
+				}
+				break;
+			case SDL_WINDOWEVENT:
+				// ufront 2.12 (dynamic resolution): follow OS window / browser canvas resizes. SDL2's
+				// Emscripten backend fires this when the CSS 100vw/100vh canvas changes size (and once
+				// after creation, correcting the initial size); native window managers fire it on user
+				// resize. SetClientSize re-syncs the SDL window + software framebuffer + SizeX/SizeY; the
+				// GL render device re-issues glViewport from Viewport->SizeX/SizeY on the next frame. The
+				// no-op guard makes the SDL_SetWindowSize inside SetClientSize non-recursive. (engine-ut2004
+				// SDL2Drv parity.)
+				if( ( Ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || Ev.window.event == SDL_WINDOWEVENT_RESIZED )
+					&& Ev.window.data1 > 0 && Ev.window.data2 > 0 )
+				{
+					const INT NewX = Align( Ev.window.data1, 4 ), NewY = Ev.window.data2;
+					if( NewX != SizeX || NewY != SizeY )
+						SetClientSize( NewX, NewY, false );
 				}
 				break;
 			default:

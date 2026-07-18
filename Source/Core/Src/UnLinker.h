@@ -547,7 +547,19 @@ class ULinkerLoad : public ULinker, public FArchive
 			check(Import.PackageIndex<0);
 			VerifyImport( -Import.PackageIndex-1 );
 			Import.SourceLinker = ImportMap(-Import.PackageIndex-1).SourceLinker;
+#ifdef __EMSCRIPTEN__
+			// 2.12 hardening: a nested import whose package is missing on the web build leaves SourceLinker NULL
+			// (its own guard below bailed — GetPackageLinker returns NULL instead of throwing since catching is
+			// off). Treat as broken links instead of check()-aborting the whole module.
+			if( !Import.SourceLinker )
+			{
+				if( Cast<UPackage>(LinkerRoot) )
+					Cast<UPackage>(LinkerRoot)->PackageFlags |= PKG_BrokenLinks;
+				return;
+			}
+#else
 			check(Import.SourceLinker);
+#endif
 			FObjectImport* Top;
 			for
 			(	Top = &Import
@@ -556,6 +568,19 @@ class ULinkerLoad : public ULinker, public FArchive
 			Pkg = CreatePackage( NULL, *Top->ObjectName );
 		}
 
+#ifdef __EMSCRIPTEN__
+		// 2.12 hardening: a missing REFERENCED package resolves SourceLinker to NULL on the web build
+		// (GetPackageLinker returns NULL instead of throwing — catching is off). Bail as a broken import here
+		// instead of NULL-dereferencing SourceLinker->ExportHash below, which would abort the whole module.
+		// (A map that merely doesn't exist is already caught upstream in LoadMap; this covers a map that exists
+		// but references a package that isn't present — partial/mismatched content.)
+		if( !Import.SourceLinker )
+		{
+			if( Cast<UPackage>(LinkerRoot) )
+				Cast<UPackage>(LinkerRoot)->PackageFlags |= PKG_BrokenLinks;
+			return;
+		}
+#endif
 		// Find this import within its existing linker.
 		UBOOL SafeReplace = 0;
 	Rehack://oldver

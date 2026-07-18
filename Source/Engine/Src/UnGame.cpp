@@ -197,7 +197,19 @@ void UGameEngine::Init()
 
 	// Handle failure.
 	if( !Success )
+#ifdef __EMSCRIPTEN__
+	{
+		// 2.6g (mirrors engine-unreal1): a bad startup/autoplay map must not be fatal — appErrorf throws to
+		// unwind, which can't cross Asyncify frames (uncaught -> module abort). Entry (the menu) is already
+		// loaded into GEntry; fall back to it so the user can pick a valid map / host from the UI instead of
+		// crashing. LoadMap now returns NULL gracefully for a missing map (above), so Success is a clean false.
+		debugf( NAME_Warning, TEXT("Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
+		if( !GLevel )
+			GLevel = GEntry;
+	}
+#else
 		appErrorf( LocalizeError("FailedBrowse"), Parm, *Error );
+#endif
 
 	// Open initial Viewport.
 	if( Client )
@@ -270,7 +282,11 @@ void UGameEngine::Destroy()
 void UGameEngine::SetProgress( const TCHAR* Str1, const TCHAR* Str2, FLOAT Seconds )
 {
 	guard(UGameEngine::SetProgress);
-	if( Client && Client->Viewports.Num() )
+	// 2.12 hardening: the viewport can exist with a NULL Actor — e.g. right after DissociateViewports tears the
+	// player pawn down during a failed travel/open. SetProgress dereferences Actor below (Actor->ProgressMessage[0]
+	// = Str1 is an FString assignment → FArray::Realloc), so without an Actor null-check this is a NULL/garbage-heap
+	// deref → "memory access out of bounds" abort on the web build (catching is off). Only message a live actor.
+	if( Client && Client->Viewports.Num() && Client->Viewports(0)->Actor )
 	{
 		APlayerPawn* Actor = Client->Viewports(0)->Actor;
 		if( Seconds==-1.0 )
@@ -487,6 +503,19 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 	// Crack the URL.
 	debugf( TEXT("Browse: %s"), *URL.String() );
 
+#ifdef __EMSCRIPTEN__
+	// ufront 2.7d: the web frontend forms a client-connect URL as "<host>?connect" — the host lands in
+	// URL.Map with no URL.Host, which UE1 would treat as a LOCAL map load (IsLocalInternal) and fail. When
+	// the "connect" option is present with no Host, promote the map token to Host so Browse takes the
+	// network path (IsInternal + Host -> UPendingLevel -> WebRTCNetDriver connect). Web-only + guarded on the
+	// connect option, so local map browsing is unaffected. Mirrors engine-unreal1's 2.6c fix.
+	if( URL.HasOption(TEXT("connect")) && URL.Host.Len()<=0 && URL.Map.Len()>0 )
+	{
+		URL.Host = URL.Map;
+		debugf( TEXT("[ufront] connect URL: promoted map '%s' to host"), *URL.Host );
+	}
+#endif
+
 	// Handle it.
 	if( !URL.Valid )
 	{
@@ -690,8 +719,25 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 			if( PackageMap->List.Num() )
 				MapParent = PackageMap->List(0).Parent;
 		}
-		LoadObject<ULevel>( MapParent, TEXT("MyLevel"), *URL.Map, LOAD_Verify | LOAD_Throw | LOAD_NoWarn, NULL );
+		ULevel* Verified = LoadObject<ULevel>( MapParent, TEXT("MyLevel"), *URL.Map, LOAD_Verify | LOAD_Throw | LOAD_NoWarn, NULL );
 		EndLoad();
+#ifdef __EMSCRIPTEN__
+		// 2.12 hardening (mirrors engine-unreal1 LoadMap / ut2004): with C++ exception CATCHING disabled on the
+		// web build, SafeLoadError no longer re-throws, so a failed VERIFY of a missing/bad map arrives here as a
+		// NULL object (the catch() below is dead code). Bail NOW — BEFORE DissociateViewports/ExitLevel tear down
+		// the live level + player actor. Otherwise a RUNTIME `open <missing>` destroys the current player actor and
+		// nulls GLevel, then the old post-teardown guard returns NULL leaving Client->Viewports(0)->Actor dangling,
+		// and the very next UGameEngine::Tick NULL-derefs it (Actor->GetLevel()). At boot the teardown is a no-op
+		// (no viewport yet, GLevel already NULL), which is why the old guard sufficed only for the autostart path (2.6g).
+		if( !Verified )
+		{
+			Error = FString(TEXT("Could not load map ")) + URL.Map;
+			SetProgress( LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *URL.Map, 6.0 );
+			return NULL;
+		}
+#else
+		(void)Verified;
+#endif
 
 #if DEMOVERSION
 		// If we area demo, prevent third party maps from being loaded.
@@ -787,6 +833,19 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	guard(LoadLevel);
 	GLevel = LoadObject<ULevel>( MapParent, TEXT("MyLevel"), *URL.Map, LOAD_NoFail, NULL );
 	unguard;
+
+#ifdef __EMSCRIPTEN__
+	// 2.6g (mirrors engine-unreal1): the real load can now return NULL on the web build — a missing package/map
+	// resolves to NULL (GetPackageLinker) and StaticLoadObject no longer throws ObjectNotFound — even under
+	// LOAD_NoFail. Return NULL gracefully (the caller / UGameEngine::Init falls back to the Entry menu) instead
+	// of falling through to check(GLevel) below, which would abort on the NULL level.
+	if( !GLevel )
+	{
+		Error = FString(TEXT("Could not load map ")) + URL.Map;
+		SetProgress( LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *URL.Map, 6.0 );
+		return NULL;
+	}
+#endif
 
 	// If pending network level.
 	if( Pending )
@@ -1402,6 +1461,28 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	}
 
 	// If game is paused, release the cursor.
+	//
+	// ufront 2.12 (web mouse — pointer-lock RE-engagement): NATIVE ONLY. On the web this stock
+	// pause/unpause path FIGHTS the whole-game-lock block below and strands the pointer permanently
+	// unlocked after the first menu. In a menu the web sets bShowWindowsMouse=1, so IsPaused flips
+	// true and this calls SetMouseCapture(0,0,0) -> SDL_SetRelativeMouseMode(SDL_FALSE). The block
+	// below only re-asserts capture when its cached Want CHANGES — but Want never changes (a live
+	// level stays up in the menu), so relative-mouse-mode is left OFF, and SDL's Emscripten mousedown
+	// re-grab (relative_mode && !has_pointer_lock -> emscripten_request_pointerlock) can then never
+	// fire again. Net effect the owner saw: the mouse locks EXACTLY ONCE, then never re-locks after
+	// the first ESC (the console shows zero further requestPointerLock calls). On the web the block
+	// below is the SOLE capture authority (owner wants the whole game LOCKED, menus included), so
+	// skip this release entirely — relative-mouse-mode is set once at boot and stays on.
+	//
+	// ufront 2.12 (native menu mouse): NATIVE SDL is now excluded here too (guard broadened to also skip
+	// PLATFORM_SDL) and uses the whole-game-lock block below. The native menu was broken the same way as the
+	// web one: releasing relative-mouse-mode in a menu drops NSDLViewport::TickInput into its ABSOLUTE-motion
+	// branch, where the OS pointer is window-bounded, so xrel/yrel stop at the screen edge and the UWindow
+	// cursor (driven by IK_MouseX/Y axis deltas) can't reach the corners in fullscreen. Holding relative mode
+	// (whole-game-lock) feeds unbounded deltas -> full-speed, corner-reachable cursor. This stock release block
+	// is thus left only for the legacy Win32 (WinDrv) path. WEB PREPROCESSING IS UNCHANGED: __EMSCRIPTEN__ is
+	// defined on web, so this block stays excluded exactly as before (was plain #ifndef __EMSCRIPTEN__).
+#if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_SDL)
 	static UBOOL WasPaused=1;
 	if
 	(	Client
@@ -1420,6 +1501,50 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 		WasPaused = IsPaused;
 	}
 	else WasPaused=0;
+#endif
+
+#ifdef PLATFORM_SDL
+	// ufront 2.12 (web + native SDL mouse — robust pointer lock; guard broadened __EMSCRIPTEN__ -> PLATFORM_SDL
+	// so NATIVE SDL uses this same whole-game-lock, fixing the native menu mouse — see the stock-block note
+	// above). WEB PREPROCESSING IS UNCHANGED: PLATFORM_SDL is defined on web too (USE_SDL is ON for Emscripten),
+	// so this block is still compiled on web exactly as before -> web wasm byte-identical. On native,
+	// SetMouseCapture -> SDL_SetRelativeMouseMode directly (there is no browser pointer-lock/ESC dance, so the
+	// SDL Emscripten re-grab notes below are web-only, harmless as comments).
+	//
+	// The stock capture path above only arms via the
+	// pause->unpause transition gated on Client->CaptureMouse (or the MOUSE_FirstHit click gates), and neither
+	// reliably engages SDL relative-mouse-mode on the web. Drive it directly here instead.
+	//
+	// Owner feedback (2.12): keep the mouse LOCKED for the WHOLE game, menus included. UT99's UWindow menu
+	// cursor is RELATIVE (moved by IK_MouseX/IK_MouseY axis; UWindow ignores the absolute WindowsMouseX/Y).
+	// An UNLOCKED relative cursor desynced from the browser cursor (~half speed + offscreen-reentry drift, so
+	// the lower-right menu buttons were unreachable). Keeping relative-mouse-mode engaged during menus makes
+	// the single game-drawn cursor (visible in software AND GL) the only pointer -> nothing to misalign,
+	// movement is unbounded. So: request capture whenever a live level is up with a player actor, regardless
+	// of menu/pause. The browser force-exits pointer lock on ESC (which opens the UT menu), but SDL keeps
+	// relative_mode set, and its Emscripten mousedown handler RE-GRABS the lock on the next click (see
+	// SDL_emscriptenevents.c: relative_mode && !has_pointer_lock -> emscripten_request_pointerlock). So after
+	// ESC the menu re-locks with one click; the absolute-branch axis feed in TickInput keeps the cursor moving
+	// during that brief unlocked window. State-change only (no per-frame SetRelativeMouseMode churn).
+	{
+		static INT WebCap = -1;
+		static INT WebMenu = -1;
+		UViewport* WV = ( Client && Client->Viewports.Num()==1 ) ? Client->Viewports(0) : NULL;
+		INT Want = ( WV && GLevel && WV->Actor ) ? 1 : 0;
+		INT Menu = ( WV && WV->Actor && ( WV->Actor->bShowMenu || WV->bShowWindowsMouse ) ) ? 1 : 0;
+		if( WV && ( Want != WebCap || Menu != WebMenu ) )
+		{
+			debugf( TEXT("[webmouse] relative-capture=%i menu=%i (bShowMenu=%i bShowWinMouse=%i)"),
+				Want, Menu, WV->Actor ? (INT)WV->Actor->bShowMenu : -1, (INT)WV->bShowWindowsMouse );
+			if( Want != WebCap )
+			{
+				WV->SetMouseCapture( Want, Want, 0 );
+				WebCap = Want;
+			}
+			WebMenu = Menu;
+		}
+	}
+#endif
 
 	// Update subsystems.
 	UObject::StaticTick();				

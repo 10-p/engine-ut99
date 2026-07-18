@@ -19,6 +19,13 @@
 	fetched, or 0 if not.
 -----------------------------------------------------------------------------*/
 
+// ufront 2.7d: Engine/Src/UnParams.cpp defines these same parse helpers (GetFVECTOR/GetSUBSTRING/
+// GetFROTATOR). In the shared-lib (native/DC) builds each package's copy lives in its own .so — no clash.
+// The web build whole-archives every package into ONE binary, so both copies collide (wasm-ld: duplicate
+// symbol). Engine is always linked, so on Emscripten skip Editor's copies and let callers resolve to
+// Engine's. Editor's UNIQUE helpers (GetBEGIN/GetEND/SetFVECTOR/GetFSCALE, below) stay compiled.
+#ifndef __EMSCRIPTEN__
+
 //
 // Get a floating-point vector (X=, Y=, Z=), return number of components parsed (0-3).
 //
@@ -158,6 +165,7 @@ UBOOL EDITOR_API GetFROTATOR
 
 	unguard;
 }
+#endif // !__EMSCRIPTEN__ (ufront 2.7d — Engine provides these shared parse helpers in the static web build)
 
 //
 // Gets a "BEGIN" string.  Returns 1 if gotten, 0 if not.

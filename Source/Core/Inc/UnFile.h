@@ -450,13 +450,17 @@ inline void* appRealloc( void* Original, DWORD Count, const TCHAR* Tag )
 //
 // C++ style memory allocation.
 //
-inline void* operator new( unsigned int Size, const TCHAR* Tag )
+// ufront 2.7b (web port): the C++ standard requires the first parameter of a replacement global
+// operator new to be size_t. On 32-bit x86/SH4 (native/Dreamcast) size_t == unsigned int, so UT99's
+// original `unsigned int` matched; on wasm32 size_t == unsigned long, so clang rejects `unsigned int`.
+// Use size_t (as engine-unreal1 does) — correct everywhere; identical to unsigned int on the 32-bit twins.
+inline void* operator new( size_t Size, const TCHAR* Tag )
 {
 	guardSlow(new);
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-inline void* operator new( unsigned int Size )
+inline void* operator new( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );
@@ -470,13 +474,13 @@ inline void operator delete( void* Ptr )
 }
 
 #if PLATFORM_NEEDS_ARRAY_NEW
-inline void* operator new[]( unsigned int Size, const TCHAR* Tag )
+inline void* operator new[]( size_t Size, const TCHAR* Tag )
 {
 	guardSlow(new);
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-inline void* operator new[]( unsigned int Size )
+inline void* operator new[]( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );

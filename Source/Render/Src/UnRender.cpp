@@ -1448,15 +1448,26 @@ FSceneNode* URender::CreateChildFrame
 /*-----------------------------------------------------------------------------
 	World polygon rasterizer.
 -----------------------------------------------------------------------------*/
+// HackRaster is a shared per-scanline span table indexed by Viewport->SizeY (see SetupRaster) and used by
+// ALL render devices (incl. the default NOpenGLES). Any SizeY>1200 (1440p/4K/…) overran the old [2880] cap,
+// stomping the heap (BSP poly flicker, adjacent-global corruption — e.g. Fire textures — then a wasm
+// "memory access out of bounds"). Sized for 8K in any orientation with margin; SetupRaster also hard-clamps
+// EndY to this capacity so NO resolution can overflow it (fail-soft, like SoftDrv's MaximumYScreenSize
+// guard). Mirrors the engine-unreal1 fix. (Dreamcast keeps its original 480 cap.)
 #ifdef PLATFORM_DREAMCAST
-FRasterSpan HackRaster[480];//max y res 480!!
+#define MAX_RASTER_Y 480
 #else
-FRasterSpan HackRaster[2880];//max y res!!
+#define MAX_RASTER_Y 8192
 #endif
+FRasterSpan HackRaster[MAX_RASTER_Y];//max y res MAX_RASTER_Y
 INT RasterStartY, RasterEndY, RasterStartX, RasterEndX;
 static UBOOL SetupRaster( FTransform** Pts, INT NumPts, FSpanBuffer* Span, INT EndY )
 {
 	guard(SetupRaster);
+
+	// Clamp to the span-table capacity so a very tall viewport can never index HackRaster out of bounds
+	// (heap corruption / wasm OOB). A no-op at every realistic resolution (<= MAX_RASTER_Y, incl. 8K).
+	EndY = Min<INT>( EndY, MAX_RASTER_Y - 1 );
 
 	// Compute integer coords.
 	RasterStartY = RasterEndY = Pts[0]->IntY;

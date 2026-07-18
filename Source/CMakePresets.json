@@ -1,0 +1,45 @@
+{
+  "version": 3,
+  "cmakeMinimumRequired": { "major": 3, "minor": 15, "patch": 0 },
+  "configurePresets": [
+    {
+      "name": "native",
+      "displayName": "Native (SDL2, all 5 renderers) -- the WASM twin / compat oracle",
+      "description": "32-bit native build (needs libsdl2-dev:i386). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). Not static, so NOpenGLES + XOpenGL co-link fine (glad-clash guard is BUILD_STATIC-only). Builds in build-native/.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-native",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "CMAKE_C_FLAGS": "-m32",
+        "CMAKE_CXX_FLAGS": "-m32",
+        "BUILD_EDITOR": "OFF",
+        "BUILD_DCUTIL": "OFF",
+        "BUILD_XOPENGLDRV": "ON",
+        "BUILD_NOPENGLDRV": "ON",
+        "BUILD_NOPENALDRV": "ON"
+      }
+    },
+    {
+      "name": "wasm",
+      "displayName": "Web (Emscripten/WASM) -- dev",
+      "description": "Emscripten web build (assertions + debug). Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-wasm",
+      "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF" }
+    },
+    {
+      "name": "wasm-perf",
+      "inherits": "wasm",
+      "displayName": "Web (Emscripten/WASM) -- max performance",
+      "description": "Emscripten web build (-O3, no debug -> smaller/faster). Builds in build-wasm-perf/. [wired in step 2.7b]",
+      "binaryDir": "${sourceDir}/../build-wasm-perf",
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "UT_WEB_PERF": "ON" }
+    }
+  ],
+  "buildPresets": [
+    { "name": "native", "configurePreset": "native" },
+    { "name": "wasm", "configurePreset": "wasm" },
+    { "name": "wasm-perf", "configurePreset": "wasm-perf" }
+  ]
+}
