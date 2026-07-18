@@ -33,6 +33,29 @@ a `UnrealTournament.ini` selecting `NOpenGLESDrv.NOpenGLESRenderDevice` + `NSDLD
 (step 2.7a): loads the v400 engine + all v68 retail packages + a real DM map — proving v400↔v68 asset
 compatibility.
 
+## Render drivers — fetched, not vendored
+
+The two shared HW render drivers are **pulled from their own GitHub repos at configure time** (CMake
+`FetchContent`), not vendored in this tree — only each driver's build-glue `CMakeLists.txt` lives here
+(`Source/XOpenGLDrv`, `Source/OpenGLDrv`):
+
+| Driver | Package | Repo (`10-p` fork) | Default ref |
+|--------|---------|--------------------|-------------|
+| **XOpenGLDrv** (OldUnreal GL → WebGL2/GLES3) | `XOpenGLDrv.XOpenGLRenderDevice` | `github.com/10-p/XOpenGLDrv` | branch `ut99-v400-compat` |
+| **OpenGLDrv / UTGLR** (Dohnal legacy GL; web via gl4es) | `OpenGLDrv.OpenGLRenderDevice` | `github.com/10-p/utglr-copy` | branch `main` |
+
+(`gl4es` and `libxmp` are likewise fetched — see the top-level `Source/CMakeLists.txt` + `NOpenALDrv/`.)
+`SoftDrv`, `NullDrv`, `NOpenGLESDrv` remain in-tree (engine-specific). **Editing a driver** means editing
+its repo, then bumping the pinned ref here (`XOPENGL_GIT_TAG` / `UTGLR_GIT_TAG`; pin to a commit for full
+reproducibility). To build against a **local checkout** without pushing (edit → build → push → bump ref):
+
+```bash
+cmake --preset native -DFETCHCONTENT_SOURCE_DIR_XOPENGLDRV=/home/ion/engines/XOpenGLDrv
+cmake --preset native -DFETCHCONTENT_SOURCE_DIR_UTGLR=/home/ion/engines/utglr-copy
+```
+
+The first configure of a fresh build dir needs network (the fetch); subsequent configures reuse `_deps/`.
+
 ## What the native port took (step 2.7a)
 
 ut99dc already builds native/desktop; two gaps had to be filled for a fresh gcc-15 checkout:

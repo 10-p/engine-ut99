@@ -17,13 +17,15 @@ if(NOT USE_SDL)
   message(FATAL_ERROR "OpenGLDrv (UTGLR) requires NSDLDrv/SDL2 to function.")
 endif()
 
-set(SRC_FILES "OpenGL.cpp" "OpenGLDrv.cpp" "c_gclip.cpp")
+# Source is FETCHED (${UTGLR_SOURCE_DIR}, set in the top-level CMakeLists.txt) — the utglr-copy repo is
+# flat (files at root); only this build glue lives in the engine tree.
+set(SRC_FILES "${UTGLR_SOURCE_DIR}/OpenGL.cpp" "${UTGLR_SOURCE_DIR}/OpenGLDrv.cpp" "${UTGLR_SOURCE_DIR}/c_gclip.cpp")
 
 add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 
 target_include_directories(${PROJECT_NAME}
   PUBLIC
-  ${CMAKE_CURRENT_SOURCE_DIR}
+  ${UTGLR_SOURCE_DIR}
   PRIVATE
   ${SDL2_INCLUDE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../Render/Src

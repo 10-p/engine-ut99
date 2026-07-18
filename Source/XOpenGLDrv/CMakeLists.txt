@@ -11,19 +11,21 @@ if(NOT USE_SDL)
 endif()
 
 # All Src/*.cpp are standalone translation units (incl. the *_GLSL.cpp shader files and the vendored
-# desktop-GL glad.cpp loader).
-file(GLOB SRC_FILES "${CMAKE_CURRENT_SOURCE_DIR}/Src/*.cpp")
+# desktop-GL glad.cpp loader). Source is FETCHED (${XOPENGL_SOURCE_DIR}, set in the top-level
+# CMakeLists.txt); only this build glue lives in the engine tree.
+file(GLOB SRC_FILES "${XOPENGL_SOURCE_DIR}/Src/*.cpp")
 
 add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 
 # Isolated include set: the driver vendors its OWN desktop-GL `glad.h`/`glext.h` (Inc/) and its own
 # glm (glm/) — deliberately NOT the engine's Thirdparty/glad_es (GLES loader) or trimmed Thirdparty/glm
-# (missing gtc/), to avoid header/symbol clashes with NOpenGLESDrv. Render private headers
-# (RenderPrivate.h/UnRender.h) come from ../Render/Src, exactly as NOpenGLESDrv does.
+# (missing gtc/), to avoid header/symbol clashes with NOpenGLESDrv. Inc/ and glm/ come from the fetched
+# driver source (${XOPENGL_SOURCE_DIR}); Render private headers (RenderPrivate.h/UnRender.h) come from
+# the engine's ../Render/Src (relative to this in-tree build glue), exactly as NOpenGLESDrv does.
 target_include_directories(${PROJECT_NAME}
   PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/Inc
-  ${CMAKE_CURRENT_SOURCE_DIR}/glm
+  ${XOPENGL_SOURCE_DIR}/Inc
+  ${XOPENGL_SOURCE_DIR}/glm
   ${SDL2_INCLUDE_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}/../Render/Src
 )

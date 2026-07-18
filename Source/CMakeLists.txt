@@ -50,9 +50,9 @@ option(USE_GL4ES "Build OpenGLDrv (UTGLR) against gl4es (desktop GL -> GLES2) fo
 if(USE_GL4ES)
   set(BUILD_NOPENGLDRV ON)
 endif()
-# Driver sources are vendored in-tree; override to build a driver from an external checkout.
-set(XOPENGL_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/XOpenGLDrv" CACHE PATH "XOpenGLDrv source dir")
-set(UTGLR_SOURCE_DIR "${CMAKE_CURRENT_SOURCE_DIR}/OpenGLDrv" CACHE PATH "OpenGLDrv/UTGLR source dir")
+# Driver sources (XOpenGLDrv, OpenGLDrv/UTGLR) are FETCHED from their own repos, not vendored here;
+# XOPENGL_SOURCE_DIR / UTGLR_SOURCE_DIR are set to the populated trees by the fetch block just above
+# the "# Subprojects" section below. Only the per-driver build-glue CMakeLists.txt lives in-tree.
 
 
 option(DREAMCAST_USE_FATFS "Try to load data from SD or IDE" OFF)
@@ -319,6 +319,42 @@ if(USE_SDL)
 endif()
 
 
+# ufront — driver sources are FETCHED from their own GitHub repos (the 10-p forks), NOT vendored in
+# this engine tree. The engine keeps only each driver's build-glue CMakeLists.txt (Source/XOpenGLDrv,
+# Source/OpenGLDrv); the renderer source is pulled at configure time and XOPENGL_SOURCE_DIR /
+# UTGLR_SOURCE_DIR are pointed at the populated trees (the build-glue then compiles/includes from
+# there). Mirrors the gl4es block below. Neither repo ships a root CMakeLists.txt, so
+# FetchContent_MakeAvailable only POPULATES (no add_subdirectory) — we drive the build ourselves.
+#
+# Dev workflow (edit a driver -> build -> push to 10-p -> bump *_GIT_TAG): point FetchContent at a
+# local checkout with the standard override, e.g.
+#     cmake --preset native -DFETCHCONTENT_SOURCE_DIR_XOPENGLDRV=/home/ion/engines/XOpenGLDrv
+#     cmake --preset native -DFETCHCONTENT_SOURCE_DIR_UTGLR=/home/ion/engines/utglr-copy
+# Default GIT_TAG is a branch (like gl4es); pin *_GIT_TAG to a commit for full reproducibility.
+if(NOT PLATFORM_DREAMCAST AND BUILD_XOPENGLDRV)
+  set(XOPENGL_GIT_REPOSITORY "https://github.com/10-p/XOpenGLDrv.git" CACHE STRING "XOpenGLDrv git repo (OldUnreal fork)")
+  set(XOPENGL_GIT_TAG "ut99-v400-compat" CACHE STRING "XOpenGLDrv git tag/branch/commit")
+  include(FetchContent)
+  message(STATUS "XOpenGLDrv: fetching ${XOPENGL_GIT_REPOSITORY}@${XOPENGL_GIT_TAG}")
+  FetchContent_Declare(XOpenGLDrv
+    GIT_REPOSITORY "${XOPENGL_GIT_REPOSITORY}" GIT_TAG "${XOPENGL_GIT_TAG}" GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(XOpenGLDrv)
+  set(XOPENGL_SOURCE_DIR "${xopengldrv_SOURCE_DIR}")
+  message(STATUS "XOpenGLDrv: source = ${XOPENGL_SOURCE_DIR}")
+endif()
+
+if(NOT PLATFORM_DREAMCAST AND BUILD_NOPENGLDRV)
+  set(UTGLR_GIT_REPOSITORY "https://github.com/10-p/utglr-copy.git" CACHE STRING "OpenGLDrv/UTGLR git repo (Dohnal drop + our port)")
+  set(UTGLR_GIT_TAG "main" CACHE STRING "OpenGLDrv/UTGLR git tag/branch/commit")
+  include(FetchContent)
+  message(STATUS "OpenGLDrv/UTGLR: fetching ${UTGLR_GIT_REPOSITORY}@${UTGLR_GIT_TAG}")
+  FetchContent_Declare(utglr
+    GIT_REPOSITORY "${UTGLR_GIT_REPOSITORY}" GIT_TAG "${UTGLR_GIT_TAG}" GIT_SHALLOW TRUE)
+  FetchContent_MakeAvailable(utglr)
+  set(UTGLR_SOURCE_DIR "${utglr_SOURCE_DIR}")
+  message(STATUS "OpenGLDrv/UTGLR: source = ${UTGLR_SOURCE_DIR}")
+endif()
+
 # Subprojects
 
 set(INSTALL_TARGETS Core Engine Render IpDrv Fire)
@@ -398,7 +434,8 @@ if(BUILD_NOPENGLDRV)
     endif()
   endif()
 
-  add_subdirectory(${UTGLR_SOURCE_DIR} OpenGLDrv)
+  # Build glue lives in-tree (Source/OpenGLDrv); it compiles/includes from ${UTGLR_SOURCE_DIR} (fetched).
+  add_subdirectory(OpenGLDrv)
   list(APPEND INSTALL_TARGETS OpenGLDrv)
 endif()
 
@@ -410,7 +447,8 @@ endif()
 # ufront 2.9 — XOpenGLDrv (OldUnreal GL -> WebGL2/GLES3). All v400 adaptations gated `#if ENGINE_VERSION==400`
 # in the driver; see Source/XOpenGLDrv/ENGINE_CHANGES.md.
 if(NOT PLATFORM_DREAMCAST AND BUILD_XOPENGLDRV)
-  add_subdirectory(${XOPENGL_SOURCE_DIR} XOpenGLDrv)
+  # Build glue lives in-tree (Source/XOpenGLDrv); it compiles/includes from ${XOPENGL_SOURCE_DIR} (fetched).
+  add_subdirectory(XOpenGLDrv)
   list(APPEND INSTALL_TARGETS XOpenGLDrv)
 endif()
 
