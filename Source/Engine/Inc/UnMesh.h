@@ -582,6 +582,15 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	TArray<FSkelCoords>	BindRefInv;
 	UBOOL				bBindComputed;
 
+	// v436-compat weapon attachment: the animated WeaponBoneIndex bone frame (mirrored bone space,
+	// filled by ComputeSkinnedPose) and its resolved view-space frame (filled by GetFrame). DrawLodMesh
+	// publishes the view-space frame as the engine's SpecialCoords so the third-person weapon attaches
+	// to the hand bone instead of floating beside the pawn. Not serialized.
+	FSkelCoords	WeaponBoneM;		// animated weapon bone, mirrored space
+	UBOOL		bWeaponBoneM;
+	FVector		WeaponAttachOrigin, WeaponAttachX, WeaponAttachY, WeaponAttachZ;	// view space
+	UBOOL		bWeaponAttach;
+
 	// UObject interface.
 	USkeletalMesh(){}
 	void Serialize( FArchive& Ar );
