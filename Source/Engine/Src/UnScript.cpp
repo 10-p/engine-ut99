@@ -954,6 +954,41 @@ void AActor::execGetSoundDuration( FFrame& Stack, RESULT_DECL )
 	unguardexec;
 }
 
+// v436-compat port: stubs for named natives added to Actor after v400. UT99 base content does
+// not exercise skeletal animation or the download cache in offline play, so these are
+// behavior-safe no-ops (GetCacheEntry/MoveCacheEntry report "nothing"). See EngineClasses.h.
+void AActor::execLinkSkelAnim( FFrame& Stack, RESULT_DECL )
+{
+	guard(AActor::execLinkSkelAnim);
+	P_GET_OBJECT(UAnimation,Anim);
+	P_FINISH;
+	// No skeletal-mesh pipeline in this engine; ignore.
+	unguardexec;
+}
+
+void AActor::execGetCacheEntry( FFrame& Stack, RESULT_DECL )
+{
+	guard(AActor::execGetCacheEntry);
+	P_GET_INT(Num);
+	P_GET_STR_REF(GUID);
+	P_GET_STR_REF(Filename);
+	P_FINISH;
+	// No download-cache manager offline: report no entry.
+	*(DWORD*)Result = 0;
+	unguardexec;
+}
+
+void AActor::execMoveCacheEntry( FFrame& Stack, RESULT_DECL )
+{
+	guard(AActor::execMoveCacheEntry);
+	P_GET_STR(GUID);
+	P_GET_STR_OPTX(NewFilename,TEXT(""));
+	P_FINISH;
+	// No download-cache manager offline: report failure (nothing moved).
+	*(DWORD*)Result = 0;
+	unguardexec;
+}
+
 //////////////
 // Movement //
 //////////////

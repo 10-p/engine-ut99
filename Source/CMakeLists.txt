@@ -357,7 +357,7 @@ endif()
 
 # Subprojects
 
-set(INSTALL_TARGETS Core Engine Render IpDrv Fire)
+set(INSTALL_TARGETS Core Engine Render IpDrv Fire UWeb)
 
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
@@ -367,6 +367,9 @@ add_subdirectory(Engine)
 add_subdirectory(Render)
 add_subdirectory(IpDrv)
 add_subdirectory(Fire)
+# v436-compat port: build UWeb (WebRequest/WebResponse/WebServer native classes) — needed by
+# JailBreak / UTServerAdmin. Was in-tree but unbuilt.
+add_subdirectory(UWeb)
 # ufront 2.12 Part B: ucc command-line tool (dedicated server / make / commandlets) — native-only executable.
 if(NOT EMSCRIPTEN)
   add_subdirectory(UCC)
