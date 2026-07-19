@@ -44,6 +44,12 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	Ar << DefaultAnimation;
 	Ar << WeaponBoneIndex;
 	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
+	// v436-compat diagnostic: report skeletal meshes as they load. This is how we know which
+	// packages/actors actually carry skeletal (vs vertex) meshes — a real USkeletalMesh reports a
+	// non-empty reference skeleton here.
+	if( Ar.IsLoading() )
+		debugf( NAME_Log, TEXT("[skelmesh] %s: %i bones, %i points, %i weights"),
+			GetFullName(), RefSkeleton.Num(), Points.Num(), BoneWeights.Num() );
 	unguard;
 }
 
