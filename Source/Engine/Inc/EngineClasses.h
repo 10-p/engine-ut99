@@ -703,12 +703,11 @@ public:
     BITFIELD bDynamicLight:1;
     BITFIELD bTimerLoop:1;
     BITFIELD bCanTeleport:1;
-    BITFIELD bIsSecretGoal:1;
-    BITFIELD bIsKillGoal:1;
-    BITFIELD bIsItemGoal:1;
-    BITFIELD bCollideWhenPlacing:1;
-    BITFIELD bTravel:1;
-    BITFIELD bMovable:1;
+    BITFIELD bOwnerNoSee:1;
+    BITFIELD bOnlyOwnerSee:1;
+    BITFIELD bIsMover:1;
+    BITFIELD bAlwaysRelevant:1;
+    BITFIELD bAlwaysTick:1;
     BITFIELD bHighDetail:1;
     BITFIELD bStasis:1;
     BITFIELD bForceStasis:1;
@@ -720,9 +719,10 @@ public:
     BITFIELD bTrailerPrePivot:1;
     BITFIELD bClientAnim:1;
     BITFIELD bSimFall:1;
-    BYTE Physics GCC_ALIGN(4);
+    BYTE Physics GCC_PACK(4);
     BYTE Role;
     BYTE RemoteRole;
+    INT NetTag;
     class AActor* Owner;
     FName InitialState;
     FName Group;
@@ -733,6 +733,7 @@ public:
     FLOAT AnimFrame;
     FLOAT AnimRate;
     FLOAT TweenRate;
+    class UAnimation* SkelAnim;
     FLOAT LODBias;
     class ALevelInfo* Level;
     class ULevel* XLevel;
@@ -740,6 +741,7 @@ public:
     FName Event;
     class AActor* Target;
     class APawn* Instigator;
+    class USound* AmbientSound;
     class AInventory* Inventory;
     class AActor* Base;
     FPointRegion Region;
@@ -754,7 +756,6 @@ public:
     class AActor* Deleted;
     INT CollisionTag;
     INT LightingTag;
-    INT NetTag;
     INT OtherTag;
     INT ExtraTag;
     INT SpecialTag;
@@ -764,6 +765,7 @@ public:
     FVector ColLocation;
     FVector Velocity;
     FVector Acceleration;
+    FLOAT OddsOfAppearing;
     BITFIELD bHiddenEd:1 GCC_PACK(4);
     BITFIELD bDirectional:1;
     BITFIELD bSelected:1;
@@ -780,7 +782,8 @@ public:
     BITFIELD bSinglePlayer:1;
     BITFIELD bNet:1;
     BITFIELD bNetSpecial:1;
-    FLOAT OddsOfAppearing GCC_PACK(4);
+    BITFIELD bScriptInitialized:1;
+    class AActor* HitActor GCC_PACK(4);
     BYTE DrawType;
     BYTE Style;
     class UTexture* Sprite;
@@ -791,31 +794,33 @@ public:
     FLOAT DrawScale;
     FVector PrePivot;
     FLOAT ScaleGlow;
+    FLOAT VisibilityRadius;
+    FLOAT VisibilityHeight;
     BYTE AmbientGlow;
     BYTE Fatness;
+    FLOAT SpriteProjForward;
     BITFIELD bUnlit:1 GCC_PACK(4);
     BITFIELD bNoSmooth:1;
     BITFIELD bParticles:1;
     BITFIELD bRandomFrame:1;
     BITFIELD bMeshEnviroMap:1;
     BITFIELD bMeshCurvy:1;
-    FLOAT VisibilityRadius GCC_PACK(4);
-    FLOAT VisibilityHeight;
-    BITFIELD bShadowCast:1 GCC_PACK(4);
-    BITFIELD bOwnerNoSee:1;
-    BITFIELD bOnlyOwnerSee:1;
-    BITFIELD bIsMover:1;
-    BITFIELD bAlwaysRelevant:1;
-    BITFIELD bAlwaysTick:1;
+    BITFIELD bFilterByVolume:1;
+    BITFIELD bShadowCast:1;
     BITFIELD bHurtEntry:1;
     BITFIELD bGameRelevant:1;
     BITFIELD bCarriedItem:1;
     BITFIELD bForcePhysicsUpdate:1;
+    BITFIELD bIsSecretGoal:1;
+    BITFIELD bIsKillGoal:1;
+    BITFIELD bIsItemGoal:1;
+    BITFIELD bCollideWhenPlacing:1;
+    BITFIELD bTravel:1;
+    BITFIELD bMovable:1;
     class UTexture* MultiSkins[8] GCC_PACK(4);
     BYTE SoundRadius;
     BYTE SoundVolume;
     BYTE SoundPitch;
-    class USound* AmbientSound;
     FLOAT TransientSoundVolume;
     FLOAT TransientSoundRadius;
     FLOAT CollisionRadius;
@@ -825,7 +830,7 @@ public:
     BITFIELD bBlockActors:1;
     BITFIELD bBlockPlayers:1;
     BITFIELD bProjTarget:1;
-    BYTE LightType GCC_ALIGN(4);
+    BYTE LightType GCC_PACK(4);
     BYTE LightEffect;
     BYTE LightBrightness;
     BYTE LightHue;
@@ -846,7 +851,7 @@ public:
     BITFIELD bRotateToDesired:1;
     BITFIELD bInterpolating:1;
     BITFIELD bJustTeleported:1;
-    BYTE DodgeDir GCC_ALIGN(4);
+    BYTE DodgeDir GCC_PACK(4);
     FLOAT Mass;
     FLOAT Buoyancy;
     FRotator RotationRate;
@@ -921,6 +926,9 @@ public:
     DECLARE_FUNCTION(execSleep);
     DECLARE_FUNCTION(execError);
     DECLARE_FUNCTION(execConsoleCommand);
+    DECLARE_FUNCTION(execLinkSkelAnim);
+    DECLARE_FUNCTION(execGetCacheEntry);
+    DECLARE_FUNCTION(execMoveCacheEntry);
     void eventRenderTexture(class UScriptedTexture* Tex)
     {
         AActor_eventRenderTexture_Parms Parms;
@@ -1702,7 +1710,7 @@ public:
     class UClass* SpecialMenu;
     FStringNoInit DelayedCommand;
     FLOAT MouseSensitivity;
-    FName WeaponPriority[20];
+    FName WeaponPriority[50];
     FLOAT SmoothMouseX;
     FLOAT SmoothMouseY;
     FLOAT BorrowedMouseX;
@@ -1744,12 +1752,14 @@ public:
     class AGameReplicationInfo* GameReplicationInfo;
     FStringNoInit ngWorldSecret;
     BITFIELD ngSecretSet:1 GCC_PACK(4);
+    BITFIELD ReceivedSecretChecksum:1;
     FRotator TargetViewRotation GCC_PACK(4);
     FLOAT TargetEyeHeight;
     FVector TargetWeaponViewOffset;
     INT DemoViewPitch;
     INT DemoViewYaw;
     FLOAT LastPlaySound;
+    FLOAT LastMessageWindow;
     DECLARE_FUNCTION(execPasteFromClipboard);
     DECLARE_FUNCTION(execCopyToClipboard);
     DECLARE_FUNCTION(execConsoleCommand);
@@ -2396,6 +2406,7 @@ public:
     FStringNoInit LocalizedPkg;
     FStringNoInit Pauser;
     class ULevelSummary* Summary;
+    FStringNoInit VisibleGroups;
     BITFIELD bLonePlayer:1 GCC_PACK(4);
     BITFIELD bBegunPlay:1;
     BITFIELD bPlayersOnly:1;
@@ -2406,6 +2417,7 @@ public:
     BITFIELD bHumansOnly:1;
     BITFIELD bNoCheating:1;
     BITFIELD bAllowFOV:1;
+    BITFIELD bLowRes:1;
     class UMusic* Song GCC_PACK(4);
     BYTE SongSection;
     BYTE CdTrack;
@@ -2508,6 +2520,7 @@ public:
     BITFIELD bOverTime:1;
     BITFIELD bAlternateMode:1;
     BITFIELD bCanViewOthers:1;
+    BITFIELD bExternalBatcher:1;
     FLOAT AutoAim GCC_PACK(4);
     FLOAT GameSpeed;
     FLOAT StartTime;
@@ -2553,6 +2566,7 @@ public:
     class UClass* MutatorClass;
     class AMutator* BaseMutator;
     class AMutator* DamageMutator;
+    class AMutator* MessageMutator;
     class UClass* WaterZoneType;
     FName DefaultPlayerState;
     class UClass* GameReplicationInfoClass;
@@ -2569,6 +2583,7 @@ public:
     class UClass* StatLogClass;
     INT DemoBuild;
     INT DemoHasTuts;
+    FStringNoInit EnabledMutators;
     DECLARE_FUNCTION(execParseKillMessage);
     DECLARE_FUNCTION(execGetNetworkNumber);
     void eventAcceptInventory(class APawn* PlayerPawn)
@@ -2642,6 +2657,9 @@ class ENGINE_API AMutator : public AInfo
 public:
     class AMutator* NextMutator;
     class AMutator* NextDamageMutator;
+    class AMutator* NextMessageMutator;
+    class AMutator* NextHUDMutator;
+    BITFIELD bHUDMutator:1 GCC_PACK(4);
     class UClass* DefaultWeapon;
     void eventPostRender(class UCanvas* Canvas)
     {
@@ -3030,6 +3048,34 @@ public:
     #include "AInventory.h"
 };
 
+// v436-compat port: APickup/AAmmo are native (nativereplication) script classes in v436 Engine
+// (Pickup.uc/Ammo.uc) absent from stock v400; without them UClass::Bind aborts. Layout copied
+// from the v432 reference (== v436 var order). No native functions.
+class ENGINE_API APickup : public AInventory
+{
+public:
+    class AInventory* Inv;
+    INT NumCopies;
+    BITFIELD bCanHaveMultipleCopies:1 GCC_PACK(4);
+    BITFIELD bCanActivate:1;
+    FStringNoInit ExpireMessage GCC_PACK(4);
+    BITFIELD bAutoActivate:1 GCC_PACK(4);
+    DECLARE_CLASS(APickup,AInventory,0|CLASS_NativeReplication)
+    NO_DEFAULT_CONSTRUCTOR(APickup)
+};
+
+class ENGINE_API AAmmo : public APickup
+{
+public:
+    INT AmmoAmount;
+    INT MaxAmmo;
+    class UClass* ParentAmmo;
+    BYTE UsedInWeaponSlot[10];
+    class AAmmo* PAmmo;
+    DECLARE_CLASS(AAmmo,APickup,0|CLASS_NativeReplication)
+    NO_DEFAULT_CONSTRUCTOR(AAmmo)
+};
+
 
 class ENGINE_API AWeapon : public AInventory
 {
@@ -3153,6 +3199,7 @@ AUTOGENERATE_FUNCTION(APlayerPawn,544,execResetKeyboard);
 AUTOGENERATE_FUNCTION(APlayerPawn,-1,execClientTravel);
 AUTOGENERATE_FUNCTION(APawn,-1,execClientHearSound);
 AUTOGENERATE_FUNCTION(APawn,-1,execStopWaiting);
+AUTOGENERATE_FUNCTION(APawn,-1,execCheckValidSkinPackage);
 AUTOGENERATE_FUNCTION(APawn,534,execPickAnyTarget);
 AUTOGENERATE_FUNCTION(APawn,531,execPickTarget);
 AUTOGENERATE_FUNCTION(APawn,530,execRemovePawn);
@@ -3190,6 +3237,9 @@ AUTOGENERATE_FUNCTION(AActor,305,execChildActors);
 AUTOGENERATE_FUNCTION(AActor,304,execAllActors);
 AUTOGENERATE_FUNCTION(AActor,-1,execGetNextIntDesc);
 AUTOGENERATE_FUNCTION(AActor,-1,execGetNextInt);
+AUTOGENERATE_FUNCTION(AActor,-1,execLinkSkelAnim);
+AUTOGENERATE_FUNCTION(AActor,-1,execGetCacheEntry);
+AUTOGENERATE_FUNCTION(AActor,-1,execMoveCacheEntry);
 AUTOGENERATE_FUNCTION(AActor,547,execGetURLMap);
 AUTOGENERATE_FUNCTION(AActor,545,execGetNextSkin);
 AUTOGENERATE_FUNCTION(AActor,539,execGetMapName);

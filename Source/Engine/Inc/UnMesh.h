@@ -348,6 +348,47 @@ class ENGINE_API ULodMesh : public UMesh
 	void GetFrame( FVector* Verts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest );
 };
 
+/*-----------------------------------------------------------------------------
+	UAnimation.
+-----------------------------------------------------------------------------*/
+
+//
+// v436-compat port: minimal native Animation class.
+//
+// v436 engine.u references the native class 'Engine.Animation' (added to UT after v400 for
+// skeletal-mesh animation) as a public-native-transient import. The stock v400 engine has no
+// UAnimation, so ULinkerLoad::VerifyImport fails fatally ("Can't find Class in file 'Class
+// Engine.Animation'"). Registering this class makes that import resolve. UT99 content ships no
+// skeletal-animation data in the base packages, so this is empty by design; Serialize just
+// consumes any (unexpected) trailing bytes without interpreting them. Skeletal-mesh *rendering*
+// remains an accepted non-goal.
+//
+class ENGINE_API UAnimation : public UObject
+{
+	DECLARE_CLASS(UAnimation,UObject,0)
+
+	// UObject interface.
+	UAnimation(){}
+	void Serialize( FArchive& Ar );
+};
+
+//
+// v436-compat port: minimal native SkeletalMesh class.
+//
+// OldSkool/ONP (olextras) and other v436-era mods import the native class 'Engine.SkeletalMesh'
+// (a ULodMesh subclass) that stock v400 lacks, so their packages fail to load. Register a minimal
+// class so imports resolve. The full skeletal pipeline (bones/weights/skinning) is an accepted
+// non-goal; skeletal meshes won't render, but packages referencing the class load. Serialize
+// falls through to ULodMesh — safe for packages that only *reference* the class; a package that
+// actually serializes a SkeletalMesh instance would need the real skeletal format (revisit then).
+class ENGINE_API USkeletalMesh : public ULodMesh
+{
+	DECLARE_CLASS(USkeletalMesh,ULodMesh,0)
+
+	// UObject interface.
+	USkeletalMesh(){}
+};
+
 /*----------------------------------------------------------------------------
 	The End.
 ----------------------------------------------------------------------------*/
