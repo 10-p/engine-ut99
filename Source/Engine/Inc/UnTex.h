@@ -474,6 +474,11 @@ class ENGINE_API UFont : public UObject
 	// Variables.
 	INT CharactersPerPage;
 	TArray<FFontPage> Pages;
+	// v436-compat port: char-remapping table added to UFont after v400 (present in the v432
+	// reference). Serialized only for package version >= 69 (the patched-package version); the
+	// v68 retail fonts predate it. C++-only (not script properties), like Pages above.
+	TMap<TCHAR,TCHAR> CharRemap;
+	UBOOL IsRemapped;
 
 	// Constructors.
 	UFont();

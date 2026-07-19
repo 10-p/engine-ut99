@@ -11,7 +11,10 @@
 #define ENGINE_MIN_NET_VERSION 400
 
 // Engine build number, for displaying to end users.
-#define ENGINE_VERSION 400
+// v436-compat port: report 436 so version-gating 436-era script/mods behave, and as a build
+// marker (paired with the startup banner in appInit). Net-compat floor stays at 400 via
+// ENGINE_MIN_NET_VERSION above. PACKAGE_FILE_VERSION is intentionally left at 68.
+#define ENGINE_VERSION 436
 
 // Base protocol version to negotiate in network play.
 #define ENGINE_NEGOTIATION_VERSION 400

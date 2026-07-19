@@ -20,3 +20,6 @@ __smoke.html
 /build-native64-asan/
 /build-android-*/
 *.u
+
+# v436-compat local run tree (test artifact; game assets)
+/run/

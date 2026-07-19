@@ -351,6 +351,22 @@ void APawn::execStopWaiting( FFrame& Stack, RESULT_DECL )
 	unguardSlow;
 }
 
+// v436-compat port: CheckValidSkinPackage(string SkinPack, string MeshName) — added to v436
+// Pawn (static native), used during skin selection. Stubbed to accept any skin; skin/mesh
+// validation is not enforced offline. Bound eagerly at class load. See EngineClasses.h.
+void APawn::execCheckValidSkinPackage( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(APawn::execCheckValidSkinPackage);
+
+	P_GET_STR(SkinPack);
+	P_GET_STR(MeshName);
+	P_FINISH;
+
+	*(DWORD*)Result = 1;
+
+	unguardexecSlow;
+}
+
 /* CanSee()
 returns true if LineOfSightto object and it is within creature's 
 peripheral vision

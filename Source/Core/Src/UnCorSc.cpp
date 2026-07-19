@@ -2161,6 +2161,23 @@ void UObject::execFRand( FFrame& Stack, RESULT_DECL )
 }	
 IMPLEMENT_FUNCTION( UObject, 195, execFRand );
 
+// v436-compat port: Object.RandRange(float Min, float Max) — native(1033), added to UT after
+// v400 (Object.uc: "Fix added by Legend on 4/12/2000"). Returns a uniform float in [Min,Max].
+// Called pervasively (weapon spread, effects, timers, AI); its absence = execUndefined crash.
+void UObject::execRandRange( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execRandRange);
+
+	P_GET_FLOAT(Min);
+	P_GET_FLOAT(Max);
+	P_FINISH;
+
+	*(FLOAT*)Result = Min + (Max - Min) * appFrand();
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 1033, execRandRange );
+
 void UObject::execFMin( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execFMin);
