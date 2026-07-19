@@ -36,4 +36,10 @@ target_link_libraries(${PROJECT_NAME} Render Engine Core)
 # which this engine does not define — so force SDL2 here (the header's auto-detect block then no-ops).
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   XOPENGLDRV_EXPORTS UPACKAGE_NAME=${PROJECT_NAME}
-  SDLBUILD=1 SDL2BUILD=1 SDL3BUILD=0)
+  SDLBUILD=1 SDL2BUILD=1 SDL3BUILD=0
+  # This engine reports ENGINE_VERSION 436 (for v436 script/mod compat) but its render layer is
+  # still vanilla v400. The fetched fork gates its render-header include and v400 adaptations on
+  # ENGINE_VERSION==400, so pin this driver's TUs to 400 (UnObjVer.h now #ifndef-guards the macro).
+  # Safe: the render structs XOpenGLDrv touches are not ENGINE_VERSION-gated, so no ABI skew vs the
+  # 436-compiled engine it links against.
+  ENGINE_VERSION=400)

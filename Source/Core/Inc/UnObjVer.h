@@ -14,7 +14,14 @@
 // v436-compat port: report 436 so version-gating 436-era script/mods behave, and as a build
 // marker (paired with the startup banner in appInit). Net-compat floor stays at 400 via
 // ENGINE_MIN_NET_VERSION above. PACKAGE_FILE_VERSION is intentionally left at 68.
+// Guarded with #ifndef so a single translation unit can be compiled against a different value:
+// the fetched XOpenGLDrv (a "ut99-v400-compat" fork) gates its render-header selection and its
+// v400 adaptation paths on ENGINE_VERSION==400, and our render layer *is* still v400 (the render
+// structs it uses are not version-gated), so XOpenGLDrv/CMakeLists.txt forces ENGINE_VERSION=400
+// for that driver only. The rest of the engine keeps 436.
+#ifndef ENGINE_VERSION
 #define ENGINE_VERSION 436
+#endif
 
 // Base protocol version to negotiate in network play.
 #define ENGINE_NEGOTIATION_VERSION 400
