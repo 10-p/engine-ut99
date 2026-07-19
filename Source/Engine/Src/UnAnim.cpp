@@ -22,6 +22,28 @@ void UAnimation::Serialize( FArchive& Ar )
 {
 	guard(UAnimation::Serialize);
 	Super::Serialize( Ar );
+	// Skeletal animation data (v436 format). Consumed for byte-accurate loading; not played back.
+	Ar << RefBones;
+	Ar << Moves;
+	Ar << AnimSeqs;
+	unguard;
+}
+
+void USkeletalMesh::Serialize( FArchive& Ar )
+{
+	guard(USkeletalMesh::Serialize);
+	Super::Serialize( Ar );			// ULodMesh: base mesh + LOD data.
+	// Skeletal-specific blob (v436 format). Order per Ut99PubSrc/SurrealEngine.
+	Ar << ExtWedges;
+	Ar << Points;
+	Ar << RefSkeleton;
+	Ar << BoneWeightIdx;
+	Ar << BoneWeights;
+	Ar << LocalPoints;
+	Ar << SkeletalDepth;
+	Ar << DefaultAnimation;
+	Ar << WeaponBoneIndex;
+	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
 	unguard;
 }
 
