@@ -104,6 +104,23 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	const FVector* Src = ( Points.Num() && ComputeSkinnedPose( Owner, Skinned ) && Skinned.Num()==Points.Num() )
 		? &Skinned(0) : ( Points.Num() ? &Points(0) : NULL );
 
+	// Resolve the weapon attachment bone (set by ComputeSkinnedPose) into a view-space frame that
+	// DrawLodMesh publishes as SpecialCoords, so the third-person weapon attaches to the hand.
+	bWeaponAttach = 0;
+	if( bWeaponBoneM )
+	{
+		FVector O  = WeaponBoneM.O;  O.X  = -O.X;			// un-mirror to native mesh space
+		FVector dX = WeaponBoneM.AX; dX.X = -dX.X;			// world dirs of the bone's local axes
+		FVector dY = WeaponBoneM.AY; dY.X = -dY.X;
+		FVector dZ = WeaponBoneM.AZ; dZ.X = -dZ.X;
+		FVector Ov = (O - Origin).TransformPointBy( Coords );
+		WeaponAttachOrigin = Ov;
+		WeaponAttachX = ( ((O + dX) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		WeaponAttachY = ( ((O + dY) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		WeaponAttachZ = ( ((O + dZ) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		bWeaponAttach = 1;
+	}
+
 	INT Requested = LODRequest + SpecialVerts;			// DrawLodMesh allocated this many samples.
 	INT Count     = Min( Requested, Points.Num() );
 	BYTE* Out     = (BYTE*)ResultVerts;
@@ -231,6 +248,7 @@ static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFram
 UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 {
 	guard(USkeletalMesh::ComputeSkinnedPose);
+	bWeaponBoneM = 0;
 	UAnimation* Anim = DefaultAnimation;
 	INT NB = RefSkeleton.Num();
 	if( !Anim || NB==0 || Points.Num()==0 || BoneWeightIdx.Num()==0 )
@@ -274,6 +292,15 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 			SkelUnTransformCoords( AC(p), L, AC(b) );
 		}
 		SkelUnTransformCoords( AC(b), BindRefInv(b), Xf(b) );	// Transform = anim.UnTransformCoords(refInv)
+	}
+
+	// Stash the animated weapon-bone frame (still in mirrored space) for GetFrame to turn into the
+	// view-space SpecialCoords used to attach the third-person weapon to the hand.
+	bWeaponBoneM = 0;
+	if( WeaponBoneIndex>=0 && WeaponBoneIndex<NB )
+	{
+		WeaponBoneM = AC(WeaponBoneIndex);
+		bWeaponBoneM = 1;
 	}
 
 	// Linear-blend skin: transform each ref-pose point by its bones' skinning transforms, weighted.
