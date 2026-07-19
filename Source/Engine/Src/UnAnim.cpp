@@ -73,6 +73,13 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
 {
 	guard(USkeletalMesh::GetFrame);
+	// Compose the incoming (camera/world->view) Coords with the actor's world transform + the mesh
+	// scale/orientation, exactly as ULodMesh::GetFrame does, so mesh-local Points map to view space
+	// at the actor's position. Without this the local Points were fed to the raw camera transform and
+	// every skeletal actor drew clustered at the same spot.
+	FLOAT DrawScale = Owner->bParticles ? 1.0f : Owner->DrawScale;
+	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin * FScale( Scale * DrawScale, 0.0f, SHEER_None );
+
 	INT Requested = LODRequest + SpecialVerts;			// DrawLodMesh allocated this many samples.
 	INT Count     = Min( Requested, Points.Num() );
 	BYTE* Out     = (BYTE*)ResultVerts;
