@@ -345,7 +345,7 @@ class ENGINE_API ULodMesh : public UMesh
 	ULodMesh( INT NumPolys, INT NumVerts, INT NumFrames );
 	
 	// GetFrame for LOD.
-	void GetFrame( FVector* Verts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest );
+	virtual void GetFrame( FVector* Verts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest );
 };
 
 /*-----------------------------------------------------------------------------
@@ -534,6 +534,12 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	// UObject interface.
 	USkeletalMesh(){}
 	void Serialize( FArchive& Ar );
+
+	// v436-compat: render the reference (bind) pose. v400 has no skeletal skinning; without this
+	// override a skeletal mesh falls through to ULodMesh::GetFrame, which reads the empty vertex-mesh
+	// Verts array (FrameVerts>0, Verts.Num()==0) and crashes. Emits Points (the skin vertices, in
+	// mesh space) so the inherited ULodMesh Wedges/Faces draw the mesh. Not animated.
+	void GetFrame( FVector* Verts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest );
 };
 
 /*----------------------------------------------------------------------------

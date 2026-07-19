@@ -53,6 +53,42 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	unguard;
 }
 
+//
+// v436-compat: draw a skeletal mesh in its reference (bind) pose.
+//
+// v400 predates skeletal skinning, so the renderer routes a USkeletalMesh (IsA ULodMesh) through
+// DrawLodMesh, which calls this GetFrame to fill the transformed-vertex buffer and then draws
+// triangles from the inherited ULodMesh Wedges/Faces. The default ULodMesh::GetFrame reads the
+// vertex-mesh Verts array — empty for a skeletal mesh (FrameVerts>0 but Verts.Num()==0) — and reads
+// out of bounds, which is the segfault seen when a skeletal actor first draws.
+//
+// For every skeletal mesh these mods ship, ModelVerts == FrameVerts == Points.Num() and
+// SpecialVerts == 0, and the ULodMesh Wedges index into [0,ModelVerts). Points holds the skin
+// vertices in mesh space, so emitting Points transformed by Coords (mesh Scale/rotation/world are
+// baked into Coords exactly as the vertex-mesh path does) draws the mesh in its bind pose. LOD is
+// already disabled for skeletal meshes (empty CollapsePointThus -> DoLOD false in DrawLodMesh), so
+// LODRequest arrives == ModelVerts and no vertex-collapse indexing occurs. Animation playback is a
+// non-goal, so the pose is static (bones/weights/animation are loaded but not applied).
+//
+void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
+{
+	guard(USkeletalMesh::GetFrame);
+	INT Requested = LODRequest + SpecialVerts;			// DrawLodMesh allocated this many samples.
+	INT Count     = Min( Requested, Points.Num() );
+	BYTE* Out     = (BYTE*)ResultVerts;
+	for( INT i=0; i<Count; i++ )
+	{
+		*(FVector*)Out = (Points(i) - Origin).TransformPointBy( Coords );
+		Out += Size;
+	}
+	// Defensive: never leave requested samples uninitialized (only hit if a mesh had SpecialVerts>0
+	// or fewer Points than ModelVerts, which none of the tested content does). Collapse to origin.
+	FVector Safe = Origin.TransformPointBy( Coords );
+	for( INT i=Count; i<Requested; i++ ) { *(FVector*)Out = Safe; Out += Size; }
+	LODRequest = Max( 0, Count - SpecialVerts );
+	unguard;
+}
+
 /*----------------------------------------------------------------------------
 	The End.
 ----------------------------------------------------------------------------*/
