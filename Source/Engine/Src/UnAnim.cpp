@@ -84,6 +84,12 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
 {
 	guard(USkeletalMesh::GetFrame);
+	// Link the animation sequences into the mesh so the engine's GetAnimSeq/GetAnimGroup find them
+	// (they live in DefaultAnimation, not the mesh). Without this the script's LoopAnim/PlayAnim
+	// calls fail ("Sequence not found in Mesh") and the actor's AnimSequence/AnimFrame never update,
+	// so the mesh is stuck in one pose. This is the LinkSkelAnim step the stock engine does.
+	if( AnimSeqs.Num()==0 && DefaultAnimation && DefaultAnimation->AnimSeqs.Num() )
+		AnimSeqs = DefaultAnimation->AnimSeqs;
 	// Compose the incoming (camera/world->view) Coords with the actor's world transform + the mesh
 	// scale/orientation, exactly as ULodMesh::GetFrame does, so mesh-local Points map to view space
 	// at the actor's position. Without this the local Points were fed to the raw camera transform and
@@ -93,12 +99,17 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	// vs the actor's movement), so add a half-turn yaw in mesh-local space (32768 = 180 deg).
 	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin * FRotator(0,32768,0) * FScale( Scale * DrawScale, 0.0f, SHEER_None );
 
+	// Skin Points into the current animation pose if one applies; else use the static bind pose.
+	TArray<FVector> Skinned;
+	const FVector* Src = ( Points.Num() && ComputeSkinnedPose( Owner, Skinned ) && Skinned.Num()==Points.Num() )
+		? &Skinned(0) : ( Points.Num() ? &Points(0) : NULL );
+
 	INT Requested = LODRequest + SpecialVerts;			// DrawLodMesh allocated this many samples.
 	INT Count     = Min( Requested, Points.Num() );
 	BYTE* Out     = (BYTE*)ResultVerts;
 	for( INT i=0; i<Count; i++ )
 	{
-		*(FVector*)Out = (Points(i) - Origin).TransformPointBy( Coords );
+		*(FVector*)Out = (Src[i] - Origin).TransformPointBy( Coords );
 		Out += Size;
 	}
 	// Defensive: never leave requested samples uninitialized (only hit if a mesh had SpecialVerts>0
@@ -106,6 +117,196 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	FVector Safe = Origin.TransformPointBy( Coords );
 	for( INT i=Count; i<Requested; i++ ) { *(FVector*)Out = Safe; Out += Size; }
 	LODRequest = Max( 0, Count - SpecialVerts );
+	unguard;
+}
+
+//
+// v436-compat: build the reference (bind) pose bone world transforms from RefSkeleton, once.
+// Convention ported from UEViewer (Gildor's umodel): compose local (Position,Orientation) up the
+// hierarchy; the root bone's orientation is conjugated. worldRot = parentRot * localRot;
+// worldPos = parentPos + parentRot.Rotate(localPos).
+// ---- Exact port of UEViewer's CAxis/CCoords math (rigid frames as origin + 3 axis rows) --------
+static void SkelToAxis( const FSkelQuat& q, FSkelCoords& C )
+{
+	FLOAT x2=q.X*2, y2=q.Y*2, z2=q.Z*2;
+	FLOAT xx=q.X*x2, xy=q.X*y2, xz=q.X*z2;
+	FLOAT yy=q.Y*y2, yz=q.Y*z2, zz=q.Z*z2;
+	FLOAT wx=q.W*x2, wy=q.W*y2, wz=q.W*z2;
+	C.AX = FVector( 1.0f-(yy+zz), xy-wz,        xz+wy );
+	C.AY = FVector( xy+wz,        1.0f-(xx+zz), yz-wx );
+	C.AZ = FVector( xz-wy,        yz+wx,        1.0f-(xx+yy) );
+}
+static FVector SkelTransformVector( const FSkelCoords& C, const FVector& s )   // R*s
+{
+	return FVector( s|C.AX, s|C.AY, s|C.AZ );
+}
+static FVector SkelUnTransformVector( const FSkelCoords& C, const FVector& s ) // R^T*s
+{
+	return C.AX*s.X + C.AY*s.Y + C.AZ*s.Z;
+}
+static FVector SkelUnTransformPoint( const FSkelCoords& C, const FVector& s )  // local point -> world
+{
+	return C.O + SkelUnTransformVector( C, s );
+}
+static void SkelUnTransformCoords( const FSkelCoords& P, const FSkelCoords& L, FSkelCoords& Out ) // P applied to L
+{
+	FSkelCoords T;
+	T.O  = SkelUnTransformPoint( P, L.O );
+	T.AX = SkelUnTransformVector( P, L.AX );
+	T.AY = SkelUnTransformVector( P, L.AY );
+	T.AZ = SkelUnTransformVector( P, L.AZ );
+	Out = T;
+}
+static void SkelInvertCoords( const FSkelCoords& S, FSkelCoords& D )
+{
+	FSkelCoords T;
+	T.O  = SkelTransformVector( S, S.O ) * -1.0f;
+	T.AX = FVector( S.AX.X, S.AY.X, S.AZ.X );
+	T.AY = FVector( S.AX.Y, S.AY.Y, S.AZ.Y );
+	T.AZ = FVector( S.AX.Z, S.AY.Z, S.AZ.Z );
+	D = T;
+}
+
+//
+void USkeletalMesh::ComputeBindPose()
+{
+	guard(USkeletalMesh::ComputeBindPose);
+	if( bBindComputed )
+		return;
+	INT NB = RefSkeleton.Num();
+	TArray<FSkelCoords> Ref; Ref.Add(NB);
+	BindRefInv.Empty(); BindRefInv.Add(NB);
+	for( INT b=0; b<NB; b++ )
+	{
+		FSkelQuat bo = RefSkeleton(b).BonePos.Orientation;
+		FVector   bp = RefSkeleton(b).BonePos.Position;
+		// UEViewer's mirrored bone space (negate Position.X, Orientation.X/W); un-mirrored on output.
+		bo.X = -bo.X; bo.W = -bo.W; bp.X = -bp.X;
+		if( b==0 ) bo = bo.Conj();				// only the root orientation is conjugated
+		FSkelCoords L; L.O = bp; SkelToAxis( bo, L );
+		if( b==0 )
+			Ref(b) = L;
+		else
+		{
+			INT p = RefSkeleton(b).ParentIndex;
+			if( p<0 || p>=NB ) p = 0;
+			SkelUnTransformCoords( Ref(p), L, Ref(b) );	// world = parent applied to local
+		}
+		SkelInvertCoords( Ref(b), BindRefInv(b) );		// cache inverse (ref->bone-local) for skinning
+	}
+	bBindComputed = 1;
+	unguard;
+}
+
+// Sample an analog track at Frame (keys evenly spaced; UE1 empties KeyTime). Defaults left intact
+// when the track has no keys.
+static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFrames, FVector& OutPos, FSkelQuat& OutRot )
+{
+	INT NP = T.KeyPos.Num(), NR = T.KeyQuat.Num();
+	if( NumFrames < 1 ) NumFrames = 1;
+	if( NP==1 ) OutPos = T.KeyPos(0);
+	else if( NP>1 )
+	{
+		FLOAT pos = Frame / NumFrames * NP;
+		INT x = appFloor(pos); FLOAT f = pos - x;
+		if( x<0 ) { x=0; f=0; } if( x>=NP ) x=NP-1;
+		INT y = x+1; if( y>=NP ) { y=NP-1; }
+		OutPos = T.KeyPos(x) + (T.KeyPos(y) - T.KeyPos(x)) * f;
+	}
+	if( NR==1 ) OutRot = T.KeyQuat(0);
+	else if( NR>1 )
+	{
+		FLOAT pos = Frame / NumFrames * NR;
+		INT x = appFloor(pos); FLOAT f = pos - x;
+		if( x<0 ) { x=0; f=0; } if( x>=NR ) x=NR-1;
+		INT y = x+1; if( y>=NR ) { y=NR-1; }
+		OutRot = SkelSlerp( T.KeyQuat(x), T.KeyQuat(y), f );
+	}
+}
+
+//
+// v436-compat: skin Points from the reference pose into the current animation pose for Owner.
+// Returns 0 (falls back to bind pose) when there is no linked animation or no matching sequence.
+//
+UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
+{
+	guard(USkeletalMesh::ComputeSkinnedPose);
+	UAnimation* Anim = DefaultAnimation;
+	INT NB = RefSkeleton.Num();
+	if( !Anim || NB==0 || Points.Num()==0 || BoneWeightIdx.Num()==0 )
+		return 0;
+
+	// Find the sequence matching the actor's current AnimSequence.
+	INT SeqIdx = INDEX_NONE;
+	for( INT i=0; i<Anim->AnimSeqs.Num(); i++ )
+		if( Anim->AnimSeqs(i).Name == Owner->AnimSequence ) { SeqIdx = i; break; }
+	if( SeqIdx==INDEX_NONE || SeqIdx>=Anim->Moves.Num() )
+		return 0;
+	FSkelMotionChunk& Move = Anim->Moves(SeqIdx);
+	INT NumFrames = Max( 1, Anim->AnimSeqs(SeqIdx).NumFrames );
+	FLOAT Frame = Clamp( Owner->AnimFrame, 0.f, 1.f ) * NumFrames;
+
+	ComputeBindPose();
+
+	// Animated bone world coords + per-bone skinning transform (anim ∘ bindInverse).
+	TArray<FSkelCoords> AC; AC.Add(NB);		// animated world coords
+	TArray<FSkelCoords> Xf; Xf.Add(NB);		// skinning transform (ref pose -> anim pose)
+	for( INT b=0; b<NB; b++ )
+	{
+		FVector   lp = RefSkeleton(b).BonePos.Position;
+		FSkelQuat lr = RefSkeleton(b).BonePos.Orientation;
+		// Map mesh bone -> animation track by bone name.
+		INT ab = INDEX_NONE;
+		for( INT j=0; j<Anim->RefBones.Num(); j++ )
+			if( Anim->RefBones(j).Name == RefSkeleton(b).Name ) { ab = j; break; }
+		if( ab!=INDEX_NONE && ab<Move.AnimTracks.Num() )
+			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, lp, lr );
+		// Mirror into the same space as the bind pose (see ComputeBindPose).
+		lr.X = -lr.X; lr.W = -lr.W; lp.X = -lp.X;
+		if( b==0 ) lr = lr.Conj();
+		FSkelCoords L; L.O = lp; SkelToAxis( lr, L );
+		if( b==0 )
+			AC(b) = L;
+		else
+		{
+			INT p = RefSkeleton(b).ParentIndex;
+			if( p<0 || p>=NB ) p = 0;
+			SkelUnTransformCoords( AC(p), L, AC(b) );
+		}
+		SkelUnTransformCoords( AC(b), BindRefInv(b), Xf(b) );	// Transform = anim.UnTransformCoords(refInv)
+	}
+
+	// Linear-blend skin: transform each ref-pose point by its bones' skinning transforms, weighted.
+	Out.Empty(); Out.AddZeroed( Points.Num() );
+	TArray<FLOAT> WSum; WSum.AddZeroed( Points.Num() );
+	INT NBW = Min( BoneWeightIdx.Num(), NB );
+	for( INT b=0; b<NBW; b++ )
+	{
+		const FSkelBoneInfIndex& BI = BoneWeightIdx(b);
+		for( INT j=0; j<BI.Number; j++ )
+		{
+			INT wi = BI.WeightIndex + j;
+			if( wi<0 || wi>=BoneWeights.Num() ) continue;
+			const FSkelBoneInfluence& Inf = BoneWeights(wi);
+			INT pi = Inf.PointIndex;
+			if( pi<0 || pi>=Points.Num() ) continue;
+			FLOAT w = Inf.BoneWeight / 65535.0f;
+			FVector Pm = Points(pi); Pm.X = -Pm.X;		// into mirrored bone space
+			FVector ap = SkelUnTransformPoint( Xf(b), Pm );
+			Out(pi) += ap * w;
+			WSum(pi) += w;
+		}
+	}
+	for( INT i=0; i<Out.Num(); i++ )
+	{
+		if( WSum(i) > 0.001f )
+		{
+			Out(i) /= WSum(i);
+			Out(i).X = -Out(i).X;						// un-mirror back to native space
+		}
+		else Out(i) = Points(i);
+	}
+	return 1;
 	unguard;
 }
 
