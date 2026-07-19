@@ -1947,7 +1947,13 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 	P_GET_VECTOR_OPTX(DecalDir,FVector(0,0,0));
 	P_FINISH;
 
-	*(INT*)Result = 0;
+	// v436-compat port: v436's signature is `native function Texture AttachDecal(...)` — it
+	// returns the Texture of the surface the decal attached to (so callers such as OldSkool/ONP's
+	// TVShadow can read the ground's FootStepSound). v400 returned an int success flag (0/1), so
+	// v436 script read the return as (Texture*)1 -> a garbage 0x1 pointer and crashed on the next
+	// member access. Return the surface texture on success, NULL on any failure.
+	UTexture* ResultTexture = NULL;
+	*(UTexture**)Result = NULL;
 	if( !GetLevel()->Engine->Client || !GetLevel()->Engine->Client->Decals )
 		return;
 
@@ -1993,6 +1999,7 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 		// setup vertices for main decal surface.
 		guard(FindMainSurfaceVertices);
 		FBspSurf &Surf = Model->Surfs(SurfIndex);
+		ResultTexture = Surf.Texture;  // v436-compat: AttachDecal returns the attached surface's texture
 		FVector &SurfNormal = Model->Vectors(Surf.vNormal);
 		FVector &SurfBase = Model->Points(Surf.pBase);
 		FVector DecalCenter = FLinePlaneIntersection( Location, Location + EndVect, SurfBase, SurfNormal );
@@ -2153,7 +2160,7 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 		MainDecal->Vertices[3] -= SurfBase;
 		unguard;
 	}
-	*(INT*)Result = 1;
+	*(UTexture**)Result = ResultTexture;  // v436-compat: success -> return attached surface texture
 #endif
 	unguard;
 }
