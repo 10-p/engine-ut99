@@ -349,23 +349,157 @@ class ENGINE_API ULodMesh : public UMesh
 };
 
 /*-----------------------------------------------------------------------------
+	Skeletal mesh / animation serialization structs (v436-compat port).
+
+	v400 predates UE1 skeletal meshes, so the engine has no FQuat and none of the
+	skeletal serialization structs. v436-era mods (Infiltration, NeoCairo, TacticalOps,
+	Onslaught, OldSkool/ONP, ...) ship real USkeletalMesh/UAnimation exports; loading
+	them on the minimal (empty) classes left the archive short and tripped the fatal
+	"Serial size mismatch". We now deserialize the skeletal blob byte-for-byte so those
+	packages load. Skeletal *rendering* stays a non-goal — the data is consumed and kept
+	but the meshes are not skinned/drawn (skeletal actors show no mesh).
+
+	Byte format ported from the v432 public headers (Ut99PubSrc/Engine/Inc/UnSkeletalMesh.h)
+	and cross-checked against SurrealEngine's USkeletalMesh::Load / UAnimation::Load. FQuat
+	is represented as FSkelQuat (4 raw floats) since we never do quaternion math on it.
+-----------------------------------------------------------------------------*/
+
+// A quaternion on disk: 4 floats. (v400 has no FQuat; we only need byte-accurate I/O.)
+struct FSkelQuat
+{
+	FLOAT X, Y, Z, W;
+	friend FArchive& operator<<( FArchive& Ar, FSkelQuat& Q )
+	{
+		return Ar << Q.X << Q.Y << Q.Z << Q.W;
+	}
+};
+
+// Extended LOD wedge with floating-point UVs.
+struct FMeshExtWedge
+{
+	_WORD	iVertex;
+	_WORD	Flags;
+	FLOAT	U, V;
+	friend FArchive& operator<<( FArchive& Ar, FMeshExtWedge& W )
+	{
+		return Ar << W.iVertex << W.Flags << W.U << W.V;
+	}
+};
+
+// Reference-skeleton joint position. NOTE: the original Epic serializer writes XSize
+// twice and never YSize; replicate that exactly so byte offsets line up (44 bytes).
+struct FSkelJointPos
+{
+	FSkelQuat	Orientation;
+	FVector		Position;
+	FLOAT		Length;
+	FLOAT		XSize, YSize, ZSize;
+	friend FArchive& operator<<( FArchive& Ar, FSkelJointPos& V )
+	{
+		return Ar << V.Orientation << V.Position << V.Length << V.XSize << V.XSize << V.ZSize;
+	}
+};
+
+// Reference-skeleton bone (package form). Serializes NumChildren before ParentIndex and
+// omits Depth, matching the original Epic operator<<.
+struct FSkelMeshBone
+{
+	FName			Name;
+	DWORD			Flags;
+	FSkelJointPos	BonePos;
+	INT				ParentIndex;
+	INT				NumChildren;
+	friend FArchive& operator<<( FArchive& Ar, FSkelMeshBone& F )
+	{
+		return Ar << F.Name << F.Flags << F.BonePos << F.NumChildren << F.ParentIndex;
+	}
+};
+
+// Bone-influence index block (per reference bone).
+struct FSkelBoneInfIndex
+{
+	_WORD	WeightIndex;
+	_WORD	Number;
+	_WORD	DetailA;
+	_WORD	DetailB;
+	friend FArchive& operator<<( FArchive& Ar, FSkelBoneInfIndex& V )
+	{
+		return Ar << V.WeightIndex << V.Number << V.DetailA << V.DetailB;
+	}
+};
+
+// Single bone influence (weight + vertex).
+struct FSkelBoneInfluence
+{
+	_WORD	PointIndex;
+	_WORD	BoneWeight;
+	friend FArchive& operator<<( FArchive& Ar, FSkelBoneInfluence& V )
+	{
+		return Ar << V.PointIndex << V.BoneWeight;
+	}
+};
+
+// Named bone for the animating skeleton.
+struct FSkelNamedBone
+{
+	FName	Name;
+	DWORD	Flags;
+	INT		ParentIndex;
+	friend FArchive& operator<<( FArchive& Ar, FSkelNamedBone& F )
+	{
+		return Ar << F.Name << F.Flags << F.ParentIndex;
+	}
+};
+
+// 'Analog' animation key track for a single bone.
+struct FSkelAnalogTrack
+{
+	DWORD				Flags;
+	TArray<FSkelQuat>	KeyQuat;
+	TArray<FVector>		KeyPos;
+	TArray<FLOAT>		KeyTime;
+	friend FArchive& operator<<( FArchive& Ar, FSkelAnalogTrack& A )
+	{
+		return Ar << A.Flags << A.KeyQuat << A.KeyPos << A.KeyTime;
+	}
+};
+
+// One animation's motion chunk (per-bone compressed tracks + a root track).
+struct FSkelMotionChunk
+{
+	FVector						RootSpeed3D;
+	FLOAT						TrackTime;
+	INT							StartBone;
+	DWORD						Flags;
+	TArray<INT>					BoneIndices;
+	TArray<FSkelAnalogTrack>	AnimTracks;
+	FSkelAnalogTrack			RootTrack;
+	friend FArchive& operator<<( FArchive& Ar, FSkelMotionChunk& M )
+	{
+		return Ar << M.RootSpeed3D << M.TrackTime << M.StartBone << M.Flags << M.BoneIndices << M.AnimTracks << M.RootTrack;
+	}
+};
+
+/*-----------------------------------------------------------------------------
 	UAnimation.
 -----------------------------------------------------------------------------*/
 
 //
-// v436-compat port: minimal native Animation class.
+// v436-compat port: native Animation class.
 //
 // v436 engine.u references the native class 'Engine.Animation' (added to UT after v400 for
-// skeletal-mesh animation) as a public-native-transient import. The stock v400 engine has no
-// UAnimation, so ULinkerLoad::VerifyImport fails fatally ("Can't find Class in file 'Class
-// Engine.Animation'"). Registering this class makes that import resolve. UT99 content ships no
-// skeletal-animation data in the base packages, so this is empty by design; Serialize just
-// consumes any (unexpected) trailing bytes without interpreting them. Skeletal-mesh *rendering*
-// remains an accepted non-goal.
+// skeletal-mesh animation). Registering this class resolves the import; Serialize consumes the
+// reference-skeleton + motion data so packages that actually contain Animation exports load
+// without a serial-size mismatch. Animation *playback* is a non-goal — the data is kept, unused.
 //
 class ENGINE_API UAnimation : public UObject
 {
 	DECLARE_CLASS(UAnimation,UObject,0)
+
+	// Serialized skeletal animation data (not played back).
+	TArray<FSkelNamedBone>		RefBones;	// Reference bone names.
+	TArray<FSkelMotionChunk>	Moves;		// One motion chunk per animation.
+	TArray<FMeshAnimSeq>		AnimSeqs;	// Classic per-animation name/frame info.
 
 	// UObject interface.
 	UAnimation(){}
@@ -373,20 +507,33 @@ class ENGINE_API UAnimation : public UObject
 };
 
 //
-// v436-compat port: minimal native SkeletalMesh class.
+// v436-compat port: native SkeletalMesh class.
 //
-// OldSkool/ONP (olextras) and other v436-era mods import the native class 'Engine.SkeletalMesh'
-// (a ULodMesh subclass) that stock v400 lacks, so their packages fail to load. Register a minimal
-// class so imports resolve. The full skeletal pipeline (bones/weights/skinning) is an accepted
-// non-goal; skeletal meshes won't render, but packages referencing the class load. Serialize
-// falls through to ULodMesh — safe for packages that only *reference* the class; a package that
-// actually serializes a SkeletalMesh instance would need the real skeletal format (revisit then).
+// OldSkool/ONP, Infiltration, NeoCairo, TacticalOps and other v436-era mods ship real
+// USkeletalMesh exports (a ULodMesh subclass) that stock v400 lacks. Serialize decodes the
+// skeletal blob (ext wedges, points, reference skeleton, bone weights, weapon attachment) so
+// those packages load. Skeletal *rendering* is an accepted non-goal — the data is consumed and
+// stored but the meshes are not skinned/drawn.
+//
 class ENGINE_API USkeletalMesh : public ULodMesh
 {
 	DECLARE_CLASS(USkeletalMesh,ULodMesh,0)
 
+	// Skeletal data (serialized; not rendered).
+	TArray<FMeshExtWedge>		ExtWedges;
+	TArray<FVector>				Points;
+	TArray<FSkelMeshBone>		RefSkeleton;
+	TArray<FSkelBoneInfIndex>	BoneWeightIdx;
+	TArray<FSkelBoneInfluence>	BoneWeights;
+	TArray<FVector>				LocalPoints;
+	INT							SkeletalDepth;
+	UAnimation*					DefaultAnimation;
+	INT							WeaponBoneIndex;
+	FCoords						WeaponAdjust;
+
 	// UObject interface.
 	USkeletalMesh(){}
+	void Serialize( FArchive& Ar );
 };
 
 /*----------------------------------------------------------------------------
