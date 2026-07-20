@@ -44,17 +44,6 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	Ar << DefaultAnimation;
 	Ar << WeaponBoneIndex;
 	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
-	if( Ar.IsLoading() )
-	{
-		// Skeletal meshes are authored with the opposite face winding to the LOD vertex-mesh
-		// convention, so with our screen-space back-face cull they'd draw inside-out (interior
-		// visible, exterior culled). Reverse each triangle's winding -- this is what the stock
-		// USkeletalMesh::FlipFaces() does.
-		for( INT i=0; i<Faces.Num(); i++ )
-			Exchange( Faces(i).iWedge[0], Faces(i).iWedge[2] );
-		for( INT i=0; i<SpecialFaces.Num(); i++ )
-			Exchange( SpecialFaces(i).iWedge[0], SpecialFaces(i).iWedge[2] );
-	}
 	// v436-compat diagnostic: report skeletal meshes as they load. This is how we know which
 	// packages/actors actually carry skeletal (vs vertex) meshes — a real USkeletalMesh reports a
 	// non-empty reference skeleton here.
@@ -95,9 +84,12 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	// at the actor's position. Without this the local Points were fed to the raw camera transform and
 	// every skeletal actor drew clustered at the same spot.
 	FLOAT DrawScale = Owner->bParticles ? 1.0f : Owner->DrawScale;
-	// Skeletal meshes face 180 deg opposite the vertex-mesh convention (they render facing backwards
-	// vs the actor's movement), so add a half-turn yaw in mesh-local space (32768 = 180 deg).
-	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin * FRotator(0,32768,0) * FScale( Scale * DrawScale, 0.0f, SHEER_None );
+	// Skeletal meshes are mirrored in the data. Un-mirror with a NEGATIVE-Y scale reflection: this
+	// reverses the winding to show the exterior, keeps the soldier right-handed (left/right animations
+	// correct), AND faces him along his movement direction. (Negate-X instead gave right-handed but
+	// backward-facing "moonwalking"; negate-Y == a 180-deg yaw composed with that reflection.)
+	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin
+		* FScale( FVector(Scale.X, -Scale.Y, Scale.Z) * DrawScale, 0.0f, SHEER_None );
 
 	// Skin Points into the current animation pose if one applies; else use the static bind pose.
 	TArray<FVector> Skinned;
