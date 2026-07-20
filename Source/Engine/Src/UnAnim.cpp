@@ -44,12 +44,6 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	Ar << DefaultAnimation;
 	Ar << WeaponBoneIndex;
 	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
-	// v436-compat diagnostic: report skeletal meshes as they load. This is how we know which
-	// packages/actors actually carry skeletal (vs vertex) meshes — a real USkeletalMesh reports a
-	// non-empty reference skeleton here.
-	if( Ar.IsLoading() )
-		debugf( NAME_Log, TEXT("[skelmesh] %s: %i bones, %i points, %i weights"),
-			GetFullName(), RefSkeleton.Num(), Points.Num(), BoneWeights.Num() );
 	unguard;
 }
 
@@ -104,17 +98,16 @@ FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 	if( !bBoundComputed )
 	{
 		bBoundComputed = 1;
-		FBox PointsBound(0);
-		for( INT i=0; i<Points.Num(); i++ )
-			PointsBound += Points(i);
-		const UBOOL AuthoredValid = BoundingBox.IsValid && !(BoundingBox.Min==BoundingBox.Max);
-		LocalBound = AuthoredValid ? BoundingBox : PointsBound;
-		// Diagnostic: log both candidates so we can confirm the authored box is non-degenerate (and
-		// that it agrees with the actual skin extents) on the first cull of each skeletal mesh.
-		debugf( NAME_Log, TEXT("[skelmesh] %s bbox authored=%i a[(%.1f,%.1f,%.1f)-(%.1f,%.1f,%.1f)] pts[(%.1f,%.1f,%.1f)-(%.1f,%.1f,%.1f)]"),
-			GetName(), (INT)AuthoredValid,
-			BoundingBox.Min.X, BoundingBox.Min.Y, BoundingBox.Min.Z, BoundingBox.Max.X, BoundingBox.Max.Y, BoundingBox.Max.Z,
-			PointsBound.Min.X, PointsBound.Min.Y, PointsBound.Min.Z, PointsBound.Max.X, PointsBound.Max.Y, PointsBound.Max.Z );
+		if( BoundingBox.IsValid && !(BoundingBox.Min==BoundingBox.Max) )
+			LocalBound = BoundingBox;						// authored box (spans all anim poses)
+		else
+		{
+			// Authored box missing/degenerate: fall back to an AABB over the skin vertices.
+			FBox PointsBound(0);
+			for( INT i=0; i<Points.Num(); i++ )
+				PointsBound += Points(i);
+			LocalBound = PointsBound;
+		}
 	}
 	if( !LocalBound.IsValid )
 		return Super::GetRenderBoundingBox( Owner, Exact );	// no geometry to bound; defer to base.
