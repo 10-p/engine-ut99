@@ -70,6 +70,9 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 // LODRequest arrives == ModelVerts and no vertex-collapse indexing occurs. Animation playback is a
 // non-goal, so the pose is static (bones/weights/animation are loaded but not applied).
 //
+// Forward declarations of the CCoords-style helpers (defined below) so GetFrame can use them.
+static FVector SkelUnTransformVector( const FSkelCoords& C, const FVector& s );
+
 void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
 {
 	guard(USkeletalMesh::GetFrame);
@@ -101,15 +104,27 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	bWeaponAttach = 0;
 	if( bWeaponBoneM )
 	{
-		FVector O  = WeaponBoneM.O;  O.X  = -O.X;			// un-mirror to native mesh space
-		FVector dX = WeaponBoneM.AX; dX.X = -dX.X;			// world dirs of the bone's local axes
-		FVector dY = WeaponBoneM.AY; dY.X = -dY.X;
-		FVector dZ = WeaponBoneM.AZ; dZ.X = -dZ.X;
+		// Compose the weapon-bone frame with the mesh's WeaponAdjust (the grip offset+orientation of
+		// the weapon relative to the bone). WeaponAdjust is native FCoords; mirror it into the bone's
+		// mirrored space (M*C*M: negate Origin.X; XAxis negate Y,Z; YAxis/ZAxis negate X), compose, then
+		// un-mirror + transform to view space.
+		FVector wao(  -WeaponAdjust.Origin.X,  WeaponAdjust.Origin.Y,  WeaponAdjust.Origin.Z );
+		FVector waX(   WeaponAdjust.XAxis.X,  -WeaponAdjust.XAxis.Y,  -WeaponAdjust.XAxis.Z );
+		FVector waY(  -WeaponAdjust.YAxis.X,   WeaponAdjust.YAxis.Y,   WeaponAdjust.YAxis.Z );
+		FVector waZ(  -WeaponAdjust.ZAxis.X,   WeaponAdjust.ZAxis.Y,   WeaponAdjust.ZAxis.Z );
+		FVector wfO = WeaponBoneM.O + SkelUnTransformVector( WeaponBoneM, wao );		// weapon origin, mirrored ml
+		FVector wfX = SkelUnTransformVector( WeaponBoneM, waX );						// weapon axes, mirrored ml
+		FVector wfY = SkelUnTransformVector( WeaponBoneM, waY );
+		FVector wfZ = SkelUnTransformVector( WeaponBoneM, waZ );
+		FVector O  = wfO;         O.X  = -O.X;			// un-mirror to native
+		FVector eX = wfO + wfX;   eX.X = -eX.X;
+		FVector eY = wfO + wfY;   eY.X = -eY.X;
+		FVector eZ = wfO + wfZ;   eZ.X = -eZ.X;
 		FVector Ov = (O - Origin).TransformPointBy( Coords );
 		WeaponAttachOrigin = Ov;
-		WeaponAttachX = ( ((O + dX) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
-		WeaponAttachY = ( ((O + dY) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
-		WeaponAttachZ = ( ((O + dZ) - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		WeaponAttachX = ( (eX - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		WeaponAttachY = ( (eY - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		WeaponAttachZ = ( (eZ - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
 		bWeaponAttach = 1;
 	}
 
