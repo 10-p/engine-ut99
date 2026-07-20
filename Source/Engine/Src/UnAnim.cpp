@@ -277,28 +277,80 @@ void USkeletalMesh::ComputeBindPose()
 	unguard;
 }
 
-// Sample an analog track at Frame (keys evenly spaced; UE1 empties KeyTime). Defaults left intact
-// when the track has no keys.
-static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFrames, FVector& OutPos, FSkelQuat& OutRot )
+// Largest key index X with KeyTime[X] <= t (linear scan; tracks are short, <=~121 keys). Matches
+// UEViewer's FindTimeKey.
+static INT SkelFindTimeKey( const TArray<FLOAT>& KeyTime, FLOAT t )
 {
-	INT NP = T.KeyPos.Num(), NR = T.KeyQuat.Num();
+	INT n = KeyTime.Num(), X = 0;
+	for( INT i=0; i<n; i++ )
+	{
+		if( KeyTime(i) <= t ) X = i;
+		else break;
+	}
+	return X;
+}
+
+// Sample an analog track for the owner's current position in the sequence.
+//
+// UE1 tracks are KEY-REDUCED at IRREGULAR times: a bone may have (e.g.) 4 rotation keys at KeyTime
+// 0.0, 0.333, 3.533, 4.0 seconds out of a 4.03s sequence. The keys carry an explicit KeyTime (in
+// seconds, 0..TrackTime). Sampling them as evenly spaced (the old behavior, also what UEViewer's
+// UMeshAnimation::Upgrade does after emptying KeyTime) time-warps each reduced bone differently, so
+// bones desync and each "plays slow then snaps" at its own phase -- the per-cycle jerkiness seen at
+// slomo. Sample by KeyTime instead (bracket the current time, interpolate by the real time fraction),
+// which is what the stock engine does. Logic mirrors UEViewer's CAnimTrack::GetBonePosition +
+// GetKeyParams, in seconds (t = AnimFrame01 * TrackTime, loop endpoint = TrackTime).
+//
+// Only when a track has no timing data (KeyTime empty) do we fall back to even spacing. KeyPos and
+// KeyQuat are each either static (1 key) or share KeyTime's count; Min() guards keep indexing safe.
+static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFrames, FLOAT TrackTime, UBOOL Loop, FVector& OutPos, FSkelQuat& OutRot )
+{
+	INT NP = T.KeyPos.Num(), NR = T.KeyQuat.Num(), NT = T.KeyTime.Num();
 	if( NumFrames < 1 ) NumFrames = 1;
+	FLOAT AnimFrame01 = Clamp( Frame / NumFrames, 0.f, 1.f );
+
+	if( NT>1 && TrackTime>0.0001f )
+	{
+		// Time-based sampling (correct for reduced/irregular tracks).
+		FLOAT t = AnimFrame01 * TrackTime;
+		INT X = SkelFindTimeKey( T.KeyTime, t );
+		INT Y = X + 1;
+		FLOAT F;
+		if( Y >= NT )
+		{
+			if( !Loop ) { Y = X; F = 0.0f; }							// clamp: hold last key
+			else { FLOAT d = TrackTime - T.KeyTime(X); Y = 0; F = d>0.0001f ? (t - T.KeyTime(X))/d : 0.0f; }	// blend last->first
+		}
+		else
+		{
+			FLOAT d = T.KeyTime(Y) - T.KeyTime(X);
+			F = d>0.0001f ? (t - T.KeyTime(X))/d : 0.0f;
+		}
+		if( NP==1 ) OutPos = T.KeyPos(0);
+		else if( NP>1 ) { INT px=Min(X,NP-1), py=Min(Y,NP-1); OutPos = T.KeyPos(px) + (T.KeyPos(py)-T.KeyPos(px))*F; }
+		if( NR==1 ) OutRot = T.KeyQuat(0);
+		else if( NR>1 ) OutRot = SkelSlerp( T.KeyQuat(Min(X,NR-1)), T.KeyQuat(Min(Y,NR-1)), F );
+		return;
+	}
+
+	// Fallback: no per-key timing -> evenly spaced across the sequence (loop wraps last->first key).
+	FLOAT FrameC = AnimFrame01 * NumFrames;
 	if( NP==1 ) OutPos = T.KeyPos(0);
 	else if( NP>1 )
 	{
-		FLOAT pos = Frame / NumFrames * NP;
+		FLOAT pos = FrameC / NumFrames * NP;
 		INT x = appFloor(pos); FLOAT f = pos - x;
-		if( x<0 ) { x=0; f=0; } if( x>=NP ) x=NP-1;
-		INT y = x+1; if( y>=NP ) { y=NP-1; }
+		if( x<0 ) { x=0; f=0; } if( x>=NP ) { x=NP-1; f=0; }
+		INT y = x+1; if( y>=NP ) y = Loop ? 0 : x;
 		OutPos = T.KeyPos(x) + (T.KeyPos(y) - T.KeyPos(x)) * f;
 	}
 	if( NR==1 ) OutRot = T.KeyQuat(0);
 	else if( NR>1 )
 	{
-		FLOAT pos = Frame / NumFrames * NR;
+		FLOAT pos = FrameC / NumFrames * NR;
 		INT x = appFloor(pos); FLOAT f = pos - x;
-		if( x<0 ) { x=0; f=0; } if( x>=NR ) x=NR-1;
-		INT y = x+1; if( y>=NR ) { y=NR-1; }
+		if( x<0 ) { x=0; f=0; } if( x>=NR ) { x=NR-1; f=0; }
+		INT y = x+1; if( y>=NR ) y = Loop ? 0 : x;
 		OutRot = SkelSlerp( T.KeyQuat(x), T.KeyQuat(y), f );
 	}
 }
@@ -334,7 +386,7 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 
 	ComputeBindPose();
 
-	// Animated bone world coords + per-bone skinning transform (anim ∘ bindInverse).
+	// Animated bone world coords + per-bone skinning transform (anim∘bindInverse).
 	TArray<FSkelCoords> AC; AC.Add(NB);		// animated world coords
 	TArray<FSkelCoords> Xf; Xf.Add(NB);		// skinning transform (ref pose -> anim pose)
 	for( INT b=0; b<NB; b++ )
@@ -346,7 +398,7 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 		for( INT j=0; j<Anim->RefBones.Num(); j++ )
 			if( Anim->RefBones(j).Name == RefSkeleton(b).Name ) { ab = j; break; }
 		if( ab!=INDEX_NONE && ab<Move.AnimTracks.Num() )
-			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, lp, lr );
+			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, Move.TrackTime, AnimOwner->bAnimLoop, lp, lr );
 		// Mirror into the same space as the bind pose (see ComputeBindPose).
 		lr.X = -lr.X; lr.W = -lr.W; lp.X = -lp.X;
 		if( b==0 ) lr = lr.Conj();
