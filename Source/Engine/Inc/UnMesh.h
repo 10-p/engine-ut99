@@ -604,6 +604,15 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	// UPrimitive interface.
 	FBox GetRenderBoundingBox( const AActor* Owner, UBOOL Exact );
 
+	// UMesh interface: link the DefaultAnimation's sequences into this mesh's AnimSeqs on demand, so
+	// GetAnimSeq/GetAnimGroup/PlayAnim/LoopAnim/HasAnim resolve them even before the mesh is first
+	// drawn (stock v436 links via the LinkSkelAnim native; without this, script anim queries on a
+	// not-yet-rendered skeletal mesh -- e.g. off-screen bots -- fail with "Sequence not found").
+	// Idempotent; safe to call every frame. Overrides route every lookup through it.
+	void LinkDefaultAnim();
+	virtual const FMeshAnimSeq* GetAnimSeq( FName SeqName ) const;
+	virtual FMeshAnimSeq* GetAnimSeq( FName SeqName );
+
 	// v436-compat: render the reference (bind) pose. v400 has no skeletal skinning; without this
 	// override a skeletal mesh falls through to ULodMesh::GetFrame, which reads the empty vertex-mesh
 	// Verts array (FrameVerts>0, Verts.Num()==0) and crashes. Emits Points (the skin vertices, in

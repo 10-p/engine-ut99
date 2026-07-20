@@ -54,6 +54,32 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 }
 
 //
+// v436-compat: link the mesh's DefaultAnimation sequences into UMesh::AnimSeqs so the engine's
+// GetAnimSeq/GetAnimGroup/PlayAnim/LoopAnim/HasAnim resolve them. Idempotent. Stock v436 links via
+// the LinkSkelAnim native at actor setup; we do it lazily on first access instead. Routing it through
+// the GetAnimSeq overrides (below) means script anim queries succeed even for skeletal actors that
+// have not been rendered yet -- previously AnimSeqs was only filled inside GetFrame (first draw), so
+// off-screen bots logged "Sequence 'X' not found in Mesh" every tick forever.
+//
+void USkeletalMesh::LinkDefaultAnim()
+{
+	guardSlow(USkeletalMesh::LinkDefaultAnim);
+	if( AnimSeqs.Num()==0 && DefaultAnimation && DefaultAnimation->AnimSeqs.Num() )
+		AnimSeqs = DefaultAnimation->AnimSeqs;
+	unguardSlow;
+}
+const FMeshAnimSeq* USkeletalMesh::GetAnimSeq( FName SeqName ) const
+{
+	const_cast<USkeletalMesh*>(this)->LinkDefaultAnim();
+	return Super::GetAnimSeq( SeqName );
+}
+FMeshAnimSeq* USkeletalMesh::GetAnimSeq( FName SeqName )
+{
+	LinkDefaultAnim();
+	return Super::GetAnimSeq( SeqName );
+}
+
+//
 // v436-compat: render-visibility bounding box for a skeletal mesh.
 //
 // Without this override a skeletal mesh inherits UMesh::GetRenderBoundingBox. Once our LinkSkelAnim
@@ -127,11 +153,9 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 {
 	guard(USkeletalMesh::GetFrame);
 	// Link the animation sequences into the mesh so the engine's GetAnimSeq/GetAnimGroup find them
-	// (they live in DefaultAnimation, not the mesh). Without this the script's LoopAnim/PlayAnim
-	// calls fail ("Sequence not found in Mesh") and the actor's AnimSequence/AnimFrame never update,
-	// so the mesh is stuck in one pose. This is the LinkSkelAnim step the stock engine does.
-	if( AnimSeqs.Num()==0 && DefaultAnimation && DefaultAnimation->AnimSeqs.Num() )
-		AnimSeqs = DefaultAnimation->AnimSeqs;
+	// (they live in DefaultAnimation, not the mesh). This is the LinkSkelAnim step the stock engine
+	// does; it also runs from the GetAnimSeq overrides so script anim queries resolve before render.
+	LinkDefaultAnim();
 	// Compose the incoming (camera/world->view) Coords with the actor's world transform + the mesh
 	// scale/orientation, exactly as ULodMesh::GetFrame does, so mesh-local Points map to view space
 	// at the actor's position. Without this the local Points were fed to the raw camera transform and
