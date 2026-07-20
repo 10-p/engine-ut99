@@ -261,15 +261,21 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 	if( !Anim || NB==0 || Points.Num()==0 || BoneWeightIdx.Num()==0 )
 		return 0;
 
-	// Find the sequence matching the actor's current AnimSequence.
+	// Honor bAnimByOwner: attachment meshes (holstered pistol on the hip, sheathed knife on the
+	// thigh -- INFc_PlayerAttachment) are separate skeletal actors that inherit the pawn's animation.
+	// Take AnimSequence/AnimFrame from Owner->Owner in that case, exactly as ULodMesh::GetFrame does;
+	// otherwise the gear stays in bind pose while the pawn animates and floats around the belt.
+	AActor* AnimOwner = ( Owner->bAnimByOwner && Owner->Owner ) ? Owner->Owner : Owner;
+
+	// Find the sequence matching the (anim) actor's current AnimSequence.
 	INT SeqIdx = INDEX_NONE;
 	for( INT i=0; i<Anim->AnimSeqs.Num(); i++ )
-		if( Anim->AnimSeqs(i).Name == Owner->AnimSequence ) { SeqIdx = i; break; }
+		if( Anim->AnimSeqs(i).Name == AnimOwner->AnimSequence ) { SeqIdx = i; break; }
 	if( SeqIdx==INDEX_NONE || SeqIdx>=Anim->Moves.Num() )
 		return 0;
 	FSkelMotionChunk& Move = Anim->Moves(SeqIdx);
 	INT NumFrames = Max( 1, Anim->AnimSeqs(SeqIdx).NumFrames );
-	FLOAT Frame = Clamp( Owner->AnimFrame, 0.f, 1.f ) * NumFrames;
+	FLOAT Frame = Clamp( AnimOwner->AnimFrame, 0.f, 1.f ) * NumFrames;
 
 	ComputeBindPose();
 
