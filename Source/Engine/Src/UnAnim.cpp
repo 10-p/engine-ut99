@@ -125,6 +125,11 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 		WeaponAttachX = ( (eX - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
 		WeaponAttachY = ( (eY - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
 		WeaponAttachZ = ( (eZ - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
+		// The weapon seats at the right spot but rotated 180 deg (upside down, barrel toward the
+		// pawn). Rotate the frame 180 deg about its side (Y) axis -- pivot stays at the grip origin --
+		// which flips the forward (X) and up (Z) axes.
+		WeaponAttachX = WeaponAttachX * -1.0f;
+		WeaponAttachZ = WeaponAttachZ * -1.0f;
 		bWeaponAttach = 1;
 	}
 
