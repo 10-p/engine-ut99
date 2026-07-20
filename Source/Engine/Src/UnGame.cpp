@@ -1071,36 +1071,46 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		Info->bStartup = 1;
 
 		// Init the game.
+		//
+		// Only the actors LOADED with the map receive the BeginPlay passes below. Actors spawned during
+		// InitGame (mutators, etc.) are appended past LoadActorCount by SpawnActor, which -- because
+		// bBegunPlay is already true here -- has ALREADY sent them PreBeginPlay/BeginPlay/PostBeginPlay/
+		// SetInitialState. Re-running the passes over them double-fires those events; e.g. Infiltration's
+		// InfilWeapons mutator calls RegisterDamageMutator in PostBeginPlay, and a second call makes its
+		// NextDamageMutator point to itself, so MutatorTakeDamage recurses forever on the next damage
+		// (seen as an "infinite script recursion" crash on friendly fire). Bounding the passes to the
+		// pre-InitGame count matches real UT / SurrealEngine (loadActorCount).
+		INT LoadActorCount = GLevel->Actors.Num();
 		if( Info->Game )
 			Info->Game->eventInitGame( Options, Error );
 
 		// Send PreBeginPlay.
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 			if( GLevel->Actors(i) )
 				GLevel->Actors(i)->eventPreBeginPlay();
 
 		// Set BeginPlay.
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 			if( GLevel->Actors(i) )
 				GLevel->Actors(i)->eventBeginPlay();
 
 		// Set zones.
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 			if( GLevel->Actors(i) )
 				GLevel->SetActorZone( GLevel->Actors(i), 1, 1 );
 
 		// Post begin play.
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 			if( GLevel->Actors(i) )
 				GLevel->Actors(i)->eventPostBeginPlay();
 
 		// Begin scripting.
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 			if( GLevel->Actors(i) )
 				GLevel->Actors(i)->eventSetInitialState();
 
 		// Find bases
-		for( i=0; i<GLevel->Actors.Num(); i++ )
+		for( i=0; i<LoadActorCount; i++ )
 		{
 			if( GLevel->Actors(i) ) 
 			{
