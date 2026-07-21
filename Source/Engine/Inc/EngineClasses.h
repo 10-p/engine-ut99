@@ -1872,6 +1872,12 @@ public:
     FColor BrushColor;
     INT PolyFlags;
     BITFIELD bColored:1 GCC_PACK(4);
+    // v436/MSVC store this trailing lone bitfield as a full 4-byte DWORD. GCC's packed attribute
+    // (GCC_PACK) shrinks it to 1 byte, ending ABrush 3 bytes early -- which shifts AMover's byte
+    // cluster (KeyNum/NumKeys/MoverEncroachType/...) so the engine reads them from the wrong offsets
+    // (movers get sent to an unset keyframe and appear stuck). Reserve the rest of the DWORD so
+    // sizeof(ABrush) matches the runtime v436 layout.
+    BYTE bColoredPad[3];
     DECLARE_CLASS(ABrush,AActor,0)
     #include "ABrush.h"
 };
