@@ -564,8 +564,14 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 			TCHAR Filename[256], SavedPortal[256];
 			appSprintf( Filename, TEXT("%s") PATH_SEPARATOR TEXT("Game%i.usa"), *GSys->SavePath, GLevel->GetLevelInfo()->HubStackLevel-1 );
 			appStrcpy( SavedPortal, *URL.Portal );
-			URL = FURL( &URL, Filename, TRAVEL_Partial );
-			URL.Portal = SavedPortal;
+			// Same Unix '/' vs URL-syntax hazard as the load branch below: parsing this "../Save/GameN.usa"
+			// path as URL text would mangle it to the default map. Carry the base's options via TRAVEL_Partial
+			// (which also drops the "pop"/push/peer ops as before), then set the file path on Map directly.
+			FURL PopURL( &URL, TEXT(""), TRAVEL_Partial );
+			PopURL.Map    = Filename;
+			PopURL.Portal = SavedPortal;
+			PopURL.Valid  = 1;
+			URL = PopURL;
 		}
 		else return 0;
 		unguard;
@@ -581,8 +587,16 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 	{
 		// Handle loadgame.
 		guard(LoadURL);
-		FString Error, Temp=FString::Printf( TEXT("%s") PATH_SEPARATOR TEXT("Save%i.usa?load"), *GSys->SavePath, appAtoi(Option) );
-		if( LoadMap(FURL(&LastURL,*Temp,TRAVEL_Partial),NULL,NULL,Error) )
+		FString Error;
+		// The savegame file path (e.g. "../Save/Save1000.usa") must NOT be parsed as URL text. On Unix
+		// PATH_SEPARATOR is '/', which FURL treats as URL host/portal syntax and mangles the path down to
+		// the default map ("Index.unr") -- so quickload failed with "Can't find file 'Index.unr'". (On
+		// Windows the separator is '\', which FURL leaves alone, so this never bit there.) Build the URL
+		// from the base's carried options plus the "load" flag, then assign the file path to Map directly,
+		// bypassing the text parser. This reproduces exactly the FURL layout stock UT gets on Windows.
+		FURL LoadURL( &LastURL, TEXT("?load"), TRAVEL_Partial );
+		LoadURL.Map = FString::Printf( TEXT("%s") PATH_SEPARATOR TEXT("Save%i.usa"), *GSys->SavePath, appAtoi(Option) );
+		if( LoadMap(LoadURL,NULL,NULL,Error) )
 		{
 			// Copy the hub stack.
 			INT i;
@@ -595,7 +609,7 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 			}
 			while( 1 )
 			{
-				Temp = FString::Printf( TEXT("%s") PATH_SEPARATOR TEXT("Game%i.usa"), *GSys->SavePath, i++ );
+				FString Temp = FString::Printf( TEXT("%s") PATH_SEPARATOR TEXT("Game%i.usa"), *GSys->SavePath, i++ );
 				if( GFileManager->FileSize(*Temp)<=0 )
 					break;
 				GFileManager->Delete( *Temp );
