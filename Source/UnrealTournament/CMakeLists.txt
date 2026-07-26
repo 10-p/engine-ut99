@@ -96,14 +96,25 @@ if(EMSCRIPTEN)
     target_link_options(${PROJECT_NAME} PRIVATE -g -sASSERTIONS=1)
   endif()
   # Preload the boot config so appInit has it before FetchFS streams the rest. UT99 v400's appInit
-  # generates UnrealTournament.ini/User.ini from Default.ini + DefUser.ini, so both must exist at boot;
-  # in the real host these come from FetchFS (preRun), but the standalone bare loader needs them baked.
+  # generates UnrealTournament.ini/User.ini from Default.ini + DefUser.ini, so both must exist at boot.
+  # These come from the TRACKED, WEB-SPECIFIC set in this repo (Config/System/web) — NOT from the
+  # out-of-tree asset dir. A game install's own inis are a native config and carry none of the web-only
+  # settings (the [WebRTCDrv.WebRTCNetDriver] section, the GL/ES render device); sourcing config from an
+  # untracked tree meant rebuilding the asset image silently reverted it. Config/System/*.ini (no subdir)
+  # stays the platform-agnostic / Dreamcast-heritage reference set.
+  # The derived UnrealTournament.ini/User.ini are excluded from the ufront asset manifest, so a stale
+  # install copy can never shadow what appInit derives from these.
   foreach(_ini Default.ini DefUser.ini)
-    if(EXISTS "${UT99_ASSETS_DIR}/System/${_ini}")
+    if(EXISTS "${CMAKE_SOURCE_DIR}/../Config/System/web/${_ini}")
       set_property(TARGET ${PROJECT_NAME} APPEND_STRING PROPERTY LINK_FLAGS
-        " --preload-file ${UT99_ASSETS_DIR}/System/${_ini}@/System/${_ini}")
+        " --preload-file ${CMAKE_SOURCE_DIR}/../Config/System/web/${_ini}@/System/${_ini}")
     endif()
   endforeach()
+  # The preloaded inis are INPUTS to the link: without LINK_DEPENDS, editing the web config leaves a
+  # stale .data baked (cmake sees no source change and skips the relink) — a silent trap.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_SOURCE_DIR}/../Config/System/web/Default.ini"
+    "${CMAKE_SOURCE_DIR}/../Config/System/web/DefUser.ini")
   # Bare loader: SDLLaunch.js (+ .wasm/.data), no .html, into build-<cfg>/SDLLaunch/. `SDLLaunch` is the
   # frozen cross-engine served-loader basename the monorepo host + packages/build assume (boot.ts loads
   # `SDLLaunch.js`; engine-unreal1/engine-ut2004 use it too) — engine differences are DATA, so the generic
