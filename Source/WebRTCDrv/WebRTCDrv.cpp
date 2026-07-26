@@ -17,9 +17,10 @@
 // Package.
 IMPLEMENT_PACKAGE(WebRTCDrv);
 
-// The peer-ID namespace prefix; it must match the frontend's targets/ut99/target.json network.peerPrefix
-// (the glue registers the listen peer as "<prefix>-<room>-srv").
-#define WEBRTC_PEER_PREFIX      "ut99"
+// The peer-ID namespace prefix; it must match the frontend's targets/ut99-436-compat/target.json
+// network.peerPrefix (the glue registers the listen peer as "<prefix>-<room>-srv"). Its own prefix keeps a
+// v436 client off a v400 host, whose netcode differs.
+#define WEBRTC_PEER_PREFIX      "ut99-436-compat"
 
 // Packet sizing (parity with UTcpipConnection's UDP model).
 #define WEBRTC_MAX_PACKET       (512)
