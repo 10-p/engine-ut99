@@ -28,11 +28,15 @@ IMPLEMENT_PACKAGE(WebRTCDrv);
 #define WEBRTC_STATE_OPEN       2
 #define WEBRTC_STATE_CLOSED     3
 
-// UT99's peer-ID namespace prefix. MUST match targets/ut99/target.json network.peerPrefix (the glue
-// registers the listen peer as "<prefix>-<room>-srv"). Engine-specific by design — engine-ut99 only ever
-// hosts UnrealTournament, exactly as engine-ut2004 hardcodes "ut2k4" (DATA-not-code governs the generic
-// frontend/glue, not the per-game engine repos).
-#define WEBRTC_PEER_PREFIX      "ut99"
+// This build's peer-ID namespace prefix. MUST match the descriptor's network.peerPrefix — the glue
+// registers the listen peer as "<prefix>-<room>-srv" from target.json, while the CLIENT below builds the
+// server's peer id from this define. If the two disagree the host registers under one id and the guest
+// dials another, so every join fails with PeerJS "peer-unavailable" (no pipe, no WELCOME).
+// v436-compat ships its OWN target (targets/ut99-436-compat) with an ISOLATED peerPrefix so a v436 client
+// can never land on a v400 host (their netcode is not interchangeable) — hence "ut99-436-compat" here,
+// not the v400 master's "ut99". Engine-specific by design — exactly as engine-ut2004 hardcodes "ut2k4"
+// (DATA-not-code governs the generic frontend/glue, not the per-game engine repos).
+#define WEBRTC_PEER_PREFIX      "ut99-436-compat"
 
 // Packet sizing (parity with UTcpipConnection's UDP model).
 #define WEBRTC_MAX_PACKET       (512)
