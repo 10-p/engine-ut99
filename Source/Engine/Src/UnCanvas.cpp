@@ -566,7 +566,32 @@ void UCanvas::execDrawActor( FFrame& Stack, RESULT_DECL )
 	Actor->bHidden = 0;
 	if( ClearZ )
 		Viewport->RenDev->ClearZ( Frame );
+
+	// AutoFOV, overlay pass (step 2.16). This is how v400 draws the first-person viewmodel: the HUD calls
+	// Canvas.DrawActor from eventRenderOverlays, reusing the WORLD frame — so by default the weapon
+	// already rides the corrected FOV, which is exactly what preserves its reference-aspect proportions,
+	// and ufrontWeaponFov returns the world value so this costs nothing. Only when AutoFOVWeapon is
+	// dialled away from 1.0 do we redraw at a different FOV: write it and refresh the frame, which is all
+	// the invalidation needed — every driver dirty-compares Viewport->Actor->FovAngle before rebuilding
+	// its projection and re-enters SetSceneNode at the top of each primitive. Do NOT reach for
+	// SetSceneNode(NULL): only the N*Drv family null-checks the frame; XOpenGLDrv and UTGLR dereference
+	// it immediately and would crash.
+	FLOAT SavedWeaponFov = Viewport->Actor->FovAngle;
+	FLOAT WeaponFov      = ufrontWeaponFov( GAutoFovFrameBase, SavedWeaponFov );
+	UBOOL bWeaponFovPass = Abs( WeaponFov - SavedWeaponFov ) > 0.01f;
+	if( bWeaponFovPass )
+	{
+		Viewport->Actor->FovAngle = WeaponFov;
+		Frame->ComputeRenderSize();
+	}
+
 	Render->DrawActor( Frame, Actor );
+
+	if( bWeaponFovPass )
+	{
+		Viewport->Actor->FovAngle = SavedWeaponFov;
+		Frame->ComputeRenderSize();
+	}
 	Actor->bHidden = 1;
 	Viewport->Actor->RendMap = OldRendMap;
 

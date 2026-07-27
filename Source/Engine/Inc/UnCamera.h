@@ -399,5 +399,51 @@ class ENGINE_API UClient : public UObject
 };
 
 /*-----------------------------------------------------------------------------
+	ufront AutoFOV (step 2.16) — aspect-correct field of view.
+-----------------------------------------------------------------------------*/
+
+//
+// UE1 defines FovAngle as the HORIZONTAL field of view and derives the vertical one by dividing by the
+// viewport aspect, so widening the window buys width out of height: 90 deg at 4:3 shows 73.7 deg
+// vertically, but only 41.1 deg at 24:9 — the world looks zoomed ~1.8x, the viewmodel huge, the HUD
+// oversized. AutoFOV re-derives the horizontal FOV from the live aspect so the VERTICAL one stays put.
+//
+//   Off      (0) — stock: FovAngle used verbatim.
+//   HorPlus  (1) — 2*atan( tan(Fov/2) * Aspect/Ref ). Vertical FOV pinned to its value at Ref.
+//   Adaptive (2) — max(Fov, HorPlus). DEFAULT. Identical to HorPlus at/above Ref, but falls back to
+//                  stock below it: at 8:9 pure Hor+ would cut vertical 96.7->73.7 AND horizontal
+//                  90->67.4, i.e. worse than doing nothing, so a half-screen window must not use it.
+//
+// Applied as a SCOPED override around the frame draw (see UGameEngine::Draw), never written back, so
+// every render device, the software renderer and the culling planes all agree on one value, while
+// script keeps seeing the player's real FOV — which matters because PlayerPawn.uc computes
+// MouseScale = MouseSensitivity * DesiredFOV * 0.0111, i.e. any fix that writes the actor's FOV
+// silently changes the player's aim (x1.18 at 16:9). Config: [ufront.AutoFOV] in the game ini,
+// overridable per launch with -AUTOFOV=<n> / -AUTOFOVREF=<f> / -AUTOFOVWEAPON=<f> / -NOAUTOFOV.
+//
+enum EAutoFovMode
+{
+	AUTOFOV_Off      = 0,
+	AUTOFOV_HorPlus  = 1,
+	AUTOFOV_Adaptive = 2,
+};
+
+// Effective horizontal FOV for a viewport of SizeX x SizeY. Returns BaseFov unchanged when disabled or
+// when the size is degenerate. Cheap: config is parsed once, then it is pure arithmetic.
+ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY );
+
+// FOV for a script-drawn actor overlay (the first-person viewmodel). AutoFOVWeapon blends in TAN space
+// between the stock FOV (0.0) and the corrected world FOV (1.0, the default — the viewmodel keeps
+// exactly its Ref-aspect proportions). Returns EffectiveFov when the blend is a no-op, so callers skip
+// the extra pass entirely and the default costs nothing.
+ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov );
+
+// The UNCORRECTED FovAngle for the frame being drawn, published by the scoped override in
+// UGameEngine::Draw. The overlay pass runs after Actor->FovAngle already holds the corrected value, so
+// it needs this to know what "stock" was. Not DesiredFOV: during a zoom transition FovAngle is still
+// interpolating towards it, and the viewmodel must track the live view.
+ENGINE_API extern FLOAT GAutoFovFrameBase;
+
+/*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/
