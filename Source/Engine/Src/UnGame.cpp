@@ -1342,7 +1342,30 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 		Frame->ComputeRenderSize();
 #endif
 		Viewport->RenDev->EndFlash();
-		Viewport->Actor->eventPostRender( Viewport->Canvas );
+		// AutoFOVUI (step 2.16b): scale the game's OWN global HudScale for the duration of the HUD's
+		// PostRender, so widget SIZES follow height instead of width while positions stay put. Found by
+		// NAME through reflection rather than a compile-time member, because the property lives on the
+		// retail script class (Botpack.ChallengeHUD) -- which also means a total conversion's HUD inherits
+		// it and gets scaled without us knowing anything about it. Restored immediately so a SaveConfig
+		// can never capture our factor.
+		{
+			AActor* Hud = Viewport->Actor->myHUD;
+			UFloatProperty* HudScaleProp = Hud ? FindField<UFloatProperty>( Hud->GetClass(), TEXT("HudScale") ) : NULL;
+			FLOAT  SavedHudScale = 0.f;
+			FLOAT* HudScalePtr   = NULL;
+
+			if ( HudScaleProp )
+			{
+				HudScalePtr   = (FLOAT*)( (BYTE*)Hud + HudScaleProp->Offset );
+				SavedHudScale = *HudScalePtr;
+				*HudScalePtr  = SavedHudScale * ufrontHudScaleFactor( Viewport->SizeX, Viewport->SizeY );
+			}
+
+			Viewport->Actor->eventPostRender( Viewport->Canvas );
+
+			if ( HudScalePtr )
+				*HudScalePtr = SavedHudScale;
+		}
 		if( Viewport->Console )
 		{
 			Viewport->Console->PostRender( Frame );

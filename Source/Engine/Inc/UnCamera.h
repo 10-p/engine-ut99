@@ -448,6 +448,24 @@ ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov );
 // interpolating towards it, and the viewmodel must track the live view.
 ENGINE_API extern FLOAT GAutoFovFrameBase;
 
+// AutoFOVUI (step 2.16b) — HUD auto-scale.
+//
+// The HUD sizes its widgets off the canvas WIDTH, so a wide window inflates every element while the gaps
+// between them grow too — hence the overlap on 21:9+. Rather than touching individual widgets (what
+// foxWSFix does, which only works for the HUDs it ships replacements for), co-opt the game's OWN global
+// scale: multiply `HudScale` by Ref/Aspect and the width cancels out of the sizing formula, leaving size
+// proportional to HEIGHT. Positions are untouched, so corner-anchored widgets stay in the corners — the
+// HUD spreads out instead of zooming, for ANY HUD including a total conversion's, because HudScale is
+// declared on the base HUD class (UT99 Botpack.ChallengeHUD) and every subclass inherits it.
+//
+// CLAMPED AT 1: at or below the reference aspect the factor is exactly 1.0, so narrow/tall windows render
+// bit-for-bit as stock. Deliberate — the stock sizing ALREADY shrinks as the aspect gets taller (it
+// follows the canvas width), and this way we need not characterise that behaviour to stay safe.
+//
+// Applied as a SCOPED multiply around the HUD's PostRender and restored immediately, so nothing can
+// persist the factor into the player's config.
+ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY );
+
 /*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/
