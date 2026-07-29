@@ -104,6 +104,14 @@ if(EMSCRIPTEN)
                                   # The launcher (UnrealTournament/Src/Launch.cpp) overrides the ini's null
                                   # AudioDevice -> NOpenALDrv.NOpenALAudioSubsystem on Emscripten.
   add_definitions(-DASM=0)        # Core/Render use their portable (non-x86) code paths
+  # ufront 2.13.2 — -pthread must be a COMPILE option, not just a link option. It defines
+  # __EMSCRIPTEN_PTHREADS__, which is what the threaded code paths (NSDLViewport's direct WebGL context
+  # creation, XOpenGL's entry-point resolver, appRequestExit's MAIN_THREAD_EM_ASM) are guarded on; with it
+  # only at link time those guards silently compile their SINGLE-THREADED branch, SDL creates a GL context
+  # anyway, and Emscripten proxies eglCreateContext to a main thread whose canvas has been transferred away
+  # -> InvalidStateError (Emscripten #24792). It also gives every object — including the FetchContent'd
+  # gl4es, XOpenGL and utglr trees — the atomics/bulk-memory features a shared-memory link expects.
+  add_compile_options(-pthread)
   # ufront 2.7c: UE1 assumes Win32 /Zp4 struct packing — the reflected C++ class sizes must equal the
   # UnrealScript-declared property sizes (checked: sizeof(UFireTexture)==GetPropertiesSize()). On native
   # x86-32 the default layout happens to match, but wasm32 (like Android ARM32) does not — force it, per
@@ -313,7 +321,16 @@ if(USE_SDL)
       set(SDL2_INCLUDE_DIR )
     endif()
     if(NOT DEFINED SDL2_LIBRARY)
-      set(SDL2_LIBRARY "-lSDL2")
+      if(EMSCRIPTEN)
+        # ufront 2.13.2 — the -sUSE_SDL=2 PORT supplies SDL2 (and picks the right variant per build:
+        # libSDL2.a normally, libSDL2-mt.a under -pthread). An explicit -lSDL2 on top of that resolves to
+        # the NON-threaded archive, and the threaded link then dies with
+        #   "--shared-memory is disallowed by SDL_atomic.c.o because it was not compiled with 'atomics'"
+        # because the two archives disagree about features. Leave it to the port.
+        set(SDL2_LIBRARY )
+      else()
+        set(SDL2_LIBRARY "-lSDL2")
+      endif()
     endif()
   endif()
 endif()

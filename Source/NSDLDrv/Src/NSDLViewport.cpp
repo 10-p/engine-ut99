@@ -1,6 +1,13 @@
 #include <string.h>
 #include <ctype.h>
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+// ufront 2.13.2 — the worker creates and presents its own WebGL context (hatch (c)); see OpenWindow.
+#include <stdint.h>
+#include <emscripten/html5.h>
+#include <emscripten/html5_webgl.h>
+#endif
+
 #include "NSDLDrv.h"
 #include "UnRender.h"
 
@@ -169,6 +176,11 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 ,	Client( InClient )
 {
 	guard(UNSDLViewport::UNSDLViewport);
+
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	SoftFB = NULL;
+	SoftFBBytes = 0;
+#endif
 
 	// ufront 2.12 (web+native keyboard): populate the scancode->EInputKey KeyMap here.
 	// KeyMap is a runtime-filled static (unlike the const-initialized MouseButtonMap), and its only
@@ -366,7 +378,15 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		}
 		if( DoOpenGL )
 		{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			// ufront 2.13.2 hatch (c): do NOT ask SDL for a GL window. SDL_WINDOW_OPENGL makes SDL bring
+			// up its EGL path, Emscripten proxies EGL to the browser main thread, and the canvas has been
+			// transferred to this worker — so the main thread's getContext() throws InvalidStateError
+			// (Emscripten #24792). We create the WebGL context ourselves further down; SDL is here for the
+			// window and input only, which need no GL flag.
+#else
 			Flags |= SDL_WINDOW_OPENGL;
+#endif
 		}
 
 		// Set OpenGL attributes if needed.
@@ -440,14 +460,87 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		{
 			if( !GLCtx )
 			{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+				// ufront 2.13.2 — hatch (c): create the WebGL context DIRECTLY, not through SDL2.
+				//
+				// SDL2's emscripten GL path is 100% EGL (SDL_EGL_CreateContext_impl), and Emscripten's EGL
+				// emulation always proxies to the browser main thread. Under -sPROXY_TO_PTHREAD the canvas
+				// has been transferred to this worker, so the main thread can no longer getContext() on it
+				// and SDL_GL_CreateContext fails with InvalidStateError (Emscripten #24792). The 2.13.0
+				// spike measured all three escape hatches; this is the one that works, and it renders on
+				// the worker's OWN context — no per-GL-call proxying, so no per-call penalty.
+				//
+				// SDL2 still owns the window and ALL input; the only SDL call replaced is context creation.
+				EmscriptenWebGLContextAttributes Attrs;
+				emscripten_webgl_init_context_attributes( &Attrs );
+				// WebGLESMajor is the GLES major SDL was asked for (2 = GLES2, 3 = GLES3 for XOpenGL);
+				// emscripten counts WEBGL versions instead, and WebGL 1.0 == GLES2, WebGL 2.0 == GLES3.
+				Attrs.majorVersion              = WebGLESMajor - 1;
+				Attrs.minorVersion              = 0;
+				Attrs.alpha                     = 0;
+				Attrs.depth                     = 1;
+				Attrs.stencil                   = 1;
+				Attrs.antialias                 = 0;
+				// explicitSwapControl + renderViaOffscreenBackBuffer are what make the frame OURS to
+				// present: without them the browser composites at its own cadence and commit_frame() is
+				// meaningless on a worker.
+				Attrs.explicitSwapControl       = 1;
+				Attrs.renderViaOffscreenBackBuffer = 1;
+				EMSCRIPTEN_WEBGL_CONTEXT_HANDLE WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
+				if( WebGLCtx <= 0 )
+				{
+					appErrorf( "Could not create WebGL context on the worker (handle %i)", (INT)WebGLCtx );
+				}
+				if( emscripten_webgl_make_context_current( WebGLCtx ) != EMSCRIPTEN_RESULT_SUCCESS )
+				{
+					appErrorf( "Could not make the worker WebGL context current" );
+				}
+				// Stash it where the rest of the viewport already tests for "do we have GL". XOpenGL then
+				// adopts it through emscripten_webgl_get_current_context(), exactly as it adopts the SDL
+				// context on every other build.
+				GLCtx = (SDL_GLContext)(intptr_t)WebGLCtx;
+				debugf( NAME_Init, "Created WebGL %i.0 context on the worker (handle %i)", (INT)(WebGLESMajor-1), (INT)WebGLCtx );
+#else
 				GLCtx = SDL_GL_CreateContext( hWnd );
 				if( !GLCtx )
 				{
 					appErrorf( "Could not create GL context: %s", SDL_GetError() );
 				}
+#endif
 			}
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			emscripten_webgl_make_context_current( (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE)(intptr_t)GLCtx );
+#else
 			SDL_GL_MakeCurrent( hWnd, GLCtx );
+#endif
 		}
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+		else
+		{
+			// ufront 2.13.2: SDL's Emscripten renderer is GLES-backed, so SDL_CreateRenderer goes through
+			// eglCreateContext, which Emscripten proxies to the browser main thread — where the canvas has
+			// been transferred to this worker and getContext() throws. The proxied call never completes and
+			// THE ENGINE THREAD BLOCKS FOREVER (measured on the pilot: the engine stopped logging right
+			// after "Opened viewport" and stopped servicing even a posted `exit`).
+			//
+			// So SoftDrv renders into OUR framebuffer and Unlock blits it to the transferred
+			// OffscreenCanvas through a 2D context. A null device never locks, so it pays nothing for this.
+			SDLTexFormat = SDL_PIXELFORMAT_ARGB8888;
+			ColorBytes   = SDL_BYTESPERPIXEL( SDLTexFormat );
+			Caps         = 0;
+			INT Needed   = NewX * NewY * ColorBytes;
+			if( SoftFB && SoftFBBytes < Needed )
+			{
+				appFree( SoftFB );
+				SoftFB = NULL;
+			}
+			if( !SoftFB )
+			{
+				SoftFB = (BYTE*)appMalloc( Needed, "ufrontSoftFB" );
+				SoftFBBytes = Needed;
+			}
+		}
+#else
 		else
 		{
 			SDL_SetHint( SDL_HINT_RENDER_SCALE_QUALITY, "nearest" );
@@ -472,6 +565,7 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 				appErrorf( "Could not create framebuffer texture: %s", SDL_GetError() );
 			}
 		}
+#endif
 
 		SDL_ShowWindow( hWnd );
 
@@ -547,7 +641,13 @@ void UNSDLViewport::CloseWindow()
 		}
 		if( GLCtx )
 		{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			// GLCtx is an Emscripten WebGL handle here, not an SDL context (hatch (c)) — SDL never made it
+			// and must not be asked to destroy it.
+			emscripten_webgl_destroy_context( (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE)(intptr_t)GLCtx );
+#else
 			SDL_GL_DeleteContext( GLCtx );
+#endif
 			GLCtx = NULL;
 		}
 		SDL_DestroyWindow( hWnd );
@@ -580,6 +680,14 @@ UBOOL UNSDLViewport::Lock( FPlane FlashScale, FPlane FlashFog, FPlane ScreenClea
 		return 0;
 	}
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	if( SoftFB )
+	{
+		// No SDL texture to lock on a worker — the engine draws straight into our framebuffer.
+		ScreenPointer = SoftFB;
+		Stride = SizeX;
+	}
+#else
 	if( SDLRen && SDLTex )
 	{
 		// Obtain pointer to screen.
@@ -589,6 +697,7 @@ UBOOL UNSDLViewport::Lock( FPlane FlashScale, FPlane FlashFog, FPlane ScreenClea
 		Stride /= ColorBytes;
 		check(ScreenPointer);
 	}
+#endif
 
 	// Success.
 	unclock(Client->DrawCycles);
@@ -686,9 +795,54 @@ void UNSDLViewport::Unlock( UBOOL Blit )
 	{
 		if( GLCtx )
 		{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+			// The context was created with explicitSwapControl, so THIS is the present (2.13.2 hatch (c)).
+			// SDL_GL_SwapWindow would go through the EGL emulation that cannot see our worker context.
+			emscripten_webgl_commit_frame();
+#else
 
 			SDL_GL_SwapWindow( hWnd );
+#endif
 		}
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+		else if( SoftFB )
+		{
+			// Present the software framebuffer on the worker's own OffscreenCanvas. Emscripten sets
+			// Module.canvas to the transferred canvas on the thread it was given to, and a 2D context is
+			// available there because SoftDrv never creates a WebGL one (a canvas has only one context).
+			// SDL_PIXELFORMAT_ARGB8888 is B,G,R,A in memory; ImageData wants R,G,B,A — hence the swizzle,
+			// done 32 bits at a time rather than per channel.
+			EM_ASM({
+				var cv = Module['canvas'];
+				if( !cv ) return;
+				var ctx = Module.__ufrontSoftCtx;
+				if( !ctx )
+				{
+					ctx = Module.__ufrontSoftCtx = cv.getContext('2d');
+					if( !ctx ) return;
+				}
+				// One declaration per statement: EM_ASM is a macro and the preprocessor splits on
+				// top-level commas — braces do not protect them, only parentheses do.
+				var w = $1;
+				var h = $2;
+				var n = w * h;
+				if( !Module.__ufrontSoftImg || Module.__ufrontSoftImg.width !== w || Module.__ufrontSoftImg.height !== h )
+				{
+					if( cv.width !== w ) cv.width = w;
+					if( cv.height !== h ) cv.height = h;
+					Module.__ufrontSoftImg = ctx.createImageData(w, h);
+				}
+				var src = new Uint32Array(HEAPU8.buffer, $0, n);
+				var dst = new Uint32Array(Module.__ufrontSoftImg.data.buffer);
+				for( var i = 0; i < n; i++ )
+				{
+					var v = src[i];
+					dst[i] = (v & 0xff00ff00) | ((v & 0xff) << 16) | ((v >> 16) & 0xff) | 0xff000000;
+				}
+				ctx.putImageData(Module.__ufrontSoftImg, 0, 0);
+			}, SoftFB, SizeX, SizeY);
+		}
+#else
 		else if( SDLRen && SDLTex )
 		{
 			// Blitting with SDLRenderer.
@@ -696,6 +850,7 @@ void UNSDLViewport::Unlock( UBOOL Blit )
 			SDL_RenderCopy( SDLRen, SDLTex, NULL, NULL );
 			SDL_RenderPresent( SDLRen );
 		}
+#endif
 	}
 
 	unclock(Client->DrawCycles);
@@ -722,7 +877,11 @@ void UNSDLViewport::MakeCurrent()
 	}
 	if( GLCtx )
 	{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+		emscripten_webgl_make_context_current( (EMSCRIPTEN_WEBGL_CONTEXT_HANDLE)(intptr_t)GLCtx );
+#else
 		SDL_GL_MakeCurrent( hWnd, GLCtx );
+#endif
 	}
 	UpdateWindowFrame();
 	unguard;

@@ -202,7 +202,16 @@ CORE_API void appRequestExit( UBOOL Force )
 		// autostart query (?map=…) so the shared frontend shows the launcher (its autostart gate keys off
 		// location.search). Deferred via setTimeout(0) so it fires after the blocking ASYNCIFY main loop unwinds.
 		// Crashes never reach here, so their console/error stays on screen. Mirrors engine-unreal1/engine-ut2004.
+		// ufront 2.13.2: MAIN_THREAD_EM_ASM, not EM_ASM. Under -sPROXY_TO_PTHREAD this runs on the worker,
+		// where `window` does not exist and WorkerLocation is read-only — the guard below would simply skip
+		// and the page would sit on a dead canvas forever (the E2E caught exactly that on the pilot:
+		// waitForURL timed out). Only the browser main thread can navigate. It is a plain EM_ASM on a
+		// non-threaded build, so both configurations keep working.
+#ifdef __EMSCRIPTEN_PTHREADS__
+		MAIN_THREAD_EM_ASM({
+#else
 		EM_ASM({
+#endif
 			if( typeof window !== 'undefined' )
 			{
 				console.log('[SHELL] Engine exit requested, returning to launcher');
