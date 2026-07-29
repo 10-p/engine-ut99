@@ -31,7 +31,14 @@ const meta = {
     loaderStyle: 'global-module', // classic <script> + bare globals (like engine-ut2004 / engine-unreal1)
     provenance: { repo: 'engine-ut99', gitSha: args.gitSha || 'unknown', builtAt: args.builtAt || 'unknown' },
     toolchain: { emscripten: args.emcc || 'unknown', base: 'maximqaxd/ut99dc (UnrealTournament v400)' },
-    buildFlags: ['-sASYNCIFY', '-sFULL_ES2', '-sUSE_SDL=2', '-sALLOW_MEMORY_GROWTH', '-sFORCE_FILESYSTEM'],
+    buildFlags: [
+    // Descriptive, hand-maintained: keep it in step with the linker block or the descriptor
+    // quietly misstates what shipped. -sWASMFS landed in 2.13.1 and the threading set in 2.13.2,
+    // which makes this a THREADED-ONLY artifact (decision D2) — the host capability-gates on
+    // SharedArrayBuffer + OffscreenCanvas, so that is exactly what the descriptor must say.
+    '-sASYNCIFY', '-sFULL_ES2', '-sUSE_SDL=2', '-sALLOW_MEMORY_GROWTH', '-sFORCE_FILESYSTEM', '-sWASMFS',
+    '-pthread', '-sPROXY_TO_PTHREAD', '-sOFFSCREENCANVAS_SUPPORT', '-sOFFSCREENCANVASES_TO_PTHREAD=#canvas',
+  ],
     exports: { symbolContract: 1 },
     checksums,
 };
