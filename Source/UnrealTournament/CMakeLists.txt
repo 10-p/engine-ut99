@@ -104,7 +104,37 @@ if(EMSCRIPTEN)
     # hard wasm-ld error: 'symbol exported via --export not found'.
     -sWASMFS
     "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
-    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8']"
+    # PThread (2.13.2): the host needs the worker list to hand the FS sync channel to the thread that runs
+    # main(). Runtime methods are NOT on Module unless exported, so omitting it makes the host silently
+    # no-op and the engine dies on its first asset read with no clue as to why.
+    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8','PThread']"
+    # The worker-side bootstrap in wasmfs-shim.js hangs off a __postset, and a postset is only EMITTED if
+    # its $symbol is referenced. Nothing references it (it is pure side effect), so without this it is
+    # dead-stripped SILENTLY — no error, no warning, and the engine dies on its first asset read.
+    "-sDEFAULT_LIBRARY_FUNCS_TO_INCLUDE=['$ueWorkerBoot']"
+    # ufront 2.13.2 — run the engine on a WORKER (threaded-only, decision D2).
+    #
+    # WHY: synchronous per-file restore-on-read from OPFS (2.13.4, the actual point of stage 2.13) needs
+    # FileSystemSyncAccessHandle, which browsers expose ONLY on a worker; and a thread blocking on
+    # Atomics.wait cannot do so on the browser main thread. So main() has to leave the main thread.
+    #
+    # -sOFFSCREENCANVASES_TO_PTHREAD transfers #canvas to that worker, which is what makes the direct
+    # emscripten_webgl_create_context in NSDLViewport.cpp legal there. SDL2 keeps window + input; only
+    # GL-context creation and the frame present are taken off SDL (its GL path is EGL, and Emscripten
+    # proxies EGL to a main thread that can no longer see the transferred canvas — Emscripten #24792).
+    # Both web render devices follow: XOpenGL adopts the current context (v400 already does) and UTGLR
+    # points gl4es at emscripten's resolver instead of SDL's.
+    #
+    # -sASYNCIFY deliberately STAYS this step: dropping it is 2.13.3, after the worker move is proven.
+    -pthread
+    -sPROXY_TO_PTHREAD
+    -sOFFSCREENCANVAS_SUPPORT
+    # QUOTED: CMake treats an unquoted '#' as a comment, which silently truncates this to
+    # "OFFSCREENCANVASES_TO_PTHREAD=" and fails the link with "string index out of range".
+    "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
+    # main() itself is one of these; this engine spawns no others on the web, so a small pool avoids
+    # paying for workers nothing will use.
+    -sPTHREAD_POOL_SIZE=2
     # The thin webrtc_* shim (defines the ABI's C-imported symbols, forwarding to host-injected
     # Module.UE.net.*). Heavy glue is NOT baked. Dead-stripped until the WebRTC net driver lands (2.7d).
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"
@@ -135,6 +165,13 @@ if(EMSCRIPTEN)
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/../Config/System/web/Default.ini"
     "${CMAKE_SOURCE_DIR}/../Config/System/web/DefUser.ini")
+  # The --js-library shims are link INPUTS too, and CMake does not infer that from a link option: editing
+  # a shim left a STALE .js baked while the build reported success, so the change appeared to have no
+  # effect (2.13.2: the worker never received the target descriptor and silently cached nothing). Same
+  # class of trap as the preloaded inis above, same fix.
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
+    "${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"
+    "${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js")
   # Bare loader: SDLLaunch.js (+ .wasm/.data), no .html, into build-<cfg>/SDLLaunch/. `SDLLaunch` is the
   # frozen cross-engine served-loader basename the monorepo host + packages/build assume (boot.ts loads
   # `SDLLaunch.js`; engine-unreal1/engine-ut2004 use it too) — engine differences are DATA, so the generic

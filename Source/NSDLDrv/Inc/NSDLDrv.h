@@ -72,6 +72,13 @@ private:
 	SDL_Texture* SDLTex; // for use with the above renderer
 	DWORD SDLTexFormat;
 	SDL_GLContext GLCtx; // for OpenGLDrv
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	// ufront 2.13.2: on a worker there is no SDL renderer (SDL's is GLES-backed and its proxied
+	// eglCreateContext deadlocks the engine thread), so SoftDrv renders into OUR buffer and we blit it to
+	// the transferred OffscreenCanvas through a 2D context.
+	BYTE* SoftFB;
+	INT SoftFBBytes;
+#endif
 	UBOOL Destroyed;
 	INT DisplayIndex;
 	SDL_Rect DisplaySize;
