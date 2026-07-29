@@ -85,10 +85,30 @@ if(EMSCRIPTEN)
     -sINITIAL_MEMORY=268435456
     -sSTACK_SIZE=2097152
     -sFORCE_FILESYSTEM
-    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore']"
+    # ufront 2.13.1 — WasmFS + the JS-implemented FS backend (ported from engine-ut2004, the pilot).
+    #
+    # -sWASMFS moves the VFS into wasm, which BREAKS FetchFS's old seam: it intercepted file access by
+    # monkey-patching the JS FS.open (legal only because the legacy filesystem implements
+    # __syscall_openat in JS), and under WasmFS a C open() never routes through it. The replacement is a
+    # WasmFS JSImpl backend whose file ops are implemented in JS (vendor/glue/wasmfs-shim.js forwards
+    # them to the host-injected Module.UE.fs.backend), which is both the on-demand hook and the way to
+    # keep asset bytes in JS typed arrays instead of a std::vector inside linear memory.
+    #
+    # -sFORCE_FILESYSTEM (above) stays REQUIRED — WasmFS omits the JS FS.* API otherwise, and the host
+    # glue still uses it for user data, mods and the file browser.
+    #
+    # The EXPORTED_FUNCTIONS entries let the HOST stand the backend up entirely from JS, so this block
+    # plus the vendored shim is the whole per-engine cost — no C++ in any engine repo.
+    # NB: no _webrtc_deferred_open in this list — the UE1 engines deliberately do not use the
+    # deferred-connect pair (see WebRTCDrv.cpp); it is a ut2004 thing. Listing an undefined symbol is a
+    # hard wasm-ld error: 'symbol exported via --export not found'.
+    -sWASMFS
+    "-sEXPORTED_FUNCTIONS=['_main','_malloc','_free','_close','_ue_exec_command','_wasmfs_create_jsimpl_backend','_wasmfs_create_file','_ufront_wasmfs_register','_ufront_wasmfs_set_pending']"
+    "-sEXPORTED_RUNTIME_METHODS=['callMain','stringToUTF8','UTF8ToString','HEAPU8','stackSave','stackAlloc','stackRestore','lengthBytesUTF8']"
     # The thin webrtc_* shim (defines the ABI's C-imported symbols, forwarding to host-injected
     # Module.UE.net.*). Heavy glue is NOT baked. Dead-stripped until the WebRTC net driver lands (2.7d).
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
   )
   if(UT_WEB_PERF)
     target_link_options(${PROJECT_NAME} PRIVATE -O3 -g0 -sASSERTIONS=0)
