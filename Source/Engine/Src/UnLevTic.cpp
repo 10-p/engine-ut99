@@ -543,7 +543,16 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 					CullCount++;
 					Actor->NetTag                 = NetTag;
 					PriorityList  [ConsiderCount] = FActorPriority( ViewPos, ViewDir, Connection, Actor );
-					PriorityActors[ConsiderCount] = PriorityList + ConsiderCount++;
+					// ⚠ WAS: PriorityActors[ConsiderCount] = PriorityList + ConsiderCount++;
+					// C++17 sequences the RIGHT operand of `=` BEFORE the left, so `ConsiderCount++` ran
+					// first and the subscript on the left then used the ALREADY-INCREMENTED value: every
+					// pointer landed one slot too high and PriorityActors[0] was never written at all.
+					// Sort() then handed that uninitialised GMem slot to Compare(), which dereferenced it
+					// — the "memory access out of bounds" this engine takes at a raised net speed. The
+					// statement was fine under the 1998 compiler's evaluation order; C++17 changed what it
+					// means, not whether it is legal. Split so the order is stated rather than inferred.
+					PriorityActors[ConsiderCount] = PriorityList + ConsiderCount;
+					ConsiderCount++;
 				}
 				LastTime += 0.023;
 				ThisTime += 0.023;
