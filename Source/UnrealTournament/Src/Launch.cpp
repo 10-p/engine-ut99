@@ -14,6 +14,31 @@ Revision history:
 #include <emscripten.h>
 #include <unistd.h> // chdir (ufront 2.7b — main-loop inversion + base-dir)
 
+// ufront 2.13.7 — the per-frame yield, WITHOUT setTimeout's clamp. (Ported from engine-ut2004, where it
+// was measured; see that repo's SDLLaunch.cpp and the monorepo's steps/2.17 §C9.)
+//
+// The engine thread must return to its event loop every frame — that is when a worker-owned OffscreenCanvas
+// is composited, so the yield is the frame's PRESENT point, not merely a politeness. (Yielding less often
+// was tried on ut2004 and measured: the screen updated at exactly the yield rate while the engine counted
+// frames nobody saw.) So frequency is fixed and only the COST of each yield is available.
+//
+// emscripten_sleep(0) pays two costs: the Asyncify unwind/rewind, and a setTimeout(0) that no browser
+// honours at 0 — the HTML timer clamp floors it at >= 1 ms. A MessagePort message is a macrotask with NO
+// clamp: the same task boundary the compositor needs, minus the floor. EM_ASYNC_JS names its import
+// __asyncjs__ufront_yield_frame and link.py's DEFAULT_ASYNCIFY_IMPORTS is ['__asyncjs__*'], so it is
+// registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
+EM_ASYNC_JS(void, ufront_yield_frame, (void), {
+    let y = globalThis.__ufrontYield;
+    if (!y) {
+        const ch = new MessageChannel();
+        const q = [];
+        ch.port1.onmessage = () => { const r = q.shift(); if (r) r(); };
+        ch.port1.start();
+        y = globalThis.__ufrontYield = { ch, q };
+    }
+    await new Promise((resolve) => { y.q.push(resolve); y.ch.port2.postMessage(0); });
+});
+
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
 // after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
 UEngine* GWebRTCEngine = NULL;
@@ -469,11 +494,18 @@ static void MainLoop( UEngine* Engine )
 		// cannot block its main thread, so each frame we yield via emscripten_sleep, which ASYNCIFY-suspends
 		// the wasm and lets the browser event loop run (rendering + rAF) before resuming. NOT
 		// emscripten_set_main_loop (its simulate_infinite_loop unwind collides with main()'s C++ try/catch).
-		// Always yield >= 1 ms so the browser makes progress even when a frame overruns / no cap is set.
+		//
+		// ufront 2.13.7: the ">= 1 ms always" floor is gone. When there is real budget left we still sleep it
+		// (that is the frame-rate cap, and emscripten_sleep is the right tool). When there is not — which is
+		// EVERY frame for a standalone client, since GetMaxTickRate() is 0 with no net driver — we want only
+		// a task boundary, and the old `: 1` bought a browser-clamped >= 1 ms timer on every one of them.
 		{
 			DOUBLE Budget = MaxTickRate>0.0 ? (1.0/MaxTickRate) : 0.0;
 			INT SleepMs = (INT)((Budget - (appSeconds()-OldTime)) * 1000.0);
-			emscripten_sleep( SleepMs > 1 ? SleepMs : 1 );
+			if( SleepMs > 1 )
+				emscripten_sleep( SleepMs );
+			else
+				ufront_yield_frame();
 		}
 #else
 		// ufront 2.12 (native): enforce a client frame-rate cap. UGameEngine::GetMaxTickRate() returns 0 for
