@@ -489,34 +489,21 @@ static void MainLoop( UEngine* Engine )
 		// Enforce optional maximum tick rate.
 		guard(EnforceTickRate);
 		FLOAT MaxTickRate = Engine->GetMaxTickRate();
-#ifdef __EMSCRIPTEN__
-		// ufront 2.7b — main-loop inversion (docs/10 §2), matching engine-unreal1/engine-ut2004: a browser
-		// cannot block its main thread, so each frame we yield via emscripten_sleep, which ASYNCIFY-suspends
-		// the wasm and lets the browser event loop run (rendering + rAF) before resuming. NOT
-		// emscripten_set_main_loop (its simulate_infinite_loop unwind collides with main()'s C++ try/catch).
-		//
-		// ufront 2.13.7: the ">= 1 ms always" floor is gone. When there is real budget left we still sleep it
-		// (that is the frame-rate cap, and emscripten_sleep is the right tool). When there is not — which is
-		// EVERY frame for a standalone client, since GetMaxTickRate() is 0 with no net driver — we want only
-		// a task boundary, and the old `: 1` bought a browser-clamped >= 1 ms timer on every one of them.
-		{
-			DOUBLE Budget = MaxTickRate>0.0 ? (1.0/MaxTickRate) : 0.0;
-			INT SleepMs = (INT)((Budget - (appSeconds()-OldTime)) * 1000.0);
-			if( SleepMs > 1 )
-				emscripten_sleep( SleepMs );
-			else
-				ufront_yield_frame();
-		}
-#else
-		// ufront 2.12 (native): enforce a client frame-rate cap. UGameEngine::GetMaxTickRate() returns 0 for
+
+		// ufront 2.12: enforce a client frame-rate cap. UGameEngine::GetMaxTickRate() returns 0 for
 		// standalone play (no net driver), so without a cap this loop runs at hundreds/thousands of FPS on
-		// modern hardware. ULevel::Tick then clamps DeltaSeconds to a 0.005s (200 fps) MINIMUM
-		// (UnLevTic.cpp) -> above 200 fps the world advances MORE time than really elapsed, so the whole game
-		// runs faster the higher the frame rate (owner-reported: fast staring at a wall, slower in open areas,
-		// always too fast). The web build never hits this because the browser's rAF/vsync caps it ~60 fps.
-		// Cap here so DeltaSeconds stays in ULevel::Tick's honest (unclamped) 2.5..200 fps range. A net/demo
-		// cap (GetMaxTickRate>0) still wins; otherwise a sane default, overridable via [Engine.Engine]
-		// FrameRateCap in the ini (0 or negative => uncapped, restoring the old behavior if ever wanted).
+		// modern hardware. ULevel::Tick then FLOORS DeltaSeconds (UnLevTic.cpp) -> above that floor's frame
+		// rate the world advances MORE time than really elapsed, so the whole game runs faster the higher the
+		// frame rate (owner-reported: fast staring at a wall, slower in open areas, always too fast). Cap
+		// here so DeltaSeconds stays in ULevel::Tick's honest range. A net/demo cap (GetMaxTickRate>0) still
+		// wins; otherwise a sane default, overridable via [Engine.Engine] FrameRateCap in the ini (0 or
+		// negative => uncapped, restoring the old behavior if ever wanted).
+		//
+		// ufront 2.19: this is no longer native-only. It was, on the reasoning that "the web build never hits
+		// this because the browser's rAF/vsync caps it ~60 fps" — true when it was written, and untrue since
+		// 2.13.7 replaced the clamped yield with an unclamped MessagePort macrotask precisely so the engine
+		// could out-run vsync. The web client now reaches several hundred fps and hit exactly the bug this
+		// branch already guarded against, so the cap is resolved once, here, for both.
 		FLOAT Cap = MaxTickRate;
 		if( Cap<=0.0 )
 		{
@@ -524,10 +511,36 @@ static void MainLoop( UEngine* Engine )
 			if( ClientCap < -0.5f )
 			{
 				FLOAT V=0.f;
-				ClientCap = ( GConfig->GetFloat(TEXT("Engine.Engine"),TEXT("FrameRateCap"),V) ) ? V : 120.f;
+				// ufront 2.19: the launcher's Advanced "Frame rate limit" passes -FRAMERATECAP=<n> and wins
+				// over the ini, so the web UI can set it without writing config. <=0 means uncapped.
+				if( Parse(appCmdLine(),TEXT("FRAMERATECAP="),V) )
+					ClientCap = V;
+				else
+					ClientCap = ( GConfig->GetFloat(TEXT("Engine.Engine"),TEXT("FrameRateCap"),V) ) ? V : 120.f;
+				debugf( NAME_Init, TEXT("ufront: client frame rate cap %.0f fps%s"), ClientCap, ClientCap>0.f ? TEXT("") : TEXT(" (uncapped)") );
 			}
 			Cap = ClientCap;
 		}
+#ifdef __EMSCRIPTEN__
+		// ufront 2.7b — main-loop inversion (docs/10 §2), matching engine-unreal1/engine-ut2004: a browser
+		// cannot block its main thread, so each frame we yield via emscripten_sleep, which ASYNCIFY-suspends
+		// the wasm and lets the browser event loop run (rendering + rAF) before resuming. NOT
+		// emscripten_set_main_loop (its simulate_infinite_loop unwind collides with main()'s C++ try/catch).
+		//
+		// ufront 2.13.7: the ">= 1 ms always" floor is gone. When there is real budget left we still sleep it
+		// (that is the frame-rate cap, and emscripten_sleep is the right tool). When there is not — a frame
+		// that already overran its budget — we want only a task boundary, and the old `: 1` bought a
+		// browser-clamped >= 1 ms timer on every one of them. That distinction is preserved exactly: the cap
+		// below only ever converts spare time into sleep, and never adds a timer to a frame with none.
+		{
+			DOUBLE Budget = Cap>0.0 ? (1.0/Cap) : 0.0;
+			INT SleepMs = (INT)((Budget - (appSeconds()-OldTime)) * 1000.0);
+			if( SleepMs > 1 )
+				emscripten_sleep( SleepMs );
+			else
+				ufront_yield_frame();
+		}
+#else
 		if( Cap>0.0 )
 		{
 			FLOAT Delta = (1.0/Cap) - (appSeconds()-OldTime);

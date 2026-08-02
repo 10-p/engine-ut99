@@ -813,8 +813,40 @@ void ULevel::Tick( ELevelTick TickType, FLOAT DeltaSeconds )
 		TickType = LEVELTICK_ViewportsOnly;
 	unguard;
 
-	// Clamp time between 200 fps and 2.5 fps.
-	DeltaSeconds = Clamp(DeltaSeconds,0.005f,0.40f);
+	// Clamp time between 1000 fps and 2.5 fps.
+	//
+	// ufront 2.19: the floor was 0.005 (200 fps). Note it is applied AFTER TimeSeconds has already
+	// accumulated the real delta above, so it does not slow the clock — it hands every actor's Tick and
+	// the physics a LARGER DeltaSeconds than actually elapsed. Above the floor's frame rate the world
+	// therefore advances faster than real time, by exactly fps/200. On modern hardware the web client
+	// reaches several hundred fps, so the game ran 2-3x too fast. Lowered to 0.001 to match
+	// engine-unreal1, which already carries the same upstream fix (babbygremlin d91f769, "Fix game speed
+	// increase past standard framerate"). The client frame cap in Launch.cpp is the other half: it keeps
+	// the normal case far away from the floor, and this keeps an uncapped client honest.
+	//
+	// WHY THERE IS A FLOOR AT ALL, since it is not obvious and it is what the value trades against.
+	// The 0.40 CEILING is the ordinary one — it stops a hitch (a level load, an alt-tab) from integrating
+	// one enormous step and tunnelling actors through walls. The FLOOR buys quantization headroom, because
+	// several things downstream of here degrade as DeltaSeconds shrinks:
+	//
+	//   * ROTATION IS INTEGER. FRotator is INT (65536 units = 360 deg) and physicsRotation computes
+	//     `RotationRate * deltaTime` through FRotator::operator*, which TRUNCATES to INT; fixedTurn then
+	//     returns unchanged on a zero rate (UnPhysic.cpp:222). So an actor rotating slower than 1/dt units
+	//     per second stops rotating entirely. Freeze threshold: dt=0.005 -> below ~1.10 deg/s, dt=0.001 ->
+	//     below ~5.49 deg/s. At the DEFAULT 120 fps cap dt is 0.0083 and the threshold is ~0.66 deg/s,
+	//     i.e. BETTER than the old floor ever gave — which is the argument for capping by default rather
+	//     than relying on this constant.
+	//   * MOVER VELOCITY IS A DIVISION. PHYS_Interpolating / PHYS_MovingBrush derive
+	//     `Velocity = (Location - OldLocation)/DeltaSeconds` (UnPhysic.cpp:144/151/191). Small dt means
+	//     differencing two large world coordinates and dividing by a small number, so float cancellation
+	//     error is amplified — and that velocity is what carries a player standing on a lift.
+	//   * INPUT IS SCALED BY 1/dt. UnIn.cpp:395 scales the float input axes by `20.0/DeltaSeconds`.
+	//     Mouse deltas arrive in discrete events, so at very high frame rates most frames see zero and the
+	//     occasional non-zero one is multiplied by a large factor — spiky turning.
+	//
+	// Owner decision (2026-08-02): trust the upstream value rather than pick our own. 0.001 is what the
+	// UE1 port ships and has been played on, and the frame cap is what keeps normal play away from it.
+	DeltaSeconds = Clamp(DeltaSeconds,0.001f,0.40f);
 
 	// If caller wants time update only, or we are paused, skip the rest.
 	clock(ActorTickCycles);
