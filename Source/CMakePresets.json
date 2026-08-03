@@ -21,12 +21,20 @@
     },
     {
       "name": "wasm",
-      "displayName": "Web (Emscripten/WASM) -- dev",
-      "description": "Emscripten web build (assertions + debug). Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
+      "displayName": "Web (Emscripten/WASM) -- dev default",
+      "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF", "UT_WEB_DEBUG": "OFF" }
+    },
+    {
+      "name": "wasm-debug",
+      "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
+      "description": "Emscripten web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect — a bug that shows at one -O level and not another is almost always undefined behaviour. Builds in build-wasm-debug/.",
+      "inherits": "wasm",
+      "binaryDir": "${sourceDir}/../build-wasm-debug",
+      "cacheVariables": { "UT_WEB_DEBUG": "ON" }
     },
     {
       "name": "wasm-perf",
@@ -40,6 +48,7 @@
   "buildPresets": [
     { "name": "native", "configurePreset": "native" },
     { "name": "wasm", "configurePreset": "wasm" },
+    { "name": "wasm-debug", "configurePreset": "wasm-debug" },
     { "name": "wasm-perf", "configurePreset": "wasm-perf" }
   ]
 }

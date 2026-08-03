@@ -3369,6 +3369,29 @@ void UObject::SerializeRootSet( FArchive& Ar, DWORD KeepFlags, DWORD RequiredFla
 class FArchiveTagUsed : public FArchive
 {
 public:
+	// ★ ufront 2.19d — ITERATIVE, NOT RECURSIVE.
+	//
+	// The stock UE1 tagger recursed straight into `Obj->Serialize( *this )` from inside `operator<<`,
+	// so the C++ call stack mirrored the depth of the object graph. That is fine natively and fatal on
+	// the web: measured 2026-08-03 on a UT99 `-O0` build, loading DM-Codex died with
+	// `RangeError: Maximum call stack size exceeded` at **5,547 wasm frames**, of which one 1,010-frame
+	// stretch was a single class's `Next` field chain walked 202 links deep (`UField::Serialize`
+	// serializes `SuperField` and `Next`, so a linked list becomes recursion, 5 frames per link).
+	//
+	// It is NOT undefined behaviour and not a cycle — the stack holds 37 distinct functions in a
+	// realistic property-type mix, and the same walk completes once frames get cheaper. It is simply a
+	// bounded traversal deeper than V8 gives a worker. Optimisation only moved the threshold: at -O2 the
+	// one-line `operator<<(FArchive&, UField*&)` forwarder is inlined away, costing 4 frames per link
+	// instead of 5, which was enough to survive — so the engine worked by luck of the inliner rather
+	// than by design.
+	//
+	// This is the same fix engine-ut2004 already carries. Reachability is order-independent, so LIFO
+	// draining marks exactly the same object set; the only thing lost is the precision of `Context` in
+	// the debugSlow "%s is referenced by %s" line, which is diagnostic output, not behaviour. Nothing
+	// here touches package serialisation: FArchiveTagUsed is file-local and used only by
+	// CollectGarbage/IsReferenced, so no on-disk format is involved.
+	TArray<UObject*> Worklist;
+
 	FArchiveTagUsed()
 	: Context( NULL )
 	{
@@ -3384,6 +3407,35 @@ public:
 			if( FName::GetEntry(i) )
 				FName::GetEntry(i)->Flags |= RF_Unreachable;
 
+		unguard;
+	}
+
+	// Process all deferred objects iteratively instead of recursively. Callers must invoke this after
+	// seeding the roots with SerializeRootSet — without it nothing past the root set is ever marked
+	// reachable, and the next PurgeGarbage would delete the live world.
+	void DrainWorklist()
+	{
+		guard(FArchiveTagUsed::DrainWorklist);
+		while( Worklist.Num() )
+		{
+			UObject* Obj = Worklist( Worklist.Num()-1 );
+			Worklist.Remove( Worklist.Num()-1 );
+
+			if( Obj->GetFlags() & RF_TagGarbage )
+			{
+				UObject* OriginalContext = Context;
+				Context = Obj;
+				Obj->Serialize( *this );
+				if( !(Obj->GetFlags() & RF_DebugSerialize) )
+					appErrorf( TEXT("%s failed to route Serialize"), Obj->GetFullName() );
+				Context = OriginalContext;
+			}
+			else
+			{
+				// For debugging.
+				debugfSlow( NAME_Log, TEXT("%s is referenced by %s"), Obj->GetFullName(), Context ? Context->GetFullName() : NULL );
+			}
+		}
 		unguard;
 	}
 private:
@@ -3405,26 +3457,12 @@ private:
 		}
 		else if( Obj && (Obj->GetFlags() & RF_Unreachable) )
 		{
-			// Only recurse the first time object is claimed.
+			// Only claim the object the first time; the traversal itself is deferred.
 			guard(TestReach);
 			Obj->ClearFlags( RF_Unreachable | RF_DebugSerialize );
 
-			// Recurse.
-			if( Obj->GetFlags() & RF_TagGarbage )
-			{
-				// Recurse down the object graph.
-				UObject* OriginalContext = Context;
-				Context = Obj;
-				Obj->Serialize( *this );
-				if( !(Obj->GetFlags() & RF_DebugSerialize) )
-					appErrorf( TEXT("%s failed to route Serialize"), Obj->GetFullName() );
-				Context = OriginalContext;
-			}
-			else
-			{
-				// For debugging.
-				debugfSlow( NAME_Log, TEXT("%s is referenced by %s"), Obj->GetFullName(), Context ? Context->GetFullName() : NULL );
-			}
+			// Defer to the worklist instead of recursing down the object graph.
+			Worklist.AddItem( Obj );
 			unguardf(( TEXT("(%s)"), Obj->GetFullName() ));
 		}
 		return *this;
@@ -3525,6 +3563,7 @@ void UObject::CollectGarbage( DWORD KeepFlags )
 	// Tag and purge garbage.
 	FArchiveTagUsed TagUsedAr;
 	SerializeRootSet( TagUsedAr, KeepFlags, RF_TagGarbage );
+	TagUsedAr.DrainWorklist();
 
 	// Purge it.
 	PurgeGarbage();
@@ -3549,6 +3588,7 @@ UBOOL UObject::IsReferenced( UObject*& Obj, DWORD KeepFlags, UBOOL IgnoreReferen
 	FArchiveTagUsed TagUsedAr;
 	OriginalObj->ClearFlags( RF_TagGarbage );
 	SerializeRootSet( TagUsedAr, KeepFlags, RF_TagGarbage );
+	TagUsedAr.DrainWorklist();
 
 	// Stick the reference back.
 	Obj = OriginalObj;

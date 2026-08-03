@@ -14,6 +14,10 @@ endif()
 
 # Options
 
+# Web build mode (EMSCRIPTEN only) — see the three-mode block further down. UT_WEB_PERF is read by
+# UnrealTournament/CMakeLists.txt for the link flags; UT_WEB_DEBUG selects -O0 over the -O2 dev default.
+option(UT_WEB_PERF "Emscripten: shipping build — link at -O3 -g0, assertions off" OFF)
+option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
 option(USE_SDL "Use NSDLDrv instead of WinDrv" ON)
 option(LOW_MEMORY "Conserve memory as much as possible" OFF)
 option(BUILD_UNREALTOURNAMENT "Build the launcher" ON)
@@ -300,7 +304,34 @@ if(MSVC)
   endif()
 else()
   message(STATUS "Building ${CMAKE_BUILD_TYPE} with GCC or Clang")
-  if(CMAKE_BUILD_TYPE STREQUAL "Debug")
+  if(EMSCRIPTEN)
+    # ★ THE THREE WEB BUILD MODES (ufront 2.19d), identical in all four engine repos:
+    #
+    #   preset        UT_WEB_PERF  UT_WEB_DEBUG  compile   what it is for
+    #   wasm-perf     ON           -             -O2 (*)   shipping: link-time -O3 -g0, no assertions
+    #   wasm          OFF          OFF           -O2 -g    THE DEV DEFAULT: named stacks, DWARF, assertions
+    #   wasm-debug    OFF          ON            -O0 -g    last resort: every local live, nothing inlined
+    #
+    # (*) This engine's perf build differs from the dev build at LINK only (see UnrealTournament/
+    #     CMakeLists.txt); ut2004 additionally compiles its perf build at -O3. That divergence is recorded,
+    #     not fixed here — changing it would alter a shipping build's codegen and needs its own verification.
+    #
+    # -O0 is what you switch to when the OPTIMISER is the suspect: a bug that appears at one -O level and
+    # not another is almost always undefined behaviour rather than a logic error. It is NOT the smaller
+    # build — measured on ut2004, -O2 -g came out LARGER than -O0 -g, because DWARF forces Emscripten to
+    # "run only limited binaryen optimizations" so -O2's inlining is never cleaned up. Speed is what the
+    # dev default buys, not size.
+    if(UT_WEB_DEBUG)
+      add_compile_options(-O0 -g)
+    elseif(UT_WEB_PERF)
+      # UNCHANGED from before the three-mode split: the shipping build carries no compile-side DWARF.
+      # (It is -O2 at compile and -O3 -g0 at link — see UnrealTournament/CMakeLists.txt. Adding -g here
+      # would grow every object and make emcc "run only limited binaryen optimizations".)
+      add_compile_options(-O2)
+    else()
+      add_compile_options(-O2 -g)
+    endif()
+  elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Og -g)
     add_link_options(-g)
   elseif(LOW_MEMORY)

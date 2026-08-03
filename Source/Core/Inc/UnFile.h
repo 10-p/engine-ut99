@@ -454,19 +454,36 @@ inline void* appRealloc( void* Original, DWORD Count, const TCHAR* Tag )
 // operator new to be size_t. On 32-bit x86/SH4 (native/Dreamcast) size_t == unsigned int, so UT99's
 // original `unsigned int` matched; on wasm32 size_t == unsigned long, so clang rejects `unsigned int`.
 // Use size_t (as engine-unreal1 does) — correct everywhere; identical to unsigned int on the 32-bit twins.
+//
+// UT_REPLACEMENT_ALLOC -- ufront 2.19d. The four no-extra-argument forms below are the REPLACEABLE
+// global ones, and a replacement operator new/delete may not be `inline` (clang says so:
+// -Winline-new-delete). Declared that way they are emitted OUT-OF-LINE as weak symbols whenever the
+// compiler does not inline them -- which at -O0 is always, in every object that allocates. wasm-ld then
+// resolves the PROGRAM-WIDE operator new to one of those, so Emscripten's own WasmFS static initializer
+// (priority 100, long before appInit) allocates through GMalloc, which at that moment is still the
+// pre-init error allocator and returns NULL -- make_shared builds its control block on nothing,
+// `weak_this` is never set, and OpenFileState::create dies in shared_from_this() with bad_weak_ptr.
+//
+// At -O2 and above they are inlined everywhere and never emitted, so system code keeps libc++'s
+// operator new. Forcing the inline makes -O0 behave EXACTLY as the optimised builds already did --
+// engine allocations to appMalloc, system allocations to libc++ -- rather than inventing a third
+// behaviour. Diagnosed on engine-ut2004 (110 objects emitted it at -O0, 0 at -O3); this engine carries
+// the same pattern and the same -sWASMFS. The Tag-taking placement forms are NOT replacement functions
+// and are left alone.
+#define UT_REPLACEMENT_ALLOC __attribute__((always_inline))
 inline void* operator new( size_t Size, const TCHAR* Tag )
 {
 	guardSlow(new);
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-inline void* operator new( size_t Size )
+UT_REPLACEMENT_ALLOC inline void* operator new( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );
 	unguardSlow;
 }
-inline void operator delete( void* Ptr )
+UT_REPLACEMENT_ALLOC inline void operator delete( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );
@@ -480,13 +497,13 @@ inline void* operator new[]( size_t Size, const TCHAR* Tag )
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-inline void* operator new[]( size_t Size )
+UT_REPLACEMENT_ALLOC inline void* operator new[]( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );
 	unguardSlow;
 }
-inline void operator delete[]( void* Ptr )
+UT_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );
