@@ -2,7 +2,18 @@
 	Dependencies.
 ------------------------------------------------------------------------------------*/
 
+#ifdef __EMSCRIPTEN__
+// ufront 2.19: on the web there is nothing to load. Emscripten provides the whole GLES2 API as real
+// link-time symbols under -sFULL_ES2, and this driver uses 45 entry points, every one of them core GLES2.
+// Taking the headers directly is not just tidier — it is what lets this driver co-link with XOpenGLDrv,
+// which vendors its OWN glad with byte-identical symbol names (glad_glActiveTexture, and even
+// gladLoadGLES2Loader). Two glads in one static binary under --whole-archive is a duplicate-symbol link
+// failure, which is why the web build could previously ship only one of the two.
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>   // GL_BGRA_EXT and friends (the ext tokens glad used to supply)
+#else
 #include "glad.h"
+#endif
 #include "glm/matrix.hpp"
 #include "RenderPrivate.h"
 
@@ -60,6 +71,15 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 
 	// Options.
 	UBOOL NoFiltering;
+	// ufront 2.19 — image-quality knobs.
+	//   MaxAnisotropy is a REAL numeric control on the web: EXT_texture_filter_anisotropic exposes a
+	//     driver maximum (16 on this box) and takes a float per texture. Clamped to that max at Init.
+	//   NumAASamples is honest-but-nominal: WebGL picks MSAA with a BOOLEAN `antialias` context attribute
+	//     at creation time, so the count cannot be chosen and the context is already made by the viewport
+	//     before this driver runs. It is kept as a number for parity with XOpenGL/UTGLR (and for native,
+	//     where it is meaningful); >0 simply means "AA requested".
+	FLOAT MaxAnisotropy;
+	INT NumAASamples;
 	UBOOL UseBGRA;
 	UBOOL Overbright;
 	UBOOL DetailTextures;
@@ -143,7 +163,12 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 
 	// Constructors.
 	UNOpenGLESRenderDevice();
-	static void InternalClassInitializer( UClass* Class );
+	// ufront 2.19: v400 registers config properties from StaticConstructor. The v200-era
+	// InternalClassInitializer this driver shipped with has ZERO call sites in this engine (see
+	// NSDLDrv/Src/NSDLViewport.cpp:187, which documents the same dead hook costing UT99 its keyboard), so
+	// none of the five Options below were ever registered and [NOpenGLESDrv.NOpenGLESRenderDevice] in the
+	// ini was silently inert — the device always ran on the C++ constructor defaults.
+	void StaticConstructor();
 
 	// URenderDevice interface.
 	virtual UBOOL Init( UViewport* InViewport, INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen ) override;

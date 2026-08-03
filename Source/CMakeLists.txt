@@ -28,12 +28,14 @@ option(BUILD_STATIC "Link everything into a single binary" OFF)
 
 # ufront 2.9 — HW render devices: orthogonal per-renderer toggles + configurable source folders.
 # NOpenGLESDrv (GLES2/WebGL1) is the historical device; XOpenGLDrv (OldUnreal, WebGL2/GLES3) and
-# OpenGLDrv/UTGLR (via gl4es, WebGL1) are the 2.9 additions. Defaults are platform-aware: web ships
-# XOpenGL + UTGLR and drops NOpenGLES (NOpenGLES + XOpenGLDrv both vendor a `glad` -> duplicate globals,
-# so they cannot co-link under --whole-archive); native (.so) defaults to NOpenGLES only. Any combo is
-# selectable via -D (subject to the FATAL_ERROR guard near the driver subdirs). See XOpenGLDrv/ENGINE_CHANGES.md.
+# OpenGLDrv/UTGLR (via gl4es, WebGL1) are the 2.9 additions.
+# ufront 2.19 — web now ships ALL THREE. NOpenGLES used to be dropped on web because it and XOpenGLDrv
+# both vendored a `glad` with identical symbol names, which cannot co-link under --whole-archive; it no
+# longer compiles one on Emscripten (its 45 entry points are all core GLES2, linked in by -sFULL_ES2), so
+# the clash is gone at the source rather than worked around. It is a FALLBACK, never a default: XOpenGL
+# stays the web default. Native (.so) defaults to NOpenGLES only. Any combo is selectable via -D.
 if(EMSCRIPTEN)
-  set(_UFRONT_DEF_NOPENGLES OFF)
+  set(_UFRONT_DEF_NOPENGLES ON)
   set(_UFRONT_DEF_XOPENGL ON)
   set(_UFRONT_DEF_GL4ES ON)
 else()
@@ -97,8 +99,13 @@ if(EMSCRIPTEN)
   set(BUILD_DCUTIL OFF)
   set(BUILD_PVRDRV OFF)           # Dreamcast render
   set(BUILD_AICADRV OFF)          # Dreamcast audio
-  # (2.9) web render devices come from the platform-aware options above: XOpenGLDrv + OpenGLDrv/UTGLR
-  # (via gl4es); NOpenGLESDrv dropped (glad clash). BUILD_NOPENGLDRV is driven by USE_GL4ES.
+  # (2.9 / 2.19) web render devices come from the platform-aware options above: XOpenGLDrv (default) +
+  # OpenGLDrv/UTGLR (via gl4es) + NOpenGLESDrv (2.19 — the glad clash is fixed at the source, so it is a
+  # selectable fallback). BUILD_NOPENGLDRV is driven by USE_GL4ES.
+  # ⚠ Forced with set(), not left to option(): option() only supplies a DEFAULT, so an existing build tree
+  # that was configured before 2.19 keeps its cached BUILD_NOPENGLESDRV=OFF and silently builds without the
+  # driver — the binary then links fine and the engine reports "not compiled in this build" at runtime.
+  set(BUILD_NOPENGLESDRV ON)
   set(BUILD_NULLSOUNDDRV ON)      # SoundDrv null (silent audio) — the config's shipped AudioDevice default
   set(BUILD_NOPENALDRV ON)        # ufront 2.12: real web+native audio — OpenAL SFX + libxmp .umx music.
                                   # The launcher (UnrealTournament/Src/Launch.cpp) overrides the ini's null
@@ -408,10 +415,17 @@ endif()
 
 # ufront 2.9 — static/wasm builds link under --whole-archive; NOpenGLESDrv and XOpenGLDrv both vendor a
 # `glad` (duplicate globals), so they cannot co-link there. Native (.so) builds can carry both.
-if(BUILD_STATIC AND BUILD_NOPENGLESDRV AND BUILD_XOPENGLDRV)
-  message(FATAL_ERROR "NOpenGLESDrv and XOpenGLDrv cannot both be built into a static/wasm binary "
-                      "(duplicate glad globals under --whole-archive). Enable at most one for static "
-                      "(web ships XOpenGLDrv). See Source/XOpenGLDrv/ENGINE_CHANGES.md.")
+# ufront 2.9 / 2.19 — static builds link under --whole-archive, so every object of every driver is force
+# included. NOpenGLESDrv and XOpenGLDrv both used to vendor a `glad` with byte-identical symbol names
+# (glad_glActiveTexture … and even gladLoadGLES2Loader), which is a duplicate-definition link failure.
+# On EMSCRIPTEN that is now fixed at the source — NOpenGLESDrv compiles no glad there and takes the GLES2
+# entry points Emscripten links in directly — so the two co-link and the web ships both. Everywhere else
+# the vendored glad is still compiled (native needs it to resolve GLES2 through the driver), so the guard
+# stands for a non-Emscripten static build.
+if(BUILD_STATIC AND NOT EMSCRIPTEN AND BUILD_NOPENGLESDRV AND BUILD_XOPENGLDRV)
+  message(FATAL_ERROR "NOpenGLESDrv and XOpenGLDrv cannot both be built into a NON-Emscripten static binary "
+                      "(duplicate glad globals under --whole-archive). Enable at most one, or build shared. "
+                      "See Source/XOpenGLDrv/ENGINE_CHANGES.md.")
 endif()
 
 if(BUILD_NOPENGLDRV)

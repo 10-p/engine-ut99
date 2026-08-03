@@ -1,5 +1,7 @@
 #include "SDL2/SDL.h"
+#ifndef __EMSCRIPTEN__
 #include "glad.h"
+#endif
 #include "glm/matrix.hpp"
 #include "glm/ext/matrix_clip_space.hpp"
 
@@ -60,14 +62,16 @@ static constexpr DWORD AttribSizes[AT_Count] = {
 // max vertices in a single draw call
 #define MAX_VERTS 32768
 
-void UNOpenGLESRenderDevice::InternalClassInitializer( UClass* Class )
+void UNOpenGLESRenderDevice::StaticConstructor()
 {
-	guardSlow(UNOpenGLESRenderDevice::InternalClassInitializer);
-	new(Class, "NoFiltering",    RF_Public)UBoolProperty( CPP_PROPERTY(NoFiltering),    "Options", CPF_Config );
-	new(Class, "Overbright",     RF_Public)UBoolProperty( CPP_PROPERTY(Overbright),     "Options", CPF_Config );
-	new(Class, "DetailTextures", RF_Public)UBoolProperty( CPP_PROPERTY(DetailTextures), "Options", CPF_Config );
-	new(Class, "UseVAO",         RF_Public)UBoolProperty( CPP_PROPERTY(UseVAO),         "Options", CPF_Config );
-	new(Class, "UseBGRA",        RF_Public)UBoolProperty( CPP_PROPERTY(UseBGRA),        "Options", CPF_Config );
+	guardSlow(UNOpenGLESRenderDevice::StaticConstructor);
+	new(GetClass(), "NoFiltering",    RF_Public)UBoolProperty( CPP_PROPERTY(NoFiltering),    "Options", CPF_Config );
+	new(GetClass(), "Overbright",     RF_Public)UBoolProperty( CPP_PROPERTY(Overbright),     "Options", CPF_Config );
+	new(GetClass(), "DetailTextures", RF_Public)UBoolProperty( CPP_PROPERTY(DetailTextures), "Options", CPF_Config );
+	new(GetClass(), "UseVAO",         RF_Public)UBoolProperty( CPP_PROPERTY(UseVAO),         "Options", CPF_Config );
+	new(GetClass(), "UseBGRA",        RF_Public)UBoolProperty( CPP_PROPERTY(UseBGRA),        "Options", CPF_Config );
+	new(GetClass(), "MaxAnisotropy",  RF_Public)UFloatProperty( CPP_PROPERTY(MaxAnisotropy),  "Options", CPF_Config );
+	new(GetClass(), "NumAASamples",   RF_Public)UIntProperty( CPP_PROPERTY(NumAASamples),     "Options", CPF_Config );
 	unguardSlow;
 }
 
@@ -78,20 +82,86 @@ UNOpenGLESRenderDevice::UNOpenGLESRenderDevice()
 	NoFiltering = false;
 	UseVAO = false;
 	UseBGRA = true;
+	MaxAnisotropy = 16.f;   // clamped at Init to whatever the driver actually reports
+	NumAASamples = 4;
 	CurrentBrightness = -1.f;
 }
+
+/*-----------------------------------------------------------------------------
+	BGRA capability.
+-----------------------------------------------------------------------------*/
+
+// ufront 2.19: glad's GLAD_GL_* extension-presence flags are filled by the loader, which the web build no
+// longer compiles (see NOpenGLESDrvPrivate.h). Ask the LIVE context instead — same question, same
+// semantics, just sourced from the thing that actually answers it. (Exactly the lesson of XOpenGL's S3TC
+// bug: a driver that asks anything other than its own context gets told "absent" and silently degrades.)
+#ifdef __EMSCRIPTEN__
+#include <string.h>
+static UBOOL NOpenGLESHasExtension( const char* Name )
+{
+	const char* Exts = (const char*)glGetString( GL_EXTENSIONS );
+	if( !Exts || !Name || !*Name )
+		return 0;
+	// Whole-token match: "GL_EXT_texture_format_BGRA8888" must not be satisfied by a longer neighbour.
+	const size_t Len = strlen( Name );
+	for( const char* P = Exts; ( P = strstr( P, Name ) ) != NULL; P += Len )
+	{
+		const char Before = ( P == Exts ) ? ' ' : P[-1];
+		const char After  = P[Len];
+		if( Before == ' ' && ( After == ' ' || After == '\0' ) )
+			return 1;
+	}
+	return 0;
+}
+// WebGL spells extensions WITHOUT the "GL_" prefix (EXT_texture_format_BGRA8888), so try both.
+static UBOOL NOpenGLESHasExtensionEither( const char* GLName )
+{
+	if( NOpenGLESHasExtension( GLName ) )
+		return 1;
+	return ( strncmp( GLName, "GL_", 3 ) == 0 ) ? NOpenGLESHasExtension( GLName + 3 ) : 0;
+}
+#define UFRONT_GLES_BGRA_SUPPORTED()                                  \
+	( NOpenGLESHasExtensionEither( "GL_APPLE_texture_format_BGRA8888" ) || \
+	  NOpenGLESHasExtensionEither( "GL_EXT_texture_format_BGRA8888" )   || \
+	  NOpenGLESHasExtensionEither( "GL_MESA_bgra" ) )
+#else
+#define UFRONT_GLES_BGRA_SUPPORTED()                     \
+	( GLAD_GL_APPLE_texture_format_BGRA8888 ||           \
+	  GLAD_GL_EXT_texture_format_BGRA8888   ||           \
+	  GLAD_GL_MESA_bgra )
+#endif
+
+// ufront 2.19: EXT_texture_filter_anisotropic tokens. gl2ext.h supplies them on the web and glad on
+// native, but both are optional extensions — define defensively so the driver still builds if absent.
+#ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
+#endif
+#ifndef GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT
+#define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
+#endif
+
+#ifdef __EMSCRIPTEN__
+# define UFRONT_GLES_HAS_ANISO() NOpenGLESHasExtensionEither( "GL_EXT_texture_filter_anisotropic" )
+#else
+# define UFRONT_GLES_HAS_ANISO() ( GLAD_GL_EXT_texture_filter_anisotropic != 0 )
+#endif
 
 UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen )
 {
 	guard(UNOpenGLESRenderDevice::Init)
-
 	debugf( NAME_Log, TEXT("NOpenGLESDrv::Init: NewX=%d, NewY=%d, ColorBytes=%d, Fullscreen=%d"), NewX, NewY, NewColorBytes, Fullscreen );
 
+#ifndef __EMSCRIPTEN__
+	// ufront 2.19: native still resolves GLES2 through the driver at runtime. On the web the entry points
+	// are linked in directly (see NOpenGLESDrvPrivate.h), and this call would go through
+	// SDL_GL_GetProcAddress — which resolves against nothing there, because the context belongs to the
+	// viewport and SDL never owned it (the same trap that cost XOpenGL its S3TC support, ufront 2.13.2).
 	if( !gladLoadGLES2Loader( &SDL_GL_GetProcAddress ) )
 	{
 		debugf( NAME_Warning, "Could not load GLES2: %s", SDL_GetError() );
 		return false;
 	}
+#endif
 
 	debugf( NAME_Log, "Got OpenGL %s", glGetString( GL_VERSION ) );
 
@@ -122,10 +192,38 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 		glBufferData( GL_ARRAY_BUFFER, VtxDataSize, (void*)VtxData, GL_DYNAMIC_DRAW );
 	}
 
+	// ufront 2.19: anisotropic filtering. Real numeric control — clamp the requested level to what this
+	// context actually advertises rather than trusting the ini, and turn it off cleanly if the extension is
+	// absent (1.0 == isotropic, the GL default, so the sampler code needs no special case).
+	if( MaxAnisotropy > 1.f )
+	{
+		if( UFRONT_GLES_HAS_ANISO() )
+		{
+			GLfloat DriverMax = 1.f;
+			glGetFloatv( GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT, &DriverMax );
+			if( DriverMax < 1.f )
+				DriverMax = 1.f;                       // some drivers answer 0 when the query is unsupported
+			if( MaxAnisotropy > DriverMax )
+				MaxAnisotropy = DriverMax;
+			debugf( NAME_Log, "GLES2: anisotropic filtering %.0fx (driver max %.0fx)", MaxAnisotropy, DriverMax );
+		}
+		else
+		{
+			debugf( NAME_Log, "GLES2: anisotropic filtering requested but unsupported; disabling" );
+			MaxAnisotropy = 1.f;
+		}
+	}
+
+	// NumAASamples is nominal on the web: WebGL selects MSAA with a boolean `antialias` context attribute at
+	// CREATION time, and the viewport already made the context before this driver ran. Report what we were
+	// asked for so the log does not imply a sample count we cannot honour.
+	if( NumAASamples > 0 )
+		debugf( NAME_Log, "GLES2: AA requested (%d samples nominal; WebGL decides the count at context creation)", NumAASamples );
+
 	if( UseBGRA )
 	{
 		// check if BGRA is actually supported
-		if( !( GLAD_GL_APPLE_texture_format_BGRA8888 || GLAD_GL_EXT_texture_format_BGRA8888 || GLAD_GL_MESA_bgra ) )
+		if( !UFRONT_GLES_BGRA_SUPPORTED() )
 		{
 			debugf( "GLES2: BGRA8888 enabled, but not supported; disabling" );
 			UseBGRA = false;
@@ -855,6 +953,10 @@ void UNOpenGLESRenderDevice::UpdateTextureFilter( const FTextureInfo& Info, DWOR
 	{
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, ( Info.NumMips > 1 ) ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
+		// ufront 2.19: anisotropy only makes sense on the smooth path, and only with mips to sample across.
+		// MaxAnisotropy is already clamped to the driver maximum at Init (1.0 when unsupported).
+		if( MaxAnisotropy > 1.f && Info.NumMips > 1 )
+			glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, MaxAnisotropy );
 	}
 
 	// This is a light/fog map.
