@@ -121,7 +121,9 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 
 	// Constructors.
 	UNSDLClient();
-	static void InternalClassInitializer( UClass* Class );
+	// ufront 2.19: v400 registers config properties from StaticConstructor; the v200-era
+	// InternalClassInitializer has zero call sites here, so these Options were never registered.
+	void StaticConstructor();
 
 	// UObject interface.
 	virtual void Destroy() override;

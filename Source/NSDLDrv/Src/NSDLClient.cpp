@@ -13,21 +13,24 @@ IMPLEMENT_CLASS( UNSDLClient );
 //
 // Static init.
 //
-void UNSDLClient::InternalClassInitializer( UClass* Class )
+void UNSDLClient::StaticConstructor()
 {
-	guard(UNSDLClient::InternalClassInitializer);
-	if( appStricmp( Class->GetName(), "NSDLClient" ) == 0 )
-	{
-		new(Class, "DefaultDisplay",    RF_Public)UIntProperty(CPP_PROPERTY(DefaultDisplay),     "Display",  CPF_Config );
-		new(Class, "StartupFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), "Display",  CPF_Config );
-		new(Class, "UseJoystick",       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       "Joystick", CPF_Config );
-		new(Class, "DeadZoneXYZ",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneXYZ),      "Joystick", CPF_Config );
-		new(Class, "DeadZoneRUV",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneRUV),      "Joystick", CPF_Config );
-		new(Class, "ScaleXYZ",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleXYZ),         "Joystick", CPF_Config );
-		new(Class, "ScaleRUV",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleRUV),         "Joystick", CPF_Config );
-		new(Class, "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
-		new(Class, "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
-	}
+	guard(UNSDLClient::StaticConstructor);
+	// ufront 2.19: was InternalClassInitializer, the UE1 *v200* class hook — which this v400 engine NEVER
+	// invokes (v400's IMPLEMENT_CLASS calls StaticConstructor). See NSDLViewport.cpp, where the identical
+	// dead hook cost UT99 its keyboard, and NOpenGLESDrv, fixed the same way in this step. Consequence
+	// here: NONE of the nine options below were registered, so [NSDLDrv.NSDLClient] in the ini was inert
+	// and joystick / fullscreen / dead-zone settings silently did nothing. The class-name guard the v200
+	// hook needed is gone with it — StaticConstructor already runs per concrete class.
+	new(GetClass(), "DefaultDisplay",    RF_Public)UIntProperty(CPP_PROPERTY(DefaultDisplay),     "Display",  CPF_Config );
+	new(GetClass(), "StartupFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), "Display",  CPF_Config );
+	new(GetClass(), "UseJoystick",       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       "Joystick", CPF_Config );
+	new(GetClass(), "DeadZoneXYZ",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneXYZ),      "Joystick", CPF_Config );
+	new(GetClass(), "DeadZoneRUV",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneRUV),      "Joystick", CPF_Config );
+	new(GetClass(), "ScaleXYZ",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleXYZ),         "Joystick", CPF_Config );
+	new(GetClass(), "ScaleRUV",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleRUV),         "Joystick", CPF_Config );
+	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
+	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
 	unguard;
 }
 
