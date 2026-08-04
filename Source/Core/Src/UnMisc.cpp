@@ -1453,6 +1453,52 @@ CORE_API UBOOL appSaveStringToFile( const FString& String, const TCHAR* Filename
 -----------------------------------------------------------------------------*/
 
 //
+// Case-insensitive match for one search path: does any file in `Dir` have the name `In` (or
+// `In` + `Ext`) ignoring case? Fills `Out` with the real, correctly-cased path and returns 1.
+//
+// `Dir` is a Paths= entry with its wildcard stripped ("../Textures/"); `Ext` is what followed the
+// wildcard (".utx"), or NULL for a path that carries none.
+//
+// This is what a Windows filesystem does for free and a case-sensitive one (Linux, and the web
+// build's VFS) does not. It matches the FIRST file that compares equal, where the old code kept
+// scanning and took the last; on a case-insensitive filesystem no directory can hold two such
+// files, and on a case-sensitive one the earlier entry is the better guess than the later.
+//
+static UBOOL appFindFileNoCase( const TCHAR* Dir, const TCHAR* In, const TCHAR* Ext, TCHAR* Out )
+{
+	guard(appFindFileNoCase);
+	TCHAR Spec[256];
+	appStrcpy( Spec, Dir );
+	appStrcat( Spec, TEXT("*") );
+	if( Ext )
+		appStrcat( Spec, Ext );
+	TArray<FString> Files = GFileManager->FindFiles( Spec, 1, 0 );
+
+	TCHAR InExt[256];
+	*InExt = 0;
+	if( Ext )
+	{
+		appStrcpy( InExt, In );
+		appStrcat( InExt, Ext );
+	}
+	for( INT i=0; Files.IsValidIndex(i); i++ )
+	{
+		if( appStricmp( *(Files(i)), In )==0 || (Ext && appStricmp( *(Files(i)), InExt )==0) )
+		{
+			appStrcpy( Out, Dir );
+			appStrcat( Out, *(Files(i)) );
+			if( GFileManager->FileSize( Out ) >= 0 )
+			{
+				debugf( TEXT("Case-insensitive search: %s -> %s"), In, Out );
+				return 1;
+			}
+		}
+	}
+	return 0;
+	unguard;
+}
+
+//
 // Find a file.
 //
 UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
@@ -1473,39 +1519,54 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 		return 1;
 
 	// Try all of the predefined paths.
+	//
+	// ★ Each path is tried EXACTLY and then CASE-INSENSITIVELY before the next one is considered.
+	// The order matters and used to be wrong: the case-insensitive search was a second full pass that
+	// ran only after the exact pass had walked every path, so a later path's exact hit beat an earlier
+	// path's case-variant hit. On Windows — the filesystem this engine was written against — the
+	// earlier path always wins, because there is no such thing as a "case-variant" hit there.
+	//
+	// Measured on the v436 mod tree: Infiltration's Entry.unr imports the group `Credits.Base` from
+	// the TEXTURE package `Credits`. `Paths=` lists `../Textures/*.utx` before `../Music/*.umx`, but
+	// the file on disk is `credits.utx`, so the exact pass missed Textures and hit `Music/Credits.umx`
+	// — and the linker, handed a music package where a texture package was meant, threw
+	// "Can't find Package in file 'Package Credits.Base'", which with exceptions off is an abort with
+	// no message at all.
 	INT DoCd;
 	for( DoCd=0; DoCd<(1+(GCdPath[0]!=0)); DoCd++ )
 	{
 		for( INT i=DoCd; i<GSys->Paths.Num()+(Guid!=NULL); i++ )
 		{
+			// Get directory only. This does not depend on the language variant below, and the
+			// case-insensitive retry at the bottom needs it, so it is computed once per path.
+			const TCHAR* Ext;
+			*Temp = 0;
+			if( DoCd )
+			{
+				appStrcat( Temp, GCdPath );
+				appStrcat( Temp, TEXT("System") PATH_SEPARATOR );
+			}
+			if( i<GSys->Paths.Num() )
+			{
+				appStrcat( Temp, *GSys->Paths(i) );
+				TCHAR* Ext2 = appStrstr(Temp,TEXT("*"));
+				if( Ext2 )
+					*Ext2++ = 0;
+				Ext = Ext2;
+			}
+			else
+			{
+				appStrcat( Temp, *GSys->CachePath );
+				appStrcat( Temp, PATH_SEPARATOR );
+				Ext = *GSys->CacheExt;
+			}
 			for( INT j=0; j<International+1; j++ )
 			{
-				// Get directory only.
-				const TCHAR* Ext;
-				*Temp = 0;
-				if( DoCd )
-				{
-					appStrcat( Temp, GCdPath );
-					appStrcat( Temp, TEXT("System") PATH_SEPARATOR );
-				}
+				appStrcpy( Out, Temp );
 				if( i<GSys->Paths.Num() )
-				{
-					appStrcat( Temp, *GSys->Paths(i) );
-					TCHAR* Ext2 = appStrstr(Temp,TEXT("*"));
-					if( Ext2 )
-						*Ext2++ = 0;
-					Ext = Ext2;
-					appStrcpy( Out, Temp );
 					appStrcat( Out, In );
-				}
 				else
-				{
-					appStrcat( Temp, *GSys->CachePath );
-					appStrcat( Temp, PATH_SEPARATOR );
-					Ext = *GSys->CacheExt;
-					appStrcpy( Out, Temp );
 					appStrcat( Out, Guid->String() );
-				}
 
 				// Check for file.
 				UBOOL Found = 0;
@@ -1528,77 +1589,12 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 					return 1;
 				}
 			}
-		}
-	}
-
-	// Try case-insensitive search.
-	for( DoCd=0; DoCd<(1+(GCdPath[0]!=0)); DoCd++ )
-	{
-		for( INT i=0; i<GSys->Paths.Num()+(Guid!=NULL); i++ )
-		{
-			// Get directory only.
-			const TCHAR* Ext;
-			*Temp = 0;
-			if( DoCd )
-			{
-				appStrcat( Temp, GCdPath );
-				appStrcat( Temp, TEXT("System") PATH_SEPARATOR );
-			}
-			if( i<GSys->Paths.Num() )
-			{
-				appStrcat( Temp, *GSys->Paths(i) );
-				TCHAR* Ext2 = appStrstr(Temp,TEXT("*"));
-				if( Ext2 )
-					*Ext2++ = 0;
-				Ext = Ext2;
-				appStrcpy( Out, Temp );
-				appStrcat( Out, In );
-			}
-			else
-			{
-				appStrcat( Temp, *GSys->CachePath );
-				appStrcat( Temp, PATH_SEPARATOR );
-				Ext = *GSys->CacheExt;
-				appStrcpy( Out, Temp );
-				appStrcat( Out, Guid->String() );
-			}
-
-			// Find files.
-			TCHAR Spec[256];
-			*Spec = 0;
-			TArray<FString> Files;
-			appStrcpy( Spec, Temp );
-			appStrcat( Spec, TEXT("*") );
-			if( Ext )
-				appStrcat( Spec, Ext );
-			Files = GFileManager->FindFiles( Spec, 1, 0 );
-
-			// Check for match.
-			UBOOL Found = 0;
-			TCHAR InExt[256];
-			*InExt = 0;
-			if( Ext )
-			{
-				appStrcpy( InExt, In );
-				appStrcat( InExt, Ext );
-			}
-			for( INT j=0; Files.IsValidIndex(j); j++ )
-			{
-				if( (appStricmp( *(Files(j)), In )==0) ||
-					(appStricmp( *(Files(j)), InExt)==0) )
-				{
-					appStrcpy( Out, Temp );
-					appStrcat( Out, *(Files(j)));
-					Found = (GFileManager->FileSize( Out )>=0);
-				}
-			}
-			if( Found )
-			{
-				debugf( TEXT("Case-insensitive search: %s -> %s"), In, Out );
-				if( i==GSys->Paths.Num() )
-					appUpdateFileModTime( Out );
+			// Nothing matched exactly in this directory — try it ignoring case before moving on.
+			// Not done for the cache directory (i == Paths.Num()): its files are named after a GUID,
+			// and the old second pass compared them against the PACKAGE name there, so it could only
+			// ever have matched by accident. Nothing real is lost by leaving it out.
+			if( i<GSys->Paths.Num() && appFindFileNoCase( Temp, In, Ext, Out ) )
 				return 1;
-			}
 		}
 	}
 
