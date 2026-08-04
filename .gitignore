@@ -10,4 +10,5 @@ build/
 /build-native/
 /build-wasm/
 /build-wasm-perf/
+/build-wasm-debug/
 __smoke.html
