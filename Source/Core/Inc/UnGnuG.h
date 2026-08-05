@@ -18,6 +18,7 @@
 #endif
 
 #include <stdarg.h>
+#include <math.h>   // floorf/ceilf for the rounding primitives below
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -209,7 +210,18 @@ CORE_API DOUBLE appSecondsSlow();
 #define DEFINED_appRound 1
 inline INT appRound( FLOAT F )
 {
-	return (INT)(F);
+	// NOT (INT)F. The MSVC original (UnVcWin32.h) is `fld [F]; fistp [I]`, and fistp ROUNDS using
+	// the FPU's current mode; the GCC port transliterated the shape and dropped that, leaving a
+	// plain cast. C++ float->int truncates toward zero, so this rounded nothing: appRound(3.7)
+	// returned 3. It disagreed with a true round on 49% of inputs, on every target -- native, ARM
+	// and the web alike, since the language rule is what changed, not the instruction set.
+	// engine-unreal1 has the correct definition in UnFile.cpp, which is why this never showed there.
+	//
+	// Owner-confirmed: restoring these two primitives fixed the long-standing horizontal-streak bug
+	// in the software renderer -- 1px-tall streaks that ran until the span buffer stopped them,
+	// taking their source's texture and lighting and degenerating into bright noise, on both BSP
+	// surfaces (stairs, marble) and meshes (barrel, rocket launcher, vehicles).
+	return (INT)floorf( F + 0.5f );
 }
 
 //
@@ -218,8 +230,19 @@ inline INT appRound( FLOAT F )
 #define DEFINED_appFloor 1
 inline INT appFloor( FLOAT F )
 {
-	static FLOAT Half=0.5;
-	return (INT)(F - Half);
+	// Same story as appRound above: the MSVC original is `fld [F]; fsub [Half]; fistp [I]`, where
+	// fistp's round-to-nearest turns (F - 0.5) into floor(F). Without the rounding it is just a
+	// truncation of F-0.5, so appFloor(3.2) returned 2 and appFloor(-3.2) returned -3.
+	//
+	// The knock-on was worse than the off-by-one. IntY/YFloor come from here, so the effective
+	// scanline boundary sat at y.5 instead of y.0 -- which defeats the engine's own degeneracy
+	// guard (the deliberate `+1.0001` in FX15/FY15, UnCamera.cpp, exists to keep vertices off the
+	// boundary and is calibrated for integers). Edges straddling a half-pixel line then passed the
+	// rasterisers' `IntY != IntY` test with an arbitrarily small delta-Y, so 1/delta-Y exploded:
+	// UnRender.cpp's span rasteriser overflowed its DWORD fixed-point step and DrawPoly's edge
+	// walker lost its mantissa to cancellation. Both emitted one scanline at a garbage X, which is
+	// the horizontal streaks -- bounded in length only by the span buffer, hence half the screen.
+	return (INT)floorf( F );
 }
 
 //

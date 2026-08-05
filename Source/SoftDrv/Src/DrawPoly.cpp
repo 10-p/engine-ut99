@@ -53,6 +53,7 @@ static FTransTexture* Point2;
 static struct FTexSetup
 {
 	FLOAT U, V,  R, G, B, XAdjust;
+	FLOAT FR, FG, FB;          // per-scanline volumetric fog, interpolated like R,G,B
 	DWORD X, EndX;
 } Setup[MaximumYScreenSize];//max y res !!
 
@@ -87,6 +88,7 @@ static struct FPolyCSetup
 	BYTE*       TexBase;
 	//FLOAT*		PalBase;
 	FLOAT		R, G, B, DR, DG, DB, FlashR, FlashG, FlashB;
+	FLOAT		FogR, FogG, FogB, DFogR, DFogG, DFogB;
 	INT         X0, X1;
 	DWORD		MaskUV;
 	DWORD       UBits;
@@ -120,6 +122,9 @@ struct FMMXPolyCSetup
 	Gouraud span rendering.
 ------------------------------------------------------------------------------*/
 
+// Set per DrawGouraudPolygon from RenDev->VolumetricLightingMeshes; lets mesh fog be turned off
+// independently of surface fog, since it is the expensive half on a weak CPU.
+static UBOOL GMeshFog=0;
 static UBOOL GDontMaskThePolygon=0;
 static UBOOL GTranslucent=0;
 static UBOOL GModulated=0;
@@ -137,15 +142,18 @@ static void PentiumPolyC15Normal()
 		DWORD UV    = ((DWORD)(GPolyC.UV.Q >> 32)) & GPolyC.MaskUV;
 		DWORD I     = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 
-			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			*Dest       = (R & 0x7c00) + (G & 0x03e0) + B;
 	
 		GPolyC.UV.Q += GPolyC.DUV.Q;
 		GPolyC.R	+= GPolyC.DR;
 		GPolyC.G	+= GPolyC.DG;
 		GPolyC.B	+= GPolyC.DB;
+		GPolyC.FogR	+= GPolyC.DFogR;
+		GPolyC.FogG	+= GPolyC.DFogG;
+		GPolyC.FogB	+= GPolyC.DFogB;
 	} while( ++Dest < End );
 }
 
@@ -162,9 +170,9 @@ static void PentiumPolyC15Translucent()
 		if( I )
 		{
 			DWORD SampleDest = (*Dest & (0xFFFF - 0x08420 ));
-			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			DWORD AddColor   =  (R & 0x7800) +  (G & 0x03C0) + B ;
 			
 			// Slow but correct overflow checking:
@@ -185,6 +193,9 @@ static void PentiumPolyC15Translucent()
 		GPolyC.R	+= GPolyC.DR;
 		GPolyC.G	+= GPolyC.DG;
 		GPolyC.B	+= GPolyC.DB;
+		GPolyC.FogR	+= GPolyC.DFogR;
+		GPolyC.FogG	+= GPolyC.DFogG;
+		GPolyC.FogB	+= GPolyC.DFogB;
 
 	} while( ++Dest < End );
 }
@@ -202,9 +213,9 @@ static void PentiumPolyC15Masked()
 		DWORD I     = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 		if( I )
 		{	
-			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			*Dest       = (R & 0x7C00) + (G & 0x03e0) + B;
 		}
 
@@ -212,6 +223,9 @@ static void PentiumPolyC15Masked()
 		GPolyC.R   += GPolyC.DR;
 		GPolyC.G   += GPolyC.DG;
 		GPolyC.B   += GPolyC.DB;
+		GPolyC.FogR   += GPolyC.DFogR;
+		GPolyC.FogG   += GPolyC.DFogG;
+		GPolyC.FogB   += GPolyC.DFogB;
 	} while( ++Dest < End );
 }
 
@@ -254,15 +268,18 @@ static void PentiumPolyC16Normal()
 		DWORD UV     = (GPolyC.UV.Q >> 32) & GPolyC.MaskUV;	
 		DWORD I      = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 
-		*(FLOAT*)&R	 = FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-		*(FLOAT*)&G  = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-		*(FLOAT*)&B	 = FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+		*(FLOAT*)&R	 = FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+		*(FLOAT*)&G  = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+		*(FLOAT*)&B	 = FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 		*Dest        = (R&0xF800) + (G&0x07E0) + B;
 		
 		GPolyC.UV.Q  += GPolyC.DUV.Q;
 		GPolyC.R	 += GPolyC.DR;
 		GPolyC.G	 += GPolyC.DG;
 		GPolyC.B	 += GPolyC.DB;
+		GPolyC.FogR	 += GPolyC.DFogR;
+		GPolyC.FogG	 += GPolyC.DFogG;
+		GPolyC.FogB	 += GPolyC.DFogB;
 	} while( ++Dest < End );
 
 	unguardSlow;
@@ -311,9 +328,9 @@ static void PentiumPolyC16Translucent()
 		if( I )
 		{
 			DWORD SampleDest = (*Dest & (0x0001FFFF - 0x010820 ));
-			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			DWORD AddColor   =  (R & 0xF000) +  (G & 0x07C0) + B ;
 			
 			// Slow but correct overflow checking:
@@ -334,6 +351,9 @@ static void PentiumPolyC16Translucent()
 		GPolyC.R	+= GPolyC.DR;
 		GPolyC.G	+= GPolyC.DG;
 		GPolyC.B	+= GPolyC.DB;
+		GPolyC.FogR	+= GPolyC.DFogR;
+		GPolyC.FogG	+= GPolyC.DFogG;
+		GPolyC.FogB	+= GPolyC.DFogB;
 
 	} while( ++Dest < End );
 
@@ -355,15 +375,18 @@ static void PentiumPolyC16Masked()
 		DWORD I     = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 		if( I )
 		{	
-			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R	= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G = FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			*Dest       = (R & 0xF800) + (G & 0x07E0) + B;
 		}
 		GPolyC.UV.Q  += GPolyC.DUV.Q;
 		GPolyC.R   += GPolyC.DR;
 		GPolyC.G   += GPolyC.DG;
 		GPolyC.B   += GPolyC.DB;
+		GPolyC.FogR   += GPolyC.DFogR;
+		GPolyC.FogG   += GPolyC.DFogG;
+		GPolyC.FogB   += GPolyC.DFogB;
 	} while( ++Dest < End );
 
 	unguardSlow;
@@ -568,9 +591,9 @@ static void PentiumPolyC32Normal()
 			DWORD UV	= (GPolyC.UV.Q >> 32) & GPolyC.MaskUV;
 			DWORD I     = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 
-			*(FLOAT*)&R			= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G			= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B			= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R			= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G			= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B			= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 
 			*Dest = ((R&0xff)<<16)  + ((G&0xff)<<8) + (B&0xff);
 			
@@ -578,6 +601,9 @@ static void PentiumPolyC32Normal()
 			GPolyC.R           += GPolyC.DR;
 			GPolyC.G           += GPolyC.DG;
 			GPolyC.B           += GPolyC.DB;
+			GPolyC.FogR           += GPolyC.DFogR;
+			GPolyC.FogG           += GPolyC.DFogG;
+			GPolyC.FogB           += GPolyC.DFogB;
 
 		} while( ++Dest < End );
 #endif
@@ -604,9 +630,9 @@ static void PentiumPolyC32Masked()
 
 		if (I)
 		{
-			*(FLOAT*)&R			= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G			= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B			= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R			= FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G			= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B			= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			*Dest = ((R&0xff)<<16) + ((G&0xff)<<8) + (B&0xff);
 		}
 
@@ -614,6 +640,9 @@ static void PentiumPolyC32Masked()
 		GPolyC.R           += GPolyC.DR;
 		GPolyC.G           += GPolyC.DG;
 		GPolyC.B           += GPolyC.DB;
+		GPolyC.FogR           += GPolyC.DFogR;
+		GPolyC.FogG           += GPolyC.DFogG;
+		GPolyC.FogB           += GPolyC.DFogB;
 
 	} while( ++Dest < End );
 	unguardSlow;
@@ -635,9 +664,9 @@ static void PentiumPolyC32Translucent()
 		DWORD I  = GPolyC.TexBase[ _rotl (UV, GPolyC.UBits) ];
 		if (I)
 		{
-			*(FLOAT*)&R = FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR;
-			*(FLOAT*)&G	= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG;
-			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB;
+			*(FLOAT*)&R = FloatPalBase[I*4+0] * GPolyC.R + GPolyC.FlashR + GPolyC.FogR;
+			*(FLOAT*)&G	= FloatPalBase[I*4+1] * GPolyC.G + GPolyC.FlashG + GPolyC.FogG;
+			*(FLOAT*)&B	= FloatPalBase[I*4+2] * GPolyC.B + GPolyC.FlashB + GPolyC.FogB;
 			DWORD D = (*Dest & 0x00fefefe) + ( ((R&0xfe)<<16) + ((G&0xfe)<<8) + (B&0xfe) );
 			DWORD M = D;
 			if( (M = (D & 0x1010100))!=0 ) // Fast overflow detection.
@@ -649,6 +678,9 @@ static void PentiumPolyC32Translucent()
 		GPolyC.R  += GPolyC.DR;
 		GPolyC.G  += GPolyC.DG;
 		GPolyC.B  += GPolyC.DB;
+		GPolyC.FogR  += GPolyC.DFogR;
+		GPolyC.FogG  += GPolyC.DFogG;
+		GPolyC.FogB  += GPolyC.DFogB;
 
 	} while( ++Dest < End );
 	unguardSlow;
@@ -4100,6 +4132,37 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 	FLOAT  dGdX = (TriVertex[0].Light.Y - TriVertex[2].Light.Y)*SD12y - (TriVertex[1].Light.Y - TriVertex[2].Light.Y)*SD02y;
 	FLOAT  dBdX = (TriVertex[0].Light.Z - TriVertex[2].Light.Z)*SD12y - (TriVertex[1].Light.Z - TriVertex[2].Light.Z)*SD02y;
 
+	//
+	// Volumetric fog on meshes.
+	//
+	// FLightManager::Fog() already fills FTransSample::Fog per vertex (UnMeshRn.cpp), and the MMX
+	// path interpolated it -- TriVertexType::Fog, TriDeltaFog and FPolyCSetup::FogRGB all exist for
+	// exactly this. The Pentium twin never grew it, so actors have been unfogged on every non-x86
+	// build. Same treatment as Light: scale into display units, then interpolate.
+	//
+	// Clamped against what the light already claimed (GFloatRange minus this vertex's light) so
+	// light + fog can never exceed GMaxColor. Both interpolate linearly, so bounding the sum at the
+	// vertices bounds it across the whole triangle and the span loops need no extra clamp.
+	//
+	if( GMeshFog )
+	{
+		for( INT v=0; v<3; v++ )
+		{
+			FTransTexture* P = (v==0) ? Point0 : (v==1) ? Point1 : Point2;
+			TriVertex[v].Fog.X = MinPositiveFloat( P->Fog.X * GFloatScale.X, GFloatRange.X - TriVertex[v].Light.X );
+			TriVertex[v].Fog.Y = MinPositiveFloat( P->Fog.Y * GFloatScale.Y, GFloatRange.Y - TriVertex[v].Light.Y );
+			TriVertex[v].Fog.Z = MinPositiveFloat( P->Fog.Z * GFloatScale.Z, GFloatRange.Z - TriVertex[v].Light.Z );
+		}
+	}
+	else
+	{
+		TriVertex[0].Fog = TriVertex[1].Fog = TriVertex[2].Fog = FVector(0,0,0);
+	}
+
+	FLOAT  dFRdX = (TriVertex[0].Fog.X - TriVertex[2].Fog.X)*SD12y - (TriVertex[1].Fog.X - TriVertex[2].Fog.X)*SD02y;
+	FLOAT  dFGdX = (TriVertex[0].Fog.Y - TriVertex[2].Fog.Y)*SD12y - (TriVertex[1].Fog.Y - TriVertex[2].Fog.Y)*SD02y;
+	FLOAT  dFBdX = (TriVertex[0].Fog.Z - TriVertex[2].Fog.Z)*SD12y - (TriVertex[1].Fog.Z - TriVertex[2].Fog.Z)*SD02y;
+
 
 	// 3 different edges to rasterize.
 	// Vertices always in same clockwise manner.
@@ -4139,13 +4202,30 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 				FLOAT U       = MipUScale * PB->U + YAdj * DU;
 				FLOAT V       = MipVScale * PB->V + YAdj * DV;
 
+				// X/Y/Z are R/G/B. The upstream UE1 source declares these as DR, DB, DG and pairs
+				// each with its OWN channel; porting FPlane .R/.G/.B to FVector .X/.Y/.Z substituted
+				// positionally instead, so DB took .Y (green) and DG took .Z (blue) while the
+				// assignments below still stepped G by DG and B by DB. Green therefore interpolated
+				// down each edge using blue's gradient and vice versa -- invisible under white light,
+				// but wrong colours in horizontal streaks under coloured light, since the error
+				// accumulates once per scanline. The MMX path a few hundred lines up got this right,
+				// which is why it only ever showed at ASM=0.
 				FLOAT DR      = RDY * (TA->Light.X - TB->Light.X);
-				FLOAT DB      = RDY * (TA->Light.Y - TB->Light.Y);
-				FLOAT DG      = RDY * (TA->Light.Z - TB->Light.Z);
+				FLOAT DG      = RDY * (TA->Light.Y - TB->Light.Y);
+				FLOAT DB      = RDY * (TA->Light.Z - TB->Light.Z);
 
 				FLOAT R       = TB->Light.X + YAdj * DR; // prestepping required here to prevent overflow.
 				FLOAT G       = TB->Light.Y + YAdj * DG; 
 				FLOAT B       = TB->Light.Z + YAdj * DB;
+
+				// Volumetric fog rides along the same edge, interpolated exactly like the light.
+				FLOAT DFR     = RDY * (TA->Fog.X - TB->Fog.X);
+				FLOAT DFG     = RDY * (TA->Fog.Y - TB->Fog.Y);
+				FLOAT DFB     = RDY * (TA->Fog.Z - TB->Fog.Z);
+
+				FLOAT FR      = TB->Fog.X + YAdj * DFR;
+				FLOAT FG      = TB->Fog.Y + YAdj * DFG;
+				FLOAT FB      = TB->Fog.Z + YAdj * DFB;
 
 				DWORD Count = TA->YFloor - TB->YFloor; // Guaranteed positive.
 				do
@@ -4157,6 +4237,9 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 					Set->R = R+=DR;
 					Set->G = G+=DG;
 					Set->B = B+=DB;
+					Set->FR = FR+=DFR;
+					Set->FG = FG+=DFG;
+					Set->FB = FB+=DFB;
 
 					// BUG SCREENY delivered was #ind / NAN - not a number !
 					// one case: from SubSurface->SubSurface...
@@ -4307,6 +4390,31 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 	GPolyC.DG  = dGdX;
 	GPolyC.DB  = dBdX;
 
+	// Fog steps per pixel exactly like the light. Scaled into each depth's display units by the
+	// same factors FlashR/G/B use for the global screen fog just above -- per-vertex fog and screen
+	// flash fog are the same 0..1 colour, they just differ in where they come from.
+	FLOAT FogScaleR, FogScaleG, FogScaleB;
+	if( Viewport->ColorBytes==4 )
+	{
+		FogScaleR = FogScaleG = FogScaleB = 256.0f;
+	}
+	else if( Viewport->Caps & CC_RGB565 )
+	{
+		FogScaleR = 32.0f*(1<<11);  FogScaleG = 64.0f*(1<<5);  FogScaleB = 32.0f;
+	}
+	else
+	{
+		FogScaleR = 32.0f*(1<<10);  FogScaleG = 32.0f*(1<<5);  FogScaleB = 32.0f;
+	}
+	// Translucent and modulated surfaces take no additive fog, matching how FlashR/G/B above drop
+	// the screen fog offset for them: adding light to a multiply or an add-blend is not fog.
+	if( PolyFlags & (PF_Translucent|PF_Modulated) )
+		FogScaleR = FogScaleG = FogScaleB = 0.0f;
+
+	GPolyC.DFogR = dFRdX * FogScaleR;
+	GPolyC.DFogG = dFGdX * FogScaleG;
+	GPolyC.DFogB = dFBdX * FogScaleB;
+
 	// Always clip to spanbuffer. Usually, no clipping required.
 	FSpan** Index   = SpanBuffer->Index + MinY - SpanBuffer->StartY;
 
@@ -4331,6 +4439,9 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 					GPolyC.R		= Set->R;
 					GPolyC.G		= Set->G;
 					GPolyC.B		= Set->B;
+					GPolyC.FogR		= Set->FR * FogScaleR;
+					GPolyC.FogG		= Set->FG * FogScaleG;
+					GPolyC.FogB		= Set->FB * FogScaleB;
 					DWORD U			= appRound( Set->U );			
 					DWORD V			= appRound( Set->V );
 					DWORD VRotated  = _rotl(V, 16);
@@ -4350,6 +4461,9 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 					GPolyC.R		= Set->R  + XStep*dRdX;
 					GPolyC.G		= Set->G  + XStep*dGdX;
 					GPolyC.B		= Set->B  + XStep*dBdX;
+					GPolyC.FogR		= (Set->FR + XStep*dFRdX) * FogScaleR;
+					GPolyC.FogG		= (Set->FG + XStep*dFGdX) * FogScaleG;
+					GPolyC.FogB		= (Set->FB + XStep*dFBdX) * FogScaleB;
 					DWORD U			= appRound( Set->U + XStep*dUdX );			
 					DWORD V			= appRound( Set->V + XStep*dVdX );
 					DWORD VRotated  = _rotl(V, 16);
@@ -4373,6 +4487,11 @@ void USoftwareRenderDevice::DrawGouraudPolygon(FSceneNode* Frame, FTextureInfo& 
 
 {
 	guard(USoftwareRenderDevice::DrawGouraudPolygon);
+
+	// Mesh fog rides on the same data URender already computes (FLightManager::Fog fills
+	// FTransSample::Fog per vertex), so it costs nothing to gather -- but interpolating and adding
+	// it is per-pixel work, hence its own switch separate from VolumetricLighting.
+	GMeshFog = VolumetricLighting && VolumetricLightingMeshes && SupportsFogMaps;
 
 	// Screen Y size not supported if bigger than our setup buffer size:
 	if( Viewport->SizeY > MaximumYScreenSize ) return;

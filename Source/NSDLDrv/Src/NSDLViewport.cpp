@@ -528,17 +528,10 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 			SDLTexFormat = SDL_PIXELFORMAT_ARGB8888;
 			ColorBytes   = SDL_BYTESPERPIXEL( SDLTexFormat );
 			Caps         = 0;
-			INT Needed   = NewX * NewY * ColorBytes;
-			if( SoftFB && SoftFBBytes < Needed )
-			{
-				appFree( SoftFB );
-				SoftFB = NULL;
-			}
-			if( !SoftFB )
-			{
-				SoftFB = (BYTE*)appMalloc( Needed, "ufrontSoftFB" );
-				SoftFBBytes = Needed;
-			}
+			// ufront 2.19f: deliberately NO allocation here. This runs inside `if( !hWnd )`, i.e. only at
+			// window creation, and from the ini resolution — which the adopt-drawable-size block below
+			// then discards. Sizing it here bought a buffer for a resolution we were about to stop using.
+			// Lock() sizes it instead, where SizeX/SizeY are both final and known to be about to be drawn.
 		}
 #else
 		else
@@ -681,9 +674,31 @@ UBOOL UNSDLViewport::Lock( FPlane FlashScale, FPlane FlashFog, FPlane ScreenClea
 	}
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
-	if( SoftFB )
+	if( !GLCtx )
 	{
 		// No SDL texture to lock on a worker — the engine draws straight into our framebuffer.
+		//
+		// ufront 2.19f: size it HERE, lazily and exactly. This is the only point where the buffer is
+		// about to be written and SizeX/SizeY are both final, so it cannot go stale: ResizeViewport
+		// adopts the real canvas size only at window creation, and the WINDOWEVENT_RESIZED path changes
+		// SizeX/SizeY without revisiting the creation block at all. Sizing at either of those sites left
+		// SoftDrv rasterising SizeX*SizeY*ColorBytes bytes into a buffer sized for a resolution the
+		// engine had already discarded — a heap overrun every frame, which is what crashed every
+		// viewport above ~4 MB (see docs/migration/steps/2.19f).
+		//
+		// != rather than <, so it SHRINKS as well as grows: this is the single largest allocation the
+		// software path makes (33 MB at 4K, 8 MB at 1080p), and a grow-only buffer would pin the
+		// high-water mark of a session's largest window for the lifetime of the viewport. Lazy because
+		// a device that never locks — the null renderer, and every GL device — must not pay for it at
+		// all. Both matter on a 64 MB target.
+		const INT Needed = SizeX * SizeY * ColorBytes;
+		if( SoftFBBytes != Needed )
+		{
+			if( SoftFB )
+				appFree( SoftFB );
+			SoftFB      = (BYTE*)appMalloc( Needed, "ufrontSoftFB" );
+			SoftFBBytes = Needed;
+		}
 		ScreenPointer = SoftFB;
 		Stride = SizeX;
 	}

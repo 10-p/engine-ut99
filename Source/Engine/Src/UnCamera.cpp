@@ -24,6 +24,7 @@ void URenderDevice::StaticConstructor()
 	guard(URenderDevice::StaticConstructor);
 
 	new(GetClass(),TEXT("VolumetricLighting"),RF_Public)UBoolProperty(CPP_PROPERTY(VolumetricLighting), TEXT("Client"), CPF_Config );
+	new(GetClass(),TEXT("VolumetricLightingMeshes"),RF_Public)UBoolProperty(CPP_PROPERTY(VolumetricLightingMeshes), TEXT("Client"), CPF_Config );
 	new(GetClass(),TEXT("ShinySurfaces"),     RF_Public)UBoolProperty(CPP_PROPERTY(ShinySurfaces     ), TEXT("Client"), CPF_Config );
 	new(GetClass(),TEXT("Coronas"),           RF_Public)UBoolProperty(CPP_PROPERTY(Coronas           ), TEXT("Client"), CPF_Config );
 	new(GetClass(),TEXT("HighDetailActors"),  RF_Public)UBoolProperty(CPP_PROPERTY(HighDetailActors  ), TEXT("Client"), CPF_Config );

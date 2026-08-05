@@ -169,6 +169,27 @@ struct FTexSetup
 		Tex.DH  = ((U << Mip->HUShift) & Mip->RMask.DH) + ( VRotated & Mip->Mask.DH);				
 	}
 
+	//
+	// Filtered variant: keep U and V as plain 16.16, unpacked.
+	//
+	// The hybrid packing above folds both into Tex.DH ([U int | U frac | V int]) so one register
+	// addresses the texel -- but it masks V's fractional bits away entirely (Mask.DH is VSize-1).
+	// Neither filtering mode can work in that domain: a sub-texel V dither added to Tex.DH is a
+	// no-op, and bilinear needs V's fraction and the V+1 neighbour. So the filtered passes get
+	// their own representation. The setup loop already has plain U and V at every call site.
+	//
+	// CoSetup is unused by the Pentium path (only the MMX walker sets it), so it carries the mip
+	// here -- that lets ONE filtered pass serve every (mip, UBits) combination instead of the 144
+	// specialisations the point path generates for compile-time shifts.
+	//
+	void InitTexPentiumFiltered( INT InX, FMipSetup* Mip, DWORD U, DWORD V )
+	{
+		X       = InX;
+		CoSetup = Mip;
+		Tex.DH  = U;
+		Tex.DL  = V;
+	}
+
 	void InitLightPentium( DWORD U, DWORD V )
 	{
 		DWORD VRotated = _rotl(V, LightMip.LVShift);
@@ -287,6 +308,12 @@ static FMMX         MMXFogDelta;
 static FMMX         MMXCoorDelta;
 static FMMX         MMX14Bits;
 static FMMX         KnightA0,KnightA1, KnightB0,KnightB1;
+
+enum { TEXTUREFILTER_POINT=0, TEXTUREFILTER_DITHER=1, TEXTUREFILTER_BILINEAR=2 };
+static INT   TexFilterMode;        // file-scope mirror of the class member, per frame
+static INT   KnightRow;            // (Y&1)<<1, set per scanline by the render loop
+static INT   KnightU[4], KnightV[4];   // 16.16 offsets, mip-scaled, index (X&1)|((Y&1)<<1)
+
 static DWORD        NextXStore;
 static DWORD        NX;
 static DWORD        PX;
@@ -342,6 +369,37 @@ static FMMX         Photon[ MaximumXScreenSize * 2 ];  //!!crashes at resolution
 
 // NonMMX stuff.
 static BYTE         Shade[ LIGHTSHADES * 256 ];
+
+//
+// Fog maps for the portable (non-MMX) path.
+//
+// The MMX kernels carried fog interleaved into Photon[] (light at [ebp+0], fog at [ebp+8],
+// ebp += 16 -- which is why Photon[] is sized *2).  The C path keeps Photon[] as it was and puts
+// fog in its own array, so the non-fog case stays byte-identical and pays nothing.
+//
+// FogPhoton holds a fog *byte* per channel, 0..255, packed in the same byte lanes the light uses
+// (see the FMMX union: SB1,SG1,SR1).  Deliberately NOT reduced to the light's 7-bit range: the
+// original's attenuation is (127 - fogbyte)/127, so the fog map's full scale is byte 127 and
+// halving it would throw away half the resolution and double the apparent density.
+// It is colour-depth independent -- FogShade[] converts to display units and is rebuilt per depth
+// alongside Shade[].
+static DWORD        FogPhoton[ MaximumXScreenSize ];
+static BYTE         FogShade[ 3 * 256 ];
+static BYTE         FogShadeMod[ 3 * 256 ];
+static DWORD        FogMaxB, FogMaxG, FogMaxR;   // per-channel ceiling for the current depth
+static DWORD        FogModMaxR;                  // ... red again, in the modulated field domain
+
+#define FOGSHADE_G  ( 0 )
+#define FOGSHADE_R  ( 256 )
+#define FOGSHADE_B  ( 512 )
+
+#define FOG_B(X)  ( FogPhoton[X]        & 0xff )
+#define FOG_G(X)  ((FogPhoton[X] >>  8) & 0xff )
+#define FOG_R(X)  ((FogPhoton[X] >> 16) & 0xff )
+
+// Fog byte at which the surface is fully fogged (MMX14Bits 0x3F80 == 127<<7 vs a fog sample of
+// fogbyte<<7). Beyond this the light is simply extinguished.
+#define FOGFULLSCALE 127
 
 
 /*-----------------------------------------------------------------------------
@@ -421,6 +479,14 @@ void USoftwareRenderDevice::InitColorTables( FLOAT Brightness, INT ColorBytes, D
 	//         - 32-bit doesn't need dither, so could easily be extended to 84 shades instead of 64.
 	//
 	
+	// NOT doubled to compensate for the 7-bit light index, though it mechanically "should" be.
+	// LightPentium masks its result to 0x7f7f7f, so Shade[]'s Light axis is 0..127 against the
+	// 0..255 the MMX path feeds its own multiply, and tools/asmport/oracle measures the Pentium
+	// path at exactly 0.5x the MMX slope across the whole texel range. Doubling Scale does match
+	// the MMX kernel -- and makes the picture measurably WORSE: PSNR against the OpenGL reference
+	// falls 25.2 -> 15.5 dB on test-fog and 15.4 -> 13.7 dB on test-detail-tex, because the MMX
+	// path saturates hard and moving toward it moves away from what the scene should look like.
+	// Left as-is deliberately; see the oracle's second report if revisiting.
 	FLOAT Scale = (0.50f + Brightness) * 8.0 / (128.0 * 128.0);
 
 	DWORD UnlitValue = Clamp( appRound( (FLOAT)UNLITLEVEL * (0.50f + Brightness) ),0,127);
@@ -479,6 +545,85 @@ void USoftwareRenderDevice::InitColorTables( FLOAT Brightness, INT ColorBytes, D
 		ScaleB += D_ScaleB;
 
 	}
+
+	//
+	// Fog map contribution.
+	//
+	// Calibrated against the original MMX kernel rather than guessed -- tools/asmport/oracle runs
+	// SampleFogLight and MMX32FogRender8 and reports what they actually produce. Two results:
+	//
+	//   * the additive term is LINEAR in the fog byte:  fogAdd = (fogbyte * FlashCompress) >> 13
+	//     (the fog sample is fogbyte<<7, pmulhw drops 16, psraw FinalShift drops 4 more)
+	//     reaching ~225 of 255 at full density -- not 255.
+	//   * full density is fog byte 127, not 255 (MMX14Bits is 0x3F80 == 127<<7 and the bilinear
+	//     sample is fogbyte<<7), which is why FogAttenuate divides by FOGFULLSCALE.
+	//
+	// FlashCompress is the same quantity Shade[] already folds in as D_Scale*, so brightness and
+	// screen flash track automatically. The FlashFog bias is deliberately NOT included: Shade[]
+	// bakes it into every entry, and adding it again would tint the screen the moment a fog zone
+	// came into view.
+	//
+	DOUBLE FogScale = (0.50f + Brightness) * (DOUBLE)(0x3FFF) / (DOUBLE)(0x80);
+	INT FogCompressR = Clamp( appRound( FogScale * FlashScale.X ), 0, 0x7FFF );
+	INT FogCompressG = Clamp( appRound( FogScale * FlashScale.Y ), 0, 0x7FFF );
+	INT FogCompressB = Clamp( appRound( FogScale * FlashScale.Z ), 0, 0x7FFF );
+
+	INT RedFieldShift;
+	if( ColorBytes == 4 )
+	{
+		FogMaxR = FogMaxG = FogMaxB = 0xff;
+		RedFieldShift = 0;
+	}
+	else if( Caps & CC_RGB565 )
+	{
+		FogMaxR = 0x1f << 3;   // Shade[] stores 565 red pre-shifted
+		FogMaxG = 0x3f;
+		FogMaxB = 0x1f;
+		RedFieldShift = 3;
+	}
+	else
+	{
+		FogMaxR = 0x1f << 2;   // ... and 555 red likewise
+		FogMaxG = 0x1f;
+		FogMaxB = 0x1f;
+		RedFieldShift = 2;
+	}
+
+	for( int Fog=0; Fog<256; Fog++ )
+	{
+		// 8-bit display value the MMX path would emit for this density...
+		INT V8R = Min( (Fog * FogCompressR) >> 13, 255 );
+		INT V8G = Min( (Fog * FogCompressG) >> 13, 255 );
+		INT V8B = Min( (Fog * FogCompressB) >> 13, 255 );
+
+		// ...requantized the same way Shade[] was, so the two can simply be added.
+		if( ColorBytes == 4 )
+		{
+			FogShade[FOGSHADE_R + Fog] = V8R;
+			FogShade[FOGSHADE_G + Fog] = V8G;
+			FogShade[FOGSHADE_B + Fog] = V8B;
+		}
+		else if( Caps & CC_RGB565 )
+		{
+			FogShade[FOGSHADE_R + Fog] = (V8R >> 3) << 3;
+			FogShade[FOGSHADE_G + Fog] = (V8G >> 2);
+			FogShade[FOGSHADE_B + Fog] = (V8B >> 3);
+		}
+		else
+		{
+			FogShade[FOGSHADE_R + Fog] = (V8R >> 3) << 2;
+			FogShade[FOGSHADE_G + Fog] = (V8G >> 3);
+			FogShade[FOGSHADE_B + Fog] = (V8B >> 3);
+		}
+
+		// The modulated merges clamp each channel *before* packing it, so their red is the bare
+		// field while Shade's red is already shifted up. Only red differs; G and B are copies.
+		FogShadeMod[FOGSHADE_R + Fog] = FogShade[FOGSHADE_R + Fog] >> RedFieldShift;
+		FogShadeMod[FOGSHADE_G + Fog] = FogShade[FOGSHADE_G + Fog];
+		FogShadeMod[FOGSHADE_B + Fog] = FogShade[FOGSHADE_B + Fog];
+	}
+	FogModMaxR = FogMaxR >> RedFieldShift;
+
 	unguardSlow;
 }
 
@@ -505,7 +650,7 @@ static void SetupOverSampling()
 }
 
 
-static inline void InitBilinearKernel(INT UBits)
+static inline void InitBilinearKernel(INT UBits, INT iMip)
 {
 	//
 	// 'Bilinear dither' approximation trick:  activate according to  !PF_NoSmooth
@@ -572,6 +717,19 @@ static inline void InitBilinearKernel(INT UBits)
 	KnightB0.IL		= C_V << VDitherShift;
 	KnightB1.IL		= D_V << VDitherShift;
 
+	//
+	// The same offsets in the filtered path's plain 16.16 domain.
+	//
+	// The four above are in the MMX coordinate domain, which the Pentium hybrid packing cannot
+	// express (it masks V's fraction away). In 16.16 texel units one texel is 1<<16, so a step of
+	// 1/16 texel is 1<<12; iMip scales it so the dither stays a constant fraction of a texel as
+	// mips change. Indexed (X&1) | ((Y&1)<<1) over {A0,A1,B0,B1}, matching the original's
+	// `test esi,1` within a scanline and its A/B kernel choice between them.
+	//
+	KnightU[0] = A_U << (12 + iMip);  KnightV[0] = A_V << (12 + iMip);
+	KnightU[1] = B_U << (12 + iMip);  KnightV[1] = B_V << (12 + iMip);
+	KnightU[2] = C_U << (12 + iMip);  KnightV[2] = C_V << (12 + iMip);
+	KnightU[3] = D_U << (12 + iMip);  KnightV[3] = D_V << (12 + iMip);
 }
 
 
@@ -747,7 +905,12 @@ static inline DWORD LightPentium( FMMX Lit )
 			[	((D.DH                 ) >> (32-LightUBits))
 			+	((D.DH&LightMip.Mask.DL) << (   LightUBits)) ];
 
-	return  (((L1&0xfefefe)+(L2&0xfefefe))/4) & 0x7f7f7f;
+	// The +0x010101 is a round-to-nearest bias on each tap pair. The assembly below does it
+	// (`lea eax,[eax+esp+0x010101]`); this C fallback dropped it, so every non-x86 build --
+	// web, ARM, native Linux -- has been rendering every lit pixel up to 1 LSB per channel dark
+	// since the portable path was written. Verified with tools/asmport: adding it makes the two
+	// bit-identical over 653 cases, where without it they differ on every single one.
+	return  ((((L1+0x010101)&0xfefefe)+((L2+0x010101)&0xfefefe))/4) & 0x7f7f7f;
 
 #else
 	__asm
@@ -936,6 +1099,170 @@ static FTexSetup* LightPassPentium( FTexSetup* Setup )
 
 
 
+//
+// 4X oversampled fog pass.
+//
+// Identical sampling to LightPentium, only the base pointer differs.  That is not a coincidence:
+// FLightManager builds the fog map and the light map from the same Index->UClamp/VClamp/Pan/UScale
+// (UnLight.cpp SetupVolumetrics vs the LightMip setup below it), so they always share dimensions
+// and pan and one coordinate walk serves both.  The MMX kernel exploited the same fact -- its
+// SampleFogLight is literally the bilinear block run twice with LightMip.FogData swapped in.
+//
+static inline DWORD FogPentium( FMMX Lit )
+{
+	FMMX A,B,C,D;
+	A.Q = Lit.Q;
+	B.Q = A.Q + LightOS[1];
+	C.Q = B.Q + LightOS[2];
+	D.Q = C.Q + LightOS[3];
+
+	DWORD T0
+	=	LightMip.FogData.PtrDWORD
+			[	((A.DH                 ) >> (32-LightUBits))
+			+	((A.DH&LightMip.Mask.DL) << (   LightUBits)) ];
+	DWORD T1
+	=	LightMip.FogData.PtrDWORD
+			[	((B.DH                 ) >> (32-LightUBits))
+			+	((B.DH&LightMip.Mask.DL) << (   LightUBits)) ];
+	DWORD T2
+	=	LightMip.FogData.PtrDWORD
+			[	((C.DH                 ) >> (32-LightUBits))
+			+	((C.DH&LightMip.Mask.DL) << (   LightUBits)) ];
+	DWORD T3
+	=	LightMip.FogData.PtrDWORD
+			[	((D.DH                 ) >> (32-LightUBits))
+			+	((D.DH&LightMip.Mask.DL) << (   LightUBits)) ];
+
+	// Average the 4 taps per channel, keeping the FULL byte range. LightPentium masks its result
+	// down to 7 bits because Shade[]'s light axis is 0..127; fog has no such axis and its full
+	// scale is byte 127 (see FOGFULLSCALE), so halving it here would double the apparent density.
+	DWORD B0 = (( T0      & 0xff) + ( T1      & 0xff) + ( T2      & 0xff) + ( T3      & 0xff)) >> 2;
+	DWORD G0 = (((T0>> 8) & 0xff) + ((T1>> 8) & 0xff) + ((T2>> 8) & 0xff) + ((T3>> 8) & 0xff)) >> 2;
+	DWORD R0 = (((T0>>16) & 0xff) + ((T1>>16) & 0xff) + ((T2>>16) & 0xff) + ((T3>>16) & 0xff)) >> 2;
+
+	return B0 + (G0<<8) + (R0<<16);
+}
+
+
+//
+// Fog is an alpha blend, not just an additive haze: SampleFogLight multiplied the light by
+// (MMX14Bits - fog) before storing it and emitted the fog colour separately.  Skipping the
+// attenuation would leave bright surfaces punching through dense fog.
+//
+// MMX14Bits is 0x3F80 == 127<<7 and the bilinear fog sample is fogbyte<<7, so the factor is
+// (127 - fogbyte)/127 -- full density is fog byte 127, confirmed against the original kernel by
+// tools/asmport/oracle (light 28704 -> ~0 as the fog byte goes 0 -> 127).
+//
+static inline DWORD FogAttenuate( DWORD Light, DWORD Fog )
+{
+	INT FB = FOGFULLSCALE - (INT)( Fog      & 0xff); if( FB < 0 ) FB = 0;
+	INT FG = FOGFULLSCALE - (INT)((Fog>> 8) & 0xff); if( FG < 0 ) FG = 0;
+	INT FR = FOGFULLSCALE - (INT)((Fog>>16) & 0xff); if( FR < 0 ) FR = 0;
+
+	DWORD B = ( ( Light      & 0xff) * FB ) / FOGFULLSCALE;
+	DWORD G = ( ((Light>> 8) & 0xff) * FG ) / FOGFULLSCALE;
+	DWORD R = ( ((Light>>16) & 0xff) * FR ) / FOGFULLSCALE;
+	return B + (G<<8) + (R<<16);
+}
+
+
+//
+// Halve the sum of two fog samples without letting a channel carry into its neighbour.
+//
+static inline DWORD FogAvg( DWORD A, DWORD B )
+{
+	return ((A & 0xfefefe) + (B & 0xfefefe)) >> 1;
+}
+
+
+//
+// Lighting pass with volumetric fog.
+//
+// Structurally identical to LightPassPentium above -- same walker, same 8- and 4-pixel
+// subdivision, same smearing -- carrying fog alongside the light.  Attenuation happens at sample
+// time (before the smear), matching the MMX path, which stored already-attenuated samples and let
+// the render kernel interpolate between them.
+//
+static FTexSetup* LightPassPentiumFog( FTexSetup* Setup )
+{
+	FMMX Lit        = Setup->Lit;
+	DWORD FogRGB    = FogPentium( Lit );
+	DWORD RGB       = FogAttenuate( LightPentium( Lit ), FogRGB );
+	INT X           = Setup->X;
+
+	while( (++Setup)->X )
+	{
+		FMMX LitD = Setup->Lit;
+		INT  NX   = X + Setup->X;
+
+		while( X+8 <= NX )
+		{
+			Lit.Q                                += LitD.Q;
+			Photon[X+0].DL = Photon[X+1].DL       = RGB;
+			FogPhoton[X+0] = FogPhoton[X+1]       = FogRGB;
+
+			DWORD NextFog                         = FogPentium( Lit );
+			DWORD NextRGB                         = FogAttenuate( LightPentium( Lit ), NextFog );
+
+			DWORD D12                             = ((RGB + NextRGB) & 0xfefefe) >> 1;
+			Photon[X+4].DL = Photon[X+5].DL       = D12;
+			Photon[X+2].DL = Photon[X+3].DL       = ((D12 +     RGB) & 0xfefefe) >> 1;
+			Photon[X+6].DL = Photon[X+7].DL       = ((D12 + NextRGB) & 0xfefefe) >> 1;
+
+			// Carry-safe halving: FogPhoton carries full 0..255 bytes, so the operands must be
+			// masked BEFORE the add. The light lines above can use the cheaper form only because
+			// LightPentium already clamped them to 7 bits.
+			DWORD F12                             = FogAvg( FogRGB, NextFog );
+			FogPhoton[X+4] = FogPhoton[X+5]       = F12;
+			FogPhoton[X+2] = FogPhoton[X+3]       = FogAvg( F12, FogRGB );
+			FogPhoton[X+6] = FogPhoton[X+7]       = FogAvg( F12, NextFog );
+
+			RGB                                   = NextRGB;
+			FogRGB                                = NextFog;
+			X += 8;
+		}
+
+		if (Setup->X) // is this NOT end of a span ?
+		{
+			if( X < NX )
+			{
+				LitD.SQ >>= 1;
+				do
+				{
+					Lit.Q						            += LitD.Q;
+					Photon[X+0].DL = Photon[X+1].DL          = RGB;
+					FogPhoton[X+0] = FogPhoton[X+1]          = FogRGB;
+
+					DWORD NextFog                            = FogPentium( Lit );
+					DWORD NextRGB                            = FogAttenuate( LightPentium( Lit ), NextFog );
+
+					Photon[X+2].DL = Photon[X+3].DL          = ((RGB    + NextRGB) & 0xfefefe) >> 1;
+					FogPhoton[X+2] = FogPhoton[X+3]          = FogAvg( FogRGB, NextFog );
+
+					RGB								         = NextRGB;
+					FogRGB							         = NextFog;
+					X += 4;
+				} while( X < NX );
+			}
+		}
+		else // end of a span - smear out our light, don't do another sampling.
+		{
+			if( X < NX )
+			{
+				do
+				{
+					Photon[X+0].DL = Photon[X+1].DL = Photon[X+2].DL = Photon[X+3].DL = RGB;
+					FogPhoton[X+0] = FogPhoton[X+1] = FogPhoton[X+2] = FogPhoton[X+3] = FogRGB;
+					X += 4;
+				} while( X < NX );
+			}
+		}
+
+	}
+	return Setup;
+}
+
+
 /*-----------------------------------------------------------------------------
 	Texture mapping pass.
 -----------------------------------------------------------------------------*/
@@ -1044,6 +1371,127 @@ static FTexSetup* LightPassPentium( FTexSetup* Setup )
 		return Setup; \
 	}
 #endif
+
+
+/*-----------------------------------------------------------------------------
+	Filtered texture passes.
+-----------------------------------------------------------------------------*/
+//
+// Two modes, both writing the same Photon[X].DH the point pass does -- so every merge pass and
+// all three colour depths keep working unchanged. Filtering is orthogonal to depth.
+//
+//   TEXTUREFILTER_DITHER   the original's 2x2 knight's-move coordinate dither. UE1's "texture
+//                          smoothing" was never bilinear filtering: it jitters the sample position
+//                          per pixel on a 2x2 screen grid and fetches ONE texel, which costs an
+//                          add and breaks up magnified texels for free. Offsets and the
+//                          (X&1)|((Y&1)<<1) selection are the originals, recovered from
+//                          MMX32Render8A/B (see tools/asmport/NOTES.md).
+//   TEXTUREFILTER_BILINEAR true bilinear: 4 taps and a blend. Not in the original at any bit
+//                          depth -- the 1998 kernels never did it -- but it is what the texture
+//                          actually wants when magnified, and it is cheap enough in C.
+//
+
+//
+// Blend four texels. Colours here are Colors[] entries: three 6-bit channels in separate bytes
+// (MakeQuadPalette shifts each palette byte right by 2), so per-channel arithmetic in INT cannot
+// overflow and lands back exactly in the domain Shade[] indexes.
+//
+static inline DWORD BlendQuad( DWORD C00, DWORD C10, DWORD C01, DWORD C11, INT FU, INT FV )
+{
+	DWORD Out = 0;
+	for( INT Shift=0; Shift<24; Shift+=8 )
+	{
+		INT A = (C00>>Shift)&0xff, B = (C10>>Shift)&0xff;
+		INT C = (C01>>Shift)&0xff, D = (C11>>Shift)&0xff;
+		INT Top = A + (((B-A)*FU) >> 8);
+		INT Bot = C + (((D-C)*FU) >> 8);
+		Out |= (DWORD)((Top + (((Bot-Top)*FV) >> 8)) & 0xff) << Shift;
+	}
+	return Out;
+}
+
+static FTexSetup* TexturePassFiltered( FTexSetup* Setup )
+{
+	guardSlow(TexturePassFiltered);
+
+	FMipSetup* Mip = (FMipSetup*)Setup->CoSetup;
+
+	// LVShift is FixedBits-iMip and HUShift is FixedBits-UBits-iMip, so the mip level and UBits
+	// fall straight out without storing either.
+	const INT   Shift = 32 - Mip->LVShift;        // 16 + iMip: U/V >> Shift == integer texel
+	const INT   UBits = Mip->LVShift - Mip->HUShift;
+	// Derive the U wrap mask from UBits, NOT from Mip->USize: that field is declared in FMipSetup
+	// but never assigned by any of the three setup branches, so it is a zero-initialised static and
+	// USize-1 came out 0xFFFFFFFF -- i.e. no wrap at all. U then ran unbounded past the end of the
+	// texture into whatever followed it in memory, which is both an out-of-bounds read and, where
+	// it happened to land on other data, the block noise this pass showed on some surfaces.
+	// (LightMip.USize IS assigned and is a different struct; only FMipSetup::USize is dead.)
+	const DWORD UMask = (1u << UBits) - 1;
+	const DWORD VMask = Mip->Mask.DH;             // VSize-1
+	BYTE* const Data  = Mip->Data.PtrBYTE;
+
+	DWORD U = Setup->Tex.DH;
+	DWORD V = Setup->Tex.DL;
+	INT   X = Setup->X;
+
+	while( (++Setup)->X )
+	{
+		INT   NX = X + Setup->X;
+		DWORD DU = Setup->Tex.DH;
+		DWORD DV = Setup->Tex.DL;
+
+		if( TexFilterMode == TEXTUREFILTER_BILINEAR )
+		{
+			do
+			{
+				DWORD U0 = (U>>Shift)&UMask, V0 = (V>>Shift)&VMask;
+				DWORD U1 = (U0+1)&UMask,     V1 = (V0+1)&VMask;
+				INT   FU = (U>>(Shift-8))&0xff;
+				INT   FV = (V>>(Shift-8))&0xff;
+
+				DWORD I00 = Data[U0 + (V0<<UBits)], I10 = Data[U1 + (V0<<UBits)];
+				DWORD I01 = Data[U0 + (V1<<UBits)], I11 = Data[U1 + (V1<<UBits)];
+
+				// Colors[0] is the mask sentinel (0xFFFFFFFF) for masked/translucent surfaces.
+				// Blending it would smear the sentinel into neighbouring pixels and punch holes,
+				// so masking stays nearest-neighbour: if the nearest texel is transparent the
+				// pixel is transparent, and transparent neighbours contribute the nearest texel's
+				// colour instead of the sentinel.
+				DWORD IN = (FU<128) ? ((FV<128)?I00:I01) : ((FV<128)?I10:I11);
+				if( IN == 0 )
+				{
+					Photon[X].DH = Colors[0];
+				}
+				else
+				{
+					if( !I00 ) I00 = IN;
+					if( !I10 ) I10 = IN;
+					if( !I01 ) I01 = IN;
+					if( !I11 ) I11 = IN;
+					Photon[X].DH = BlendQuad( Colors[I00], Colors[I10], Colors[I01], Colors[I11], FU, FV );
+				}
+
+				U += DU; V += DV;      // two 32-bit adds: a 64-bit Tex.Q += would carry V into U
+			} while( ++X < NX );
+		}
+		else
+		{
+			do
+			{
+				INT   K  = (X&1) | KnightRow;
+				DWORD KU = U + (DWORD)KnightU[K];
+				DWORD KV = V + (DWORD)KnightV[K];
+				Photon[X].DH = Colors[ Data[ ((KU>>Shift)&UMask) + (((KV>>Shift)&VMask)<<UBits) ] ];
+				U += DU; V += DV;
+			} while( ++X < NX );
+		}
+		X = NX;
+	}
+	return Setup;
+
+	unguardSlow;
+}
+
 
 /* Stupid Compiler Tricks 101 */
 #define TEXTUREPASS_MIP(imip) \
@@ -2136,6 +2584,249 @@ static void MergePass32( INT Y, INT X, INT InnerX )
 
 static void MergeNone( INT Y, INT X, INT InnerX )
 {}
+
+
+/*-----------------------------------------------------------------------------
+	Blitting pass, volumetric fog variants.
+-----------------------------------------------------------------------------*/
+//
+// Fog twins of the merge passes above.  The MMX render kernels added the per-pixel fog colour to
+// the final value for *every* blend mode -- including modulated, where the add lands on the
+// modulation result rather than on the multiplier (verified in MMX32FogModulatedRender8; see
+// tools/asmport/NOTES.md).  These reproduce that.
+//
+// The multiplicative half of fog is already done by then: LightPassPentiumFog attenuated the light
+// by (127 - fog) before it ever reached Photon[].  So all that is left here is the additive term
+// and a clamp.
+//
+// The non-fog functions above are left untouched on purpose -- fog costs nothing when a surface
+// has no fog map, and the common path stays exactly as it was.
+//
+
+static inline DWORD FogAdd( DWORD V, DWORD F, DWORD Max )
+{
+	V += F;
+	return V < Max ? V : Max;
+}
+
+// Additive domain: matches Shade[]'s quantization, red already shifted up for 15/16-bit.
+#define FOGGED_B(X)  FogAdd( Shade[SHADE_B + Photon[X].SB2 + Photon[X].SB1*256], FogShade[FOGSHADE_B + FOG_B(X)], FogMaxB )
+#define FOGGED_G(X)  FogAdd( Shade[SHADE_G + Photon[X].SG2 + Photon[X].SG1*256], FogShade[FOGSHADE_G + FOG_G(X)], FogMaxG )
+#define FOGGED_R(X)  FogAdd( Shade[SHADE_R + Photon[X].SR2 + Photon[X].SR1*256], FogShade[FOGSHADE_R + FOG_R(X)], FogMaxR )
+
+// Field domain, for the modulated merges, which clamp each channel before packing it.
+#define FOGMOD_B(X,V)  FogAdd( (V), FogShadeMod[FOGSHADE_B + FOG_B(X)], FogMaxB )
+#define FOGMOD_G(X,V)  FogAdd( (V), FogShadeMod[FOGSHADE_G + FOG_G(X)], FogMaxG )
+#define FOGMOD_R(X,V)  FogAdd( (V), FogShadeMod[FOGSHADE_R + FOG_R(X)], FogModMaxR )
+
+
+static void MergePass32Fog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		ScreenDest.PtrBYTE[X*4+0] = FOGGED_B(X);
+		ScreenDest.PtrBYTE[X*4+1] = FOGGED_G(X);
+		ScreenDest.PtrBYTE[X*4+2] = FOGGED_R(X);
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass32MaskedFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		if ( Photon[X+0].SB2 != 255)   // masked ??
+		{
+			ScreenDest.PtrBYTE[X*4+0] = FOGGED_B(X);
+			ScreenDest.PtrBYTE[X*4+1] = FOGGED_G(X);
+			ScreenDest.PtrBYTE[X*4+2] = FOGGED_R(X);
+		}
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass32StippledFog( INT Y, INT X, INT InnerX )
+{
+	X += (Y ^ X) & 1;
+
+	if (X<InnerX)
+	{
+		do
+		{
+			if ( Photon[X+0].SB2 != 255)   // masked ??
+			{
+				ScreenDest.PtrBYTE[X*4+0] = FOGGED_B(X);
+				ScreenDest.PtrBYTE[X*4+1] = FOGGED_G(X);
+				ScreenDest.PtrBYTE[X*4+2] = FOGGED_R(X);
+			}
+		}
+		while( (X +=2) < InnerX );
+	}
+}
+
+
+static void MergePass32TranslucentFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		if ( Photon[X+0].SB2 != 255)   // masked ??
+		{
+			DWORD ScreenDWord = ScreenDest.PtrDWORD[X];
+			DWORD ColorDWord  = ( (DWORD)FOGGED_B(X)       ) +
+								( (DWORD)FOGGED_G(X) <<  8 ) +
+								( (DWORD)FOGGED_R(X) << 16 );
+
+			DWORD ColorSum = ScreenDWord + ColorDWord;
+			DWORD ColorCarries = ( ( ScreenDWord ^ ColorDWord ) ^ ColorSum ) & 0x1010100;
+			ScreenDest.PtrDWORD[X] =  ColorSum | ( ColorCarries - (ColorCarries >> 8) );
+		}
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass32ModulatedFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		ScreenDest.PtrBYTE[X*4+0] = FOGMOD_B( X, Min( ScreenDest.PtrBYTE[X*4+0] * Shade[SHADE_B + Photon[X+0].SB2 + Photon[X+0].SB1*256] >> 5, 255) );
+		ScreenDest.PtrBYTE[X*4+1] = FOGMOD_G( X, Min( ScreenDest.PtrBYTE[X*4+1] * Shade[SHADE_G + Photon[X+0].SG2 + Photon[X+0].SG1*256] >> 5, 255) );
+		ScreenDest.PtrBYTE[X*4+2] = FOGMOD_R( X, Min( ScreenDest.PtrBYTE[X*4+2] * Shade[SHADE_R + Photon[X+0].SR2 + Photon[X+0].SR1*256] >> 5, 255) );
+	}
+	while( ++X < InnerX );
+}
+
+
+// 15- and 16-bit share the packing here: Shade[] already holds each channel in its final field
+// position (green pre-scaled, red pre-shifted), so the same code serves both.
+static void MergePass1516Fog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		ScreenDest.PtrWORD[X+0] =
+		( FOGGED_B(X)       ) +
+		( FOGGED_G(X) <<  5 ) +
+		( FOGGED_R(X) <<  8 ) ;
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass1516MaskedFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		if (Photon[X+0].SB2 != 255) // masked ??
+		{
+			ScreenDest.PtrWORD[X+0] =
+			( FOGGED_B(X)       ) +
+			( FOGGED_G(X) *  32 ) +
+			( FOGGED_R(X) * 256 ) ;
+		}
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass1516StippledFog( INT Y, INT X, INT InnerX )
+{
+	X += (Y ^ X) & 1;
+
+	if (X<InnerX)
+	{
+		do
+		{
+			if (Photon[X+0].SB2 != 255) // masked ??
+			{
+				ScreenDest.PtrWORD[X+0] =
+				( FOGGED_B(X)      ) +
+				( FOGGED_G(X) << 5 ) +
+				( FOGGED_R(X) << 8 ) ;
+			}
+		}
+		while( (X +=2) < InnerX );
+	}
+}
+
+
+static void MergePass15TranslucentFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		if (Photon[X+0].SB2 != 255) // masked ??
+		{
+			DWORD DestPix =
+			( FOGGED_B(X)       ) +
+			( FOGGED_G(X) *  32 ) +
+			( FOGGED_R(X) * 256 ) ;
+
+			// Add 16-bit to 16-bit with saturation...
+			_WORD ScreenPix = ScreenDest.PtrWORD[X+0];
+			DWORD SumAdd = DestPix + ScreenPix;   // Sum with carries
+			DWORD Mask = ((DestPix ^ ScreenPix) ^ SumAdd) & 0x08420; // Diff carryless sums with normal sum
+				  SumAdd |=  Mask - (Mask >> 5);   // Expand overflow carries
+
+			ScreenDest.PtrWORD[X+0] = (_WORD) SumAdd;
+		}
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass16TranslucentFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		if (Photon[X+0].SB2 != 255) // masked ??
+		{
+			DWORD DestPix =
+			( FOGGED_B(X)       ) +
+			( FOGGED_G(X) *  32 ) +
+			( FOGGED_R(X) * 256 ) ;
+
+			// Add 16-bit to 16-bit with saturation...
+			_WORD ScreenPix = ScreenDest.PtrWORD[X+0];
+			DWORD SumAdd = DestPix + ScreenPix;   // Sum with carries
+			DWORD Mask = ((DestPix ^ ScreenPix) ^ SumAdd) & 0x10820; // Diff carryless sums with normal sum
+				  SumAdd |=  Mask - (Mask >> 5);   // Expand overflow carries
+
+			ScreenDest.PtrWORD[X+0] = (_WORD) SumAdd;
+		}
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass15ModulatedFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		DWORD ScreenPix = ScreenDest.PtrWORD[X+0];
+
+		ScreenDest.PtrWORD[X] =
+		( FOGMOD_B( X, Min ( ( Shade[SHADE_B + Photon[X+0].SB2 + Photon[X+0].SB1*256] * (ScreenPix & 0x001f) ) >> ( 0+5),    (DWORD) 31) )       )+
+		( FOGMOD_G( X, Min ( ( Shade[SHADE_G + Photon[X+0].SG2 + Photon[X+0].SG1*256] * (ScreenPix & 0x03E0) ) >> ( 5+5),    (DWORD) 31) ) <<  5 )+
+		( FOGMOD_R( X, Min ( ( Shade[SHADE_R + Photon[X+0].SR2 + Photon[X+0].SR1*256] * (ScreenPix & 0x7C00) ) >> (10+5+2),  (DWORD) 31) ) << 10 );
+	}
+	while( ++X < InnerX );
+}
+
+
+static void MergePass16ModulatedFog( INT Y, INT X, INT InnerX )
+{
+	do
+	{
+		DWORD ScreenPix = ScreenDest.PtrWORD[X+0];
+
+		ScreenDest.PtrWORD[X] =
+		( FOGMOD_B( X, Min ( ( Shade[SHADE_B + Photon[X+0].SB2 + Photon[X+0].SB1*256] * (ScreenPix & 0x001f) ) >> ( 0+5),    (DWORD) 31) )       )+
+		( FOGMOD_G( X, Min ( ( Shade[SHADE_G + Photon[X+0].SG2 + Photon[X+0].SG1*256] * (ScreenPix & 0x07E0) ) >> ( 5+5),    (DWORD) 63) ) <<  5 )+
+		( FOGMOD_R( X, Min ( ( Shade[SHADE_R + Photon[X+0].SR2 + Photon[X+0].SR1*256] * (ScreenPix & 0xF800) ) >> (11+5+2),  (DWORD) 31) ) << 11 );
+	}
+	while( ++X < InnerX );
+}
 
 
 
@@ -20469,6 +21160,12 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 
 			TextureSmooth = ( (LowResTextureSmooth && (Frame->X<=400)) ||  (HighResTextureSmooth && (Frame->X>400)) );
 
+			// Smoothing stays the on/off gate it always was; BilinearFiltering only picks which of
+			// the two filtered modes to use, so there is no way to ask for "filtering on, but point".
+			TexFilterMode = TextureSmooth
+								? ( BilinearFiltering ? TEXTUREFILTER_BILINEAR : TEXTUREFILTER_DITHER )
+								: TEXTUREFILTER_POINT;
+
 			if
 			(	Viewport->GetOuterUClient()->Brightness != SavedBrightness
 			||	Viewport->ColorBytes	     != SavedColorBytes
@@ -20584,7 +21281,35 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 				if	( Viewport->ColorBytes==2 )	MergePass = MergePass1516;
 				else if	( Viewport->ColorBytes==4 )	MergePass = MergePass32;
 			}
-				
+
+			//
+			// Volumetric fog: swap in the fog twin of whatever the ladder above picked.
+			//
+			// Done as a post-pass rather than by threading a fog flag through that (already deeply
+			// nested) selection: the mapping is visible in one place, and a surface with no fog map
+			// provably takes the exact same path it always did.
+			//
+			// Fog needs a lightmap to ride on -- LightPassPentiumFog is what fills FogPhoton[], and
+			// it only runs when there is one.  The MMX dispatcher had the same restriction (its
+			// unlit branch is tagged "todo: also unlit fogged cases"), so this is not a regression.
+			//
+			if( Surface.FogMap && Surface.LightMap )
+			{
+				     if( MergePass == MergePass32            ) MergePass = MergePass32Fog;
+				else if( MergePass == MergePass32Masked      ) MergePass = MergePass32MaskedFog;
+				else if( MergePass == MergePass32Stippled    ) MergePass = MergePass32StippledFog;
+				else if( MergePass == MergePass32Translucent ) MergePass = MergePass32TranslucentFog;
+				else if( MergePass == MergePass32Modulated   ) MergePass = MergePass32ModulatedFog;
+				else if( MergePass == MergePass1516          ) MergePass = MergePass1516Fog;
+				else if( MergePass == MergePass1516Masked    ) MergePass = MergePass1516MaskedFog;
+				else if( MergePass == MergePass1516Stippled  ) MergePass = MergePass1516StippledFog;
+				else if( MergePass == MergePass15Translucent ) MergePass = MergePass15TranslucentFog;
+				else if( MergePass == MergePass16Translucent ) MergePass = MergePass16TranslucentFog;
+				else if( MergePass == MergePass15Modulated   ) MergePass = MergePass15ModulatedFog;
+				else if( MergePass == MergePass16Modulated   ) MergePass = MergePass16ModulatedFog;
+				// The ModulatedUnlit passes have no lightmap, so they cannot get here.
+			}
+
 			DWORD* ColorsPtr = (DWORD*)GCache.Get( CacheID, Item );
 
 			if( !ColorsPtr )
@@ -20661,7 +21386,11 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 					Mips[i].Mask.DL	    = (Src.VSize-1) | (0xffff0000 << ( FixedBits-Src.UBits));
 					Mips[i].LVShift		= FixedBits - iMip;  
 					Mips[i].HUShift		= FixedBits - Src.UBits - iMip;
-					Mips[i].Func		= TexturePassFunctions[iMip][Src.UBits];
+					// Filtered passes carry their mip in CoSetup, so one function covers every
+					// (mip, UBits) pair; the point path keeps its 144 compile-time specialisations.
+					Mips[i].Func		= TexFilterMode
+											? TexturePassFiltered
+											: TexturePassFunctions[iMip][Src.UBits];
 				}
 			}
 
@@ -20772,8 +21501,8 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 				LightMip.UScale8		 = (1.f/8.f) * LightMip.UScale;
 				LightMip.VScale8		 = (1.f/8.f) * LightMip.VScale;
 
-				LightMip.Func           = LightPassPentium;
-				
+				LightMip.Func           = Surface.FogMap ? LightPassPentiumFog : LightPassPentium;
+
 				// Copy specific lightmap oversampling deltas.
 				LightOS[0] = LightOSTable[SrcMip.UBits][0];
 				LightOS[1] = LightOSTable[SrcMip.UBits][1];
@@ -20885,7 +21614,7 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 
 		if ( TextureSmooth && (RenderMode == DRAWNORMAL) && (!(Surface.PolyFlags & PF_NoSmooth)))
 		{
-			InitBilinearKernel( Surface.Texture->Mips[0]->UBits );
+			InitBilinearKernel( Surface.Texture->Mips[0]->UBits, 0 );
 			Bilinearset = 1;
 		}
 		else
@@ -21295,7 +22024,8 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 						// Start first setup structure 
 						FMipSetup* Mip = CalcMip(MipMult*FZ);
 						*SetupWalker.PtrFTexturePassFunction++ = Mip->Func;
-						SetupWalker.PtrFTexSetup->InitTexPentium( X, Mip, U, V );
+						if( TexFilterMode ) SetupWalker.PtrFTexSetup->InitTexPentiumFiltered( X, Mip, U, V );
+						else                SetupWalker.PtrFTexSetup->InitTexPentium( X, Mip, U, V );
 											
 						if( Surface.LightMap ) 
 							SetupWalker.PtrFTexSetup->InitLightPentium( appRound((UF - LightUF)*LightMip.UScale8), appRound((VF - LightVF)*LightMip.VScale8) ); 
@@ -21397,7 +22127,8 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 								}
 								*/
 
-								SetupWalker.PtrFTexSetup->InitTexPentium( Sub, Mip, DU, DV );
+								if( TexFilterMode ) SetupWalker.PtrFTexSetup->InitTexPentiumFiltered( Sub, Mip, DU, DV );
+								else                SetupWalker.PtrFTexSetup->InitTexPentium( Sub, Mip, DU, DV );
 
 								if( Surface.LightMap ) 
 									SetupWalker.PtrFTexSetup->InitLightPentiumDelta( appRound(DUF * LightMip.UScale) , appRound(DVF * LightMip.VScale) );
@@ -21419,7 +22150,8 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 									INT V = appRound(VF);
 
 									*SetupWalker.PtrFTexturePassFunction++ = Mip->Func;
-									SetupWalker.PtrFTexSetup->InitTexPentium( X, Mip, U, V );
+									if( TexFilterMode ) SetupWalker.PtrFTexSetup->InitTexPentiumFiltered( X, Mip, U, V );
+						else                SetupWalker.PtrFTexSetup->InitTexPentium( X, Mip, U, V );
 									if( Surface.LightMap )
 										SetupWalker.PtrFTexSetup->InitLightPentium( appRound((UF - LightUF)*LightMip.UScale8), appRound((VF - LightVF)*LightMip.VScale8) );
 
@@ -21444,7 +22176,8 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 						INT DU			= appRound( DUF );
 						INT DV			= appRound( DVF );
 
-						SetupWalker.PtrFTexSetup->InitTexPentium( EndX-X, Mip, DU, DV );
+						if( TexFilterMode ) SetupWalker.PtrFTexSetup->InitTexPentiumFiltered( EndX-X, Mip, DU, DV );
+						else                SetupWalker.PtrFTexSetup->InitTexPentium( EndX-X, Mip, DU, DV );
 
 						if( Surface.LightMap )
 							SetupWalker.PtrFTexSetup->InitLightPentiumDelta( appRound(DUF*LightMip.UScale), appRound(DVF*LightMip.VScale) );
@@ -21475,6 +22208,9 @@ void USoftwareRenderDevice::DrawComplexSurface( FSceneNode* Frame, FSurfaceInfo&
 				
 				for( INT YR = TaskStartY;  YR < TaskEndY; YR++ )
 				{
+					// Scanline parity selects the A or B half of the knight kernel -- the MMX
+					// dispatcher did the same with `if (YR & 1) ...Render8A(); else ...Render8B();`.
+					KnightRow = (YR & 1) << 1;
 					for( FSpan* Span=Facet.Span->Index[YR-Facet.Span->StartY]; Span; Span=Span->Next )
 					{
 						FTexturePassFunction Func;

@@ -24,8 +24,23 @@
 // Maximum supported sizes. 2.12: 1200/2048 -> 4096 so high-res viewports don't overrun the SizeY-indexed
 // span tables (Setup/MMXSetup/SpanIndex) or the SizeX-indexed ones (UCoordTable/Photon). Mirrors
 // engine-unreal1's SoftDrv; the DrawTile span-fill also hard-clamps to this ceiling.
-#define MaximumYScreenSize  4096
-#define MaximumXScreenSize  4096
+//
+// ufront 2.19f: overridable at build time (-DSOFTDRV_MAX_SCREEN=n), because these are the bounds of
+// STATIC arrays — they cost their full size in .bss at every resolution, not just at the ceiling.
+// Measured on ut99 at 4096: Setup 128K + MMXSetup 128K + Photon 64K + UCoordTable 16K + two SpanIndex
+// 32K = 368 KB resident whether the viewport is 4K or 240x240. (The other 160 KB of SoftDrv .bss —
+// TexSetupHeap and Shade — is genuinely fixed-size and unaffected by this.) At a 256 ceiling the same
+// tables cost 23 KB, which is what makes the software renderer plausible on a 64 MB target.
+//
+// Lowering it is safe and fail-soft, not a landmine: SetRes clamps the requested width to
+// MaximumXScreenSize, DrawPoly skips the frame outright above MaximumYScreenSize, and DrawTile clamps
+// its span-fill to the ceiling. A viewport above the ceiling degrades rather than corrupting.
+#ifndef SOFTDRV_MAX_SCREEN
+#define SOFTDRV_MAX_SCREEN 4096
+#endif
+#define MaximumYScreenSize  SOFTDRV_MAX_SCREEN
+#define MaximumXScreenSize  SOFTDRV_MAX_SCREEN
+
 
 // Coarse fast square root approximation
 #define FASTAPPROX_MAN_BITS 8   /* Number of bits of approximate square root mantissa, <=23 */
@@ -156,6 +171,11 @@ class DLL_EXPORT USoftwareRenderDevice : public URenderDevice
 	BITFIELD		FastTranslucency;
 	BITFIELD		HighResTextureSmooth;
 	BITFIELD		LowResTextureSmooth;
+	// Which filtering to use when HighRes/LowResTextureSmooth have already enabled it for this
+	// resolution: False = the original 2x2 knight's-move coordinate dither (one texel, ~free),
+	// True = true bilinear (four texels and a blend). Smoothing off is point sampling either way,
+	// so this knob only ever picks between the two filtered modes.
+	BITFIELD		BilinearFiltering;
 	BITFIELD		RAM32Mode;
 	BITFIELD		TextureSmooth;
 	FLOAT			DetailBias;

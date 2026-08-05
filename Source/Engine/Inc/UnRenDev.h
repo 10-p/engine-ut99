@@ -45,6 +45,7 @@ class ENGINE_API URenderDevice : public USubsystem
 	BITFIELD		SupportsFogMaps;
 	BITFIELD		SupportsDistanceFog;
 	BITFIELD		VolumetricLighting;
+	BITFIELD		VolumetricLightingMeshes;
 	BITFIELD		ShinySurfaces;
 	BITFIELD		Coronas;
 	BITFIELD		HighDetailActors;
