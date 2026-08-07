@@ -567,17 +567,25 @@ void UCanvas::execDrawActor( FFrame& Stack, RESULT_DECL )
 	if( ClearZ )
 		Viewport->RenDev->ClearZ( Frame );
 
-	// AutoFOV, overlay pass (step 2.16). This is how v400 draws the first-person viewmodel: the HUD calls
-	// Canvas.DrawActor from eventRenderOverlays, reusing the WORLD frame — so by default the weapon
-	// already rides the corrected FOV, which is exactly what preserves its reference-aspect proportions,
-	// and ufrontWeaponFov returns the world value so this costs nothing. Only when AutoFOVWeapon is
-	// dialled away from 1.0 do we redraw at a different FOV: write it and refresh the frame, which is all
-	// the invalidation needed — every driver dirty-compares Viewport->Actor->FovAngle before rebuilding
-	// its projection and re-enters SetSceneNode at the top of each primitive. Do NOT reach for
-	// SetSceneNode(NULL): only the N*Drv family null-checks the frame; XOpenGLDrv and UTGLR dereference
-	// it immediately and would crash.
+	// AutoFOV, overlay pass (steps 2.16 + 2.29). This is how v400 draws the first-person viewmodel: the
+	// HUD calls Canvas.DrawActor from eventRenderOverlays, reusing the WORLD frame.
+	//
+	// ★ 2.29 — THE FOV IS DERIVED HERE, NOT READ OFF THE ACTOR. URender::DrawWorld now pins the actor's
+	// FovAngle to the BASE angle for the duration of eventRenderOverlays, because Inventory.uc's
+	// CalcDrawOffset divides the weapon's forward offset by it and was dragging the gun towards the
+	// camera as the screen widened. That fixes WHERE the weapon sits; this fixes HOW IT IS PROJECTED —
+	// without it the weapon would be drawn at the base FOV and grow with screen width instead (2.7x at
+	// 32:9). Reading Viewport->Actor->FovAngle as the "effective" value, as this used to, now yields the
+	// base and silently disables the correction, so the effective angle is recomputed from the same
+	// inputs UGameEngine::Draw used.
+	//
+	// Writing the angle and refreshing the frame is all the invalidation needed — every driver
+	// dirty-compares Viewport->Actor->FovAngle before rebuilding its projection and re-enters
+	// SetSceneNode at the top of each primitive. Do NOT reach for SetSceneNode(NULL): only the N*Drv
+	// family null-checks the frame; XOpenGLDrv and UTGLR dereference it immediately and would crash.
 	FLOAT SavedWeaponFov = Viewport->Actor->FovAngle;
-	FLOAT WeaponFov      = ufrontWeaponFov( GAutoFovFrameBase, SavedWeaponFov );
+	FLOAT EffectiveFov   = ufrontEffectiveFov( GAutoFovFrameBase, Viewport->SizeX, Viewport->SizeY, 0 );
+	FLOAT WeaponFov      = ufrontWeaponFov( GAutoFovFrameBase, EffectiveFov );
 	UBOOL bWeaponFovPass = Abs( WeaponFov - SavedWeaponFov ) > 0.01f;
 	if( bWeaponFovPass )
 	{
