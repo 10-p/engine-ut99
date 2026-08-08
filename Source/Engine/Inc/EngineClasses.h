@@ -1862,6 +1862,20 @@ public:
     FColor BrushColor;
     INT PolyFlags;
     BITFIELD bColored:1 GCC_PACK(4);
+    // Epic's retail build (MSVC) stores this trailing lone bitfield as a full 4-byte DWORD. GCC's packed
+    // attribute (GCC_PACK) shrinks it to 1 byte, ending ABrush 3 bytes early -- which shifts AMover's
+    // byte cluster (MoverEncroachType/KeyNum/NumKeys/...) so the engine reads them from the wrong
+    // offsets. Measured on v400 with the loaded Engine.u: script 608/611/613 vs C++ 605/608/610, so
+    // NumKeys read 0 for a map that sets 8 and every multi-key mover ran exactly ONE leg and parked.
+    // Reserve the rest of the DWORD so sizeof(ABrush) matches the runtime layout.
+    //
+    // ⚠ NO SIZE CHECK CAN CATCH THIS, which is why it survived a guard built for exactly this class of
+    // bug. sizeof(AMover) matches the script layout either way (1056 == PropertiesSize) because MoveTime
+    // re-aligns at 616, and sizeof(ABrush) matches too -- C++ is allowed to place a derived class's
+    // members in the base's TAIL PADDING, so the base's size is unchanged while the derived member moves.
+    // The only reliable detector is a per-PROPERTY offset comparison (C++ address vs the loaded .u
+    // Offset), which is the one-shot diagnostic that found it; see steps/2.32.
+    BYTE bColoredPad[3];
     DECLARE_CLASS(ABrush,AActor,0)
     #include "ABrush.h"
 };
