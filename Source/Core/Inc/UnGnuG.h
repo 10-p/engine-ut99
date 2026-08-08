@@ -22,9 +22,15 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
+// ufront 2.33 (Windows/MinGW): <alloca.h> and <strings.h> are glibc/musl spellings that MinGW does not
+// ship — alloca lives in <malloc.h> (included below) and the <strings.h> names are in <string.h>.
+#ifndef PLATFORM_WIN32
 #include <alloca.h>
+#endif
 #include <string.h>
+#ifndef PLATFORM_WIN32
 #include <strings.h>
+#endif
 #include <ctype.h>
 #include <malloc.h>
 #include <dirent.h>
@@ -77,14 +83,23 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 
 // Function type macros.
 #define DLL_IMPORT
-#define DLL_EXPORT	
+#define DLL_EXPORT
 #define DLL_EXPORT_CLASS
 #define VARARGS
 #define CDECL
+// ufront 2.33 (Windows/MinGW): on Windows STDCALL is a real calling convention, not decoration — the
+// Win32 callback typedefs (LPTHREAD_START_ROUTINE, used by IpDrv's resolver thread) carry __stdcall and a
+// plain cdecl function will not convert to them. Everywhere else it stays empty as before.
+// Likewise __cdecl: it is a builtin keyword on MinGW, and #define'ing it away both warns and would strip
+// the convention from any system header declaration that uses it.
+#ifdef PLATFORM_WIN32
+#define STDCALL __stdcall
+#else
 #define STDCALL
+#define __cdecl
+#endif
 #define FORCEINLINE /* Force code to be inline */
 #define ZEROARRAY 0 /* Zero-length arrays in structs */
-#define __cdecl
 
 
 #ifdef UNREAL_STATIC
@@ -129,7 +144,13 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 // Unsigned base types.
 typedef uint8_t				BYTE;		// 8-bit  unsigned.
 typedef uint16_t			_WORD;		// 16-bit unsigned.
+// ufront 2.33 (Windows/MinGW): <minwindef.h> (included above under PLATFORM_WIN32) already declares DWORD
+// and SIZE_T, and a second typedef is a hard "conflicting declaration" error even though the types are
+// identical on Win32 — DWORD is `unsigned long` (32-bit) and SIZE_T is ULONG_PTR (32-bit). The #undef
+// block further up only handles the era when these were macros, not typedefs. Take the platform's.
+#ifndef PLATFORM_WIN32
 typedef uint32_t 			DWORD;		// 32-bit unsigned.
+#endif
 typedef uint64_t 			QWORD;		// 64-bit unsigned.
 
 // Signed base types.
@@ -148,10 +169,22 @@ typedef uint16_t     		UNICHARU;	// A unicode character.
 typedef int32_t				UBOOL;		// Boolean 0 (false) or 1 (true).
 typedef float				FLOAT;		// 32-bit IEEE floating point.
 typedef double				DOUBLE;		// 64-bit IEEE double.
+#ifndef PLATFORM_WIN32
 typedef size_t        		SIZE_T;     // Corresponds to C SIZE_T.
+#endif
 
 // Bitfield type.
+// ufront 2.33 (Windows/MinGW): must stay IDENTICAL to DWORD, not merely the same width. UE1 serialises
+// BITFIELD members through `Ar << Member` and relies on the DWORD overload of operator<< picking them up
+// — which works only while the two are the same type. Taking DWORD from <minwindef.h> (unsigned long)
+// while BITFIELD stayed uint32_t (unsigned int) made them distinct 32-bit types and every such serialise
+// became an ambiguous overload (Editor/Src/UnEdFact.cpp). UnVcWin32.h declares both `unsigned long` for
+// exactly this reason.
+#ifdef PLATFORM_WIN32
+typedef DWORD				BITFIELD;	// For bitfields.
+#else
 typedef uint32_t			BITFIELD;	// For bitfields.
+#endif
 
 
 // Make sure characters are unsigned.

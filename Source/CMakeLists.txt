@@ -273,6 +273,26 @@ if(TARGET_IS_WINDOWS)
   add_definitions(-DPLATFORM_WIN32)
   add_definitions(-DWIN32)
   add_definitions(-DWINDOWS_IGNORE_PACKING_MISMATCH)
+  if(MINGW)
+    # ufront 2.33 — link GCC's runtime statically. Without this the .exe imports libgcc_s_dw2-1.dll and
+    # libstdc++-6.dll, which live in the toolchain (or MSYS2's /mingw32/bin), NOT in a Windows install:
+    # the binary runs on the build machine and dies with "not found" everywhere else. With it, the only
+    # imports left are stock system DLLs, so the static build really is a single self-contained file.
+    add_link_options(-static-libgcc -static-libstdc++)
+    # ufront 2.33 — UE1 assumes Win32 /Zp4 struct packing: every reflected C++ class size must equal the
+    # UnrealScript-declared property size. Native x86-32 Linux happens to match because its ABI aligns
+    # double/int64 to 4; MinGW follows the MSVC ABI and aligns them to 8, so every class with a double
+    # came out a few bytes long (Mover 1060 vs 1056, FireTexture 1296 vs 1292 …) and member offsets
+    # shifted. The MSVC branch above passes /Zp4 for the same reason, and the web build -fpack-struct=4.
+    # ★ Caught by 2.32's per-class layout guard, which reported every offending class by name before the
+    # engine got anywhere near gameplay — a silent version of this is what 2.32 existed to hunt down.
+    # Applied to ALL sources: packing must be uniform or the two halves of a class disagree.
+    add_compile_options(-fpack-struct=4 -Wno-address-of-packed-member)
+    # Windows puts in libraries what glibc keeps in libc: sockets (Core's appComputerName/appGetLocalIP
+    # and all of IpDrv) are ws2_32, and appGetGUID's CoCreateGuid is ole32. Declared here, before the
+    # add_subdirectory calls, so every package inherits them.
+    link_libraries(ws2_32 ole32)
+  endif()
 else()
   # TODO
   add_definitions(-DPLATFORM_POSIX)
@@ -366,6 +386,11 @@ if(USE_SDL)
         #   "--shared-memory is disallowed by SDL_atomic.c.o because it was not compiled with 'atomics'"
         # because the two archives disagree about features. Leave it to the port.
         set(SDL2_LIBRARY )
+      elseif(MINGW AND CMAKE_CROSSCOMPILING)
+        # ufront 2.33 — cross-building for Windows from Linux: no system SDL2 to link against, so fetch
+        # SDL2's official prebuilt MinGW binaries. Under MSYS2 on real Windows this branch is skipped
+        # (not cross-compiling) and pacman's mingw-w64-i686-SDL2 answers -lSDL2 as usual.
+        include(SDL2Mingw)
       else()
         set(SDL2_LIBRARY "-lSDL2")
       endif()
@@ -438,7 +463,10 @@ if(USE_SDL)
   # SDL2
   add_subdirectory(NSDLDrv)
   list(APPEND INSTALL_TARGETS NSDLDrv)
-else(TARGET_IS_DREAMCAST)
+elseif(TARGET_IS_DREAMCAST)
+  # ufront 2.33: this was `else(TARGET_IS_DREAMCAST)`, which CMake reads as a plain else() with a decorative
+  # argument — so ANY non-SDL build (a Windows one, say) silently selected the Dreamcast viewport driver
+  # and failed inside KOSDrv with "KOSDrv is for Dreamcast only".
   # native Dreamcast driver
   add_subdirectory(KOSDrv)
   list(APPEND INSTALL_TARGETS KOSDrv)

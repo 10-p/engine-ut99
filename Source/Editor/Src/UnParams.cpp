@@ -20,11 +20,14 @@
 -----------------------------------------------------------------------------*/
 
 // ufront 2.7d: Engine/Src/UnParams.cpp defines these same parse helpers (GetFVECTOR/GetSUBSTRING/
-// GetFROTATOR). In the shared-lib (native/DC) builds each package's copy lives in its own .so — no clash.
-// The web build whole-archives every package into ONE binary, so both copies collide (wasm-ld: duplicate
-// symbol). Engine is always linked, so on Emscripten skip Editor's copies and let callers resolve to
-// Engine's. Editor's UNIQUE helpers (GetBEGIN/GetEND/SetFVECTOR/GetFSCALE, below) stay compiled.
-#ifndef __EMSCRIPTEN__
+// GetFROTATOR). In the shared-lib (native) builds each package's copy lives in its own .so — no clash.
+// A STATIC build whole-archives every package into ONE binary, so both copies collide (duplicate symbol).
+// Engine is always linked, so skip Editor's copies there and let callers resolve to Engine's. Editor's
+// UNIQUE helpers (GetBEGIN/GetEND/SetFVECTOR/GetFSCALE, below) stay compiled.
+// ufront 2.33: the guard was `#ifndef __EMSCRIPTEN__` — the web being merely the first static build we
+// shipped, not the reason. The reason is whole-archiving, i.e. UNREAL_STATIC, which equally covers the
+// Dreamcast and Windows builds. Web behaviour is unchanged (it sets BUILD_STATIC too).
+#ifndef UNREAL_STATIC
 
 //
 // Get a floating-point vector (X=, Y=, Z=), return number of components parsed (0-3).
@@ -165,7 +168,7 @@ UBOOL EDITOR_API GetFROTATOR
 
 	unguard;
 }
-#endif // !__EMSCRIPTEN__ (ufront 2.7d — Engine provides these shared parse helpers in the static web build)
+#endif // !UNREAL_STATIC (ufront 2.7d — Engine provides these shared parse helpers in a static build)
 
 //
 // Gets a "BEGIN" string.  Returns 1 if gotten, 0 if not.

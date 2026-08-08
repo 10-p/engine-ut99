@@ -68,7 +68,8 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 					INT boundport = bindnextport( Socket, &Addr, bUseNextAvailable ? 20 : 1, 1 );
 					if( boundport )
 					{
-						#if __GNUG__
+						// ufront 2.33: WinSock has no fcntl — switch on the socket API, not the compiler.
+						#if __BSD_SOCKETS__
 						INT pd_flags;
 						pd_flags = fcntl( Socket, F_GETFL, 0 );
 						pd_flags |= O_NONBLOCK;

@@ -41,7 +41,16 @@
 #ifndef UNREAL_STATIC
 #include <dlfcn.h>
 #endif
+// ufront 2.33 (Windows/MinGW): this file is the platform layer for every GCC/Clang target now, Windows
+// included (Core/CMakeLists.txt gives UnVcWin32.cpp to MSVC only). Name resolution there is WinSock, and
+// UnMinGW.cpp holds the calls with no POSIX equivalent at all.
+#ifdef PLATFORM_WIN32
+#include <winsock2.h>
+#include <windows.h>
+#include <process.h>	// _spawnl / _spawnv
+#else
 #include <netdb.h>
+#endif
 
 // Core includes.
 #include "CorePrivate.h"
@@ -125,17 +134,25 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		INT RestLen = appStrlen( EndArg0 );
 		TCHAR Arg0[256];
 		appStrncpy( Arg0, Cmd, (CmdLen - RestLen) + 1 );
-		
+
+#ifdef PLATFORM_WIN32
+		// ufront 2.33: no fork() on Windows. _spawnl already means "start a new process and keep going",
+		// so the child/parent split collapses into spawn-then-exit.
+		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", Arg0, (char*)NULL ) == -1 )
+			appErrorf( TEXT("Failed to launch process.") );
+		appRequestExit( 0 );
+#else
 		pid_t pid = fork();
 		if (pid != 0)
 		{
 			appSleep(3);
 			INT error = execl("./ucc", "ucc", "server", Arg0, (char*)NULL );
 			if (error == -1)
-				appErrorf( TEXT("Failed to launch process.") );			
+				appErrorf( TEXT("Failed to launch process.") );
 		} else {
 			appRequestExit( 0 );
 		}
+#endif
 #endif
 		return 1;
 	}
@@ -405,9 +422,14 @@ void appCreateProc( const TCHAR* URL, const TCHAR* Parms )
 	}
 	argv[j] = 0;
 
-	pid_t pid = fork(); 
+#ifdef PLATFORM_WIN32
+	// ufront 2.33: _spawnv is the Windows spelling of "fork + exec and do not wait".
+	_spawnv( _P_NOWAIT, URL, argv );
+#else
+	pid_t pid = fork();
 	if (pid != 0)
 		INT error = execv( URL, argv );
+#endif
 
 	unguard;
 #endif
@@ -701,6 +723,11 @@ CORE_API const TCHAR* appComputerName()
 	}
 		appStrcpy( Result, "localhost" );
 #else
+		// ufront 2.33: on Windows gethostname is a WinSock call and fails with WSANOTINITIALISED until
+		// WSAStartup has run — and this can be reached before IpDrv is loaded at all.
+#ifdef PLATFORM_WIN32
+		appWinSockInit();
+#endif
 		gethostname( Result, sizeof(Result) );
 #endif
 	}
@@ -714,7 +741,17 @@ CORE_API const TCHAR* appUserName()
 	guard(appUserName);
 	static TCHAR Result[256]="";
 	if( !Result[0] )
+#ifdef PLATFORM_WIN32
+	{
+		// ufront 2.33: no getlogin() on Windows. GetUserName is the equivalent; fall back to a constant
+		// rather than leaving the buffer empty, since callers treat this as always-valid.
+		DWORD Size = ARRAY_COUNT(Result);
+		if( !GetUserNameA( Result, &Size ) )
+			appStrcpy( Result, TEXT("Player") );
+	}
+#else
 		appStrncpy( Result, getlogin(), sizeof(Result) );
+#endif
 	return Result;
 	unguard;
 }
@@ -841,6 +878,9 @@ unsigned long appGetLocalIP( void )
 #else
 		struct hostent *Hostinfo;
 		char Hostname[256];
+#ifdef PLATFORM_WIN32
+		appWinSockInit();	// ufront 2.33 — see appComputerName above.
+#endif
 		gethostname( Hostname, sizeof(Hostname) );
 		Hostinfo = gethostbyname( Hostname );
 		if( Hostinfo && Hostinfo->h_addr_list[0] )

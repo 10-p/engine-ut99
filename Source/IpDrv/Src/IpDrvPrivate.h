@@ -11,7 +11,10 @@ Revision history:
 #endif
 
 // Socket API.
-#if _MSC_VER
+// ufront 2.33: keyed on the PLATFORM, not on the compiler. Under `_MSC_VER` a MinGW build took the BSD
+// branch and failed on <sys/socket.h>, which MinGW does not ship — Windows is WinSock regardless of which
+// compiler produced the binary.
+#ifdef PLATFORM_WIN32
 	#define __WINSOCK__ 1
 	#define SOCKET_API TEXT("WinSock")
 #else
@@ -24,6 +27,10 @@ Revision history:
 	#include <windows.h>
 	#include <winsock.h>
 	#include <conio.h>
+	// ufront 2.33: WinSock's own headers stop at `int` for address lengths, but ws2tcpip.h supplies the
+	// standard `socklen_t` spelling — one include here instead of an #if at every getsockname/accept/
+	// recvfrom call site.
+	#include <ws2tcpip.h>
 #endif
 
 // BSD socket includes.
@@ -81,10 +88,10 @@ extern UBOOL GInitialized;
 	Host resolution thread.
 -----------------------------------------------------------------------------*/
 
-#if __GNUG__
-void* ResolveThreadEntry( void* Arg );
-#else
+#ifdef PLATFORM_WIN32
 DWORD STDCALL ResolveThreadEntry( void* Arg );
+#else
+void* ResolveThreadEntry( void* Arg );
 #endif
 
 //
@@ -99,7 +106,7 @@ public:
 	TCHAR   HostName[256];
 	TCHAR   Error[256];
 
-	#if __GNUG__
+	#ifndef PLATFORM_WIN32
 	pthread_t	ResolveThread;
 	#endif
 
@@ -110,7 +117,10 @@ public:
 		appStrcpy( HostName, InHostName );
 		*Error = 0;
 
-#if _MSC_VER
+// ufront 2.33: these were `#if _MSC_VER` / `#if __GNUG__` — i.e. the COMPILER standing in for the
+// platform. That held while GCC only ever meant POSIX; under MinGW it is false, and the engine tried to
+// build the pthread resolver against Win32 headers.
+#ifdef PLATFORM_WIN32
 		HANDLE hThread = CreateThread( NULL, 0, ResolveThreadEntry, this, 0, &ThreadId );
 		check(hThread);
 		CloseHandle( hThread );
@@ -161,7 +171,7 @@ inline int bindnextport( SOCKET s, struct sockaddr_in* addr, int portcount, int 
 			{
 				// 0 means allocate a port for us, so find out what that port was
 				struct sockaddr_in boundaddr;
-				#if _MSC_VER
+				#if __WINSOCK__
 				INT size = sizeof(boundaddr);
 				#else
 				socklen_t size = sizeof(boundaddr);

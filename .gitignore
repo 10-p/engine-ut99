@@ -11,5 +11,6 @@ build/
 /build-wasm/
 /build-wasm-perf/
 /build-wasm-debug/
+/build-windows/
 __smoke.html
 /build-soft/

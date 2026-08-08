@@ -15,7 +15,9 @@
 	General structures.
 ----------------------------------------------------------------------------*/
 
-#if !_MSC_VER
+// This file uses MSVC's __int64 spelling. Supply it where the compiler does not — but NOT on MinGW,
+// where __int64 is a builtin keyword and typedef'ing it is a syntax error (ufront 2.33).
+#if !_MSC_VER && !defined(__MINGW32__)
 	typedef SQWORD __int64;
 #endif
 

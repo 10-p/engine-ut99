@@ -43,7 +43,8 @@ void ATcpLink::Destroy()
 
 static UBOOL SetNonBlocking( INT Socket )
 {
-	#if __GNUG__
+	// ufront 2.33: WinSock has no fcntl; the switch is the socket API, not the compiler.
+	#if __BSD_SOCKETS__
 	INT pd_flags;
 	pd_flags = fcntl( Socket, F_GETFL, 0 );
 	pd_flags |= O_NONBLOCK;
@@ -72,7 +73,9 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 			Socket = socket( AF_INET, SOCK_STREAM, IPPROTO_TCP );
 			INT optval = 1;
 #ifndef PLATFORM_DREAMCAST
-			setsockopt( Socket, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(INT) );
+			// ufront 2.33: WinSock types optval as `const char*` where POSIX has `const void*`. The cast
+			// satisfies both — char* converts to void* implicitly, so no platform behaves differently.
+			setsockopt( Socket, SOL_SOCKET, SO_REUSEADDR, (const char*)&optval, sizeof(INT) );
 #endif
 			if( GetSocket() != INVALID_SOCKET )
 			{

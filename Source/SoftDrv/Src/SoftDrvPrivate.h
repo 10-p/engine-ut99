@@ -9,6 +9,17 @@
 
 #include "RenderPrivate.h"
 
+// ufront 2.33 (Windows/MinGW): the Win32 headers reached through the chain above define IN and OUT as
+// EMPTY parameter-annotation macros, which silently deletes any local named `IN` — DrawSurf.cpp's
+// bilinear filter has one, and the error it produces ("expected unqualified-id before '='") points at the
+// assignment rather than at the macro. Undefining is preferable to renaming the local: it is
+// preprocessor-only, so the Linux and web builds are textually and byte-for-byte unaffected. Nothing in
+// this engine uses the annotations.
+#ifdef PLATFORM_WIN32
+#undef IN
+#undef OUT
+#endif
+
 /*------------------------------------------------------------------------------------
 	Software rendering private definitions.
 ------------------------------------------------------------------------------------*/

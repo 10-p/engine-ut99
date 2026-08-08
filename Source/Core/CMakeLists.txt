@@ -18,11 +18,27 @@ set(SRC_FILES
   "Src/UExporter.cpp"
 )
 
-if(NOT TARGET_IS_WINDOWS)
-  list(APPEND SRC_FILES "Src/UnGUID.cpp")
-  list(APPEND SRC_FILES "Src/UnUnix.cpp")
-else()
+# ufront 2.33 — the platform layer is chosen by COMPILER, not by target OS.
+#
+# UnVcWin32.cpp is Epic's 1999 Win32 core and its entire body sits inside `#if _MSC_VER`, so under MinGW
+# it compiles to an EMPTY translation unit — while this list simultaneously dropped UnUnix.cpp for being
+# a Windows target. The result was a link with ~20 missing app* symbols (appPlatformInit, appBaseDir,
+# appCycles, appGetDllHandle …) and nothing to say why. So: MSVC gets the Win32 core, every GCC/Clang
+# target keeps the portable UnUnix.cpp layer that web and Linux already exercise, and the handful of
+# genuinely Win32 calls live in UnMinGW.cpp beside it.
+if(MSVC)
   list(APPEND SRC_FILES "Src/UnVcWin32.cpp")
+else()
+  # ⚠ ORDER: UnGUID/UnMinGW before UnUnix, matching the original list. Source order is object order is
+  # link order, so reversing it perturbs the web and Linux binaries for the sake of a Windows-only change.
+  if(TARGET_IS_WINDOWS)
+    # UnGUID.cpp is the OSF/DCE POSIX implementation (gettimeofday + a MAC address); on Windows
+    # UnMinGW.cpp answers appGetGUID with CoCreateGuid instead.
+    list(APPEND SRC_FILES "Src/UnMinGW.cpp")
+  else()
+    list(APPEND SRC_FILES "Src/UnGUID.cpp")
+  endif()
+  list(APPEND SRC_FILES "Src/UnUnix.cpp")
 endif()
 
 if(BUILD_STATIC)

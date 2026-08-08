@@ -284,7 +284,13 @@ public:
 		guard(FFileManagerLinux::MakeDirectory);
 		if( Tree )
 			return FFileManagerGeneric::MakeDirectory( Path, Tree );
+		// ufront 2.33: Windows' mkdir takes no mode — permissions are not a filesystem attribute there.
+		// (This manager is the launcher's on every platform; see UnrealTournament/Src/Launch.cpp.)
+#ifdef PLATFORM_WIN32
+		return mkdir(TCHAR_TO_ANSI(Path))==0 || errno==EEXIST;
+#else
 		return mkdir(TCHAR_TO_ANSI(Path), S_IRUSR | S_IWUSR | S_IXUSR)==0 || errno==EEXIST;
+#endif
 		unguard;
 	}
 	UBOOL DeleteDirectory( const TCHAR* Path, UBOOL RequireExists=0, UBOOL Tree=0 )

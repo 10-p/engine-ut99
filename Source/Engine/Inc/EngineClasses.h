@@ -1875,7 +1875,15 @@ public:
     // members in the base's TAIL PADDING, so the base's size is unchanged while the derived member moves.
     // The only reliable detector is a per-PROPERTY offset comparison (C++ address vs the loaded .u
     // Offset), which is the one-shot diagnostic that found it; see steps/2.32.
+    //
+    // ufront 2.33: NOT on MinGW. MinGW-w64 targets the Microsoft ABI and lays bitfields out the MSVC way
+    // (-mms-bitfields is its default), so the trailing lone BITFIELD already occupies its full DWORD there
+    // — exactly like Epic's retail build. Adding the pad on top overshoots by 4, which the 2.32 layout
+    // guard reported as "Brush: C++ sizeof=612 but script layout=608" the first time the Windows binary
+    // booted. So the pad compensates for a GCC/SysV behaviour, and belongs only where that behaviour is.
+#ifndef __MINGW32__
     BYTE bColoredPad[3];
+#endif
     DECLARE_CLASS(ABrush,AActor,0)
     #include "ABrush.h"
 };

@@ -12,10 +12,11 @@
 ----------------------------------------------------------------------------*/
 
 // Resolution thread entrypoint.
-#if __GNUG__
-void* ResolveThreadEntry( void* Arg )
-#else
+// ufront 2.33: platform, not compiler — see IpDrvPrivate.h, where the matching declaration lives.
+#ifdef PLATFORM_WIN32
 DWORD STDCALL ResolveThreadEntry( void* Arg )
+#else
+void* ResolveThreadEntry( void* Arg )
 #endif
 {
 	FResolveInfo* Info = (FResolveInfo*)Arg;

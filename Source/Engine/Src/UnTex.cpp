@@ -749,7 +749,14 @@ UPalette* UPalette::ReplaceWithExisting()
 
 typedef	struct {BYTE rgba[4];} COLOR;
 
-#ifdef WIN32
+// ufront 2.33: was `#ifdef WIN32`. These implementations call into Epic's S3TC encoder and Heckbert
+// quantiser (Engine/Lib/s3tc.lib plus the __declspec(dllexport) declarations in Palette.h), which NO
+// CMake target links — that .lib is an MSVC-era artifact left in the tree. So the block only ever built
+// under Epic's original MSVC project, and "WIN32" quietly meant "MSVC". Under MinGW it compiled and then
+// failed at link with undefined S3TCencode/S3TCdecode/HeckbertQuantize.
+// Every build this repo actually produces — Linux, web, and now Windows/MinGW — takes the #else stub
+// below, exactly as it always has, so this changes nothing for any of them.
+#if _MSC_VER
 
 //
 // Compress the texture, with mip-levels if required

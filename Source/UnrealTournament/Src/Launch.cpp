@@ -378,6 +378,21 @@ static UEngine* InitEngine()
 	GConfig->SetString( TEXT("NSDLDrv.NSDLClient"),  TEXT("CaptureMouse"),    TEXT("True") );
 #endif
 
+#if defined(PLATFORM_WIN32) && defined(PLATFORM_SDL)
+	// ufront 2.33 (the Windows build) — same reasoning as the Emscripten block above, different platform:
+	// a real UT99 install's ini names packages THIS build does not contain, so it dies before the first
+	// frame with "Can't find file for package 'WinDrv'".
+	//   ViewportManager=WinDrv.WindowsClient    -> WinDrv is not in this tree AT ALL (the ut99dc lineage
+	//     removed it); windowing/input is NSDLDrv on every target we build, Windows included.
+	//   AudioDevice=Galaxy.GalaxyAudioSubsystem -> the retail sound package, likewise absent.
+	// Nor could the user fix it by editing the ini: BUILD_STATIC resolves packages through the internal
+	// registry, so a WinDrv.dll sitting next to the exe can never be loaded. NetworkDevice is deliberately
+	// left alone — IpDrv.TcpNetDriver is correct here (WebRTC is only the web's substitute for it).
+	// Keeping the override in code rather than shipping an ini leaves the user's game data untouched.
+	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("NSDLDrv.NSDLClient") );
+	GConfig->SetString( TEXT("Engine.Engine"), TEXT("AudioDevice"),     TEXT("SoundDrv.NullAudioSubsystem") );
+#endif
+
 	// ufront 2.12: unified render-device selection — SHARED native+web, run BEFORE Engine->Init() (which loads
 	// the subsystems). A -*RENDERER switch wins, else a persisted hardware default OR the user's marked pick,
 	// else the preference order. (Was #ifdef __EMSCRIPTEN__; now also honors `./UnrealTournament -SOFTWARERENDERER`

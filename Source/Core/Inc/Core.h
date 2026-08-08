@@ -60,6 +60,12 @@ enum ENoInit {E_NoInit = 0};
 	#ifndef _TCHAR_DEFINED
 		typedef ANSICHAR  TCHAR;
 		typedef ANSICHARU TCHARU;
+	#elif defined(PLATFORM_WIN32)
+		// ufront 2.33 (Windows/MinGW): MinGW's <tchar.h>, reached through the Win32 headers, sets
+		// _TCHAR_DEFINED and supplies TCHAR (== char here, since we do not build UNICODE) — but it knows
+		// nothing about UE1's TCHARU, so the branch above skipped BOTH and the engine failed to compile
+		// wherever TCHARU is used (UnCanvas.cpp).
+		typedef ANSICHARU TCHARU;
 	#endif
 	#undef TEXT
 	#define TEXT(s) s

@@ -16,12 +16,14 @@ monorepo** (`docs/migration/STATE.md`), not here.
 | `native` | `build-native/UnrealTournament/UnrealTournament` + `*.so` | 32-bit native SDL2/GLES2 twin (the **compat oracle**; needs `libsdl2-dev:i386`) |
 | `wasm` | `build-wasm/…/Launch.{js,wasm,data}` + `meta.json` | Emscripten **dev** (assertions + debug) — *wired in step 2.7b* |
 | `wasm-perf` | `build-wasm-perf/…` | Emscripten **product** (`-O3`) — what `ufront` consumes — *wired in step 2.7b* |
+| `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` | 32-bit **Windows** binary via MinGW-w64 — *step 2.33, see below* |
 
 ```bash
 cd Source
 cmake --preset native && cmake --build --preset native -j"$(nproc)"        # the native twin / oracle
 # (2.7b+) source ~/emsdk/emsdk_env.sh   # sets $EMSDK for the toolchain file
 # (2.7b+) cmake --preset wasm-perf && cmake --build --preset wasm-perf -j"$(nproc)"
+# (2.33)  cmake --preset windows   && cmake --build --preset windows   -j"$(nproc)"
 ```
 
 ### Running the native oracle
@@ -55,6 +57,72 @@ cmake --preset native -DFETCHCONTENT_SOURCE_DIR_UTGLR=/home/ion/engines/utglr-co
 ```
 
 The first configure of a fresh build dir needs network (the fetch); subsequent configures reuse `_deps/`.
+
+## Windows builds (MinGW-w64) — step 2.33
+
+```bash
+cd Source
+cmake --preset windows && cmake --build --preset windows -j"$(nproc)"   # -> build-windows/UnrealTournament/UnrealTournament.exe
+```
+
+One self-contained 32-bit `.exe`: `BUILD_STATIC` links every package in, so `appGetDllHandle` resolves
+through the internal registry and there is **no `Core.dll`/`Engine.dll` and no `LoadLibrary`** — the same
+mechanism the web and Dreamcast builds use. `objdump -p` shows only stock system DLLs.
+
+⚠ **32-bit only.** `Source/CMakeLists.txt` demotes an x86_64 compiler to `-m32` and `FATAL_ERROR`s if it
+cannot. The toolchain file targets `i686-w64-mingw32`; it supplies only what a *cross* build cannot infer,
+and is the same MinGW-w64 GCC that MSYS2's `MINGW32` environment ships, so the preset also works from an
+MSYS2 prompt (where pacman's SDL2 answers instead of the fetched one).
+
+**The theme of the port: the compiler is not the platform.** Almost every failure was a `#if _MSC_VER` or
+`#if __GNUG__` used to mean "Windows" or "POSIX" — true while GCC only ever meant Unix, false the moment
+GCC targeted Windows. Rekeyed onto `PLATFORM_WIN32` (or IpDrv's own `__WINSOCK__`/`__BSD_SOCKETS__`):
+
+- **The platform layer itself** (`Core/CMakeLists.txt`) — `UnVcWin32.cpp` is `#if _MSC_VER` throughout, so
+  under MinGW it compiled to an *empty* file while the same list dropped `UnUnix.cpp` for being a Windows
+  target: a link missing ~20 `app*` symbols with nothing to explain it. MSVC now gets the Win32 core;
+  every GCC/Clang target keeps the portable `UnUnix.cpp` that web and Linux already exercise, with the
+  handful of genuinely Win32 calls in **`Core/Src/UnMinGW.cpp`** (`appGetSystemErrorMessage`, `appGetGUID`
+  via `CoCreateGuid`, `WSAStartup`) — a file Linux and web never compile, which is where Windows work
+  belongs by default.
+- **IpDrv** — WinSock vs BSD sockets, the resolver thread (`CreateThread` vs `pthread_create`), `fcntl`
+  vs `ioctlsocket`, `socklen_t` (one `<ws2tcpip.h>` include beats an `#if` at every call site).
+- **`Engine/Src/UnTex.cpp`** — the DXT block was `#ifdef WIN32` but calls Epic's `s3tc.lib`, which **no
+  CMake target links**; it only ever built under Epic's original MSVC project, so `WIN32` meant `_MSC_VER`.
+- **`Editor/Src/UnParams.cpp`** — its duplicate-symbol guard said `__EMSCRIPTEN__`, but the cause is
+  whole-archiving, i.e. `UNREAL_STATIC`. The web was merely the first static build we shipped.
+
+Two ABI differences, both real:
+
+- **`-fpack-struct=4`.** UE1 assumes Win32 `/Zp4`: every reflected C++ class size must equal its
+  UnrealScript property size. Native x86-32 Linux matches by luck (its ABI aligns `double` to 4); MinGW
+  follows the MSVC ABI and aligns to 8, so every class holding a double came out long. ★ **2.32's layout
+  guard named every offending class on the first boot** — the silent version of this is what 2.32 existed
+  to hunt down.
+- **`ABrush::bColoredPad` is NOT applied on MinGW.** That pad compensates for GCC packing a lone trailing
+  bitfield into one byte; MinGW-w64 lays bitfields out the *MSVC* way (`-mms-bitfields` is its default),
+  so the DWORD is already there and the pad overshot by 4. `DWORD`/`SIZE_T`/`BITFIELD` likewise come from
+  `<minwindef.h>` on Windows and must stay *identical* types, not merely same-width — UE1 serialises
+  BITFIELD members through `operator<<`'s DWORD overload.
+
+**Verifying without Windows** — `wine` + `Xvfb` (needs `wine32`; SoftDrv/NullDrv are CPU-only, so no GPU):
+
+```bash
+Xvfb :99 -screen 0 1024x768x24 &
+DISPLAY=:99 WINEPREFIX=~/.wine-u1 wine UnrealTournament.exe -SOFTWARERENDERER   # or -NULLRENDERER
+WINEPREFIX=~/.wine-u1 wineserver -k          # ⚠ always; wine leaves processes behind
+```
+
+Assert on **milestones in `System/UnrealTournament.log`**, not on a window appearing. Run-tree traps: copy
+the `.exe` in (the engine derives its base dir from the real binary path) and dereference asset symlinks
+(`cp -rL`), or every package becomes a silent `FileNotFound`. ⚠ wine is not Windows — a regression net,
+not a substitute for a real-hardware pass.
+
+Verified at 2.33: boots to `CityIntro` on SoftDrv with **zero layout warnings**, and step 2.32's
+multi-keyframe mover fixture run against the `.exe` reproduces the web oracle — red 100 % through t=5 s,
+flipping green at t=6 s and stable at 53.6 % (web records 53.2 %), i.e. movers run their whole sequence.
+
+**Out of scope for now:** hardware renderers on Windows (XOpenGL/UTGLR/NOpenGLES), and `ucc.exe`.
 
 ## What the native port took (step 2.7a)
 

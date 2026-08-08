@@ -43,12 +43,34 @@
       "description": "Emscripten web build (-O3, no debug -> smaller/faster). Builds in build-wasm-perf/. [wired in step 2.7b]",
       "binaryDir": "${sourceDir}/../build-wasm-perf",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "UT_WEB_PERF": "ON" }
+    },
+    {
+      "name": "windows",
+      "displayName": "Windows x86 (MinGW-w64) -- one self-contained .exe",
+      "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the SAME preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe — no Core.dll/Engine.dll, and appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers are SoftDrv + NullDrv (CPU-only, so it verifies headless under wine+Xvfb); hardware GL is out of scope. BUILD_EDITOR is ON for the same reason the web build sets it: UT99 loads bot meshes/skins through Editor classes, so standalone bot matches abort without it. Builds in build-windows/. [ufront 2.33]",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-windows",
+      "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "BUILD_STATIC": "ON",
+        "BUILD_EDITOR": "ON",
+        "BUILD_DCUTIL": "OFF",
+        "BUILD_SOFTDRV": "ON",
+        "BUILD_NULLDRV": "ON",
+        "BUILD_NOPENGLESDRV": "OFF",
+        "BUILD_XOPENGLDRV": "OFF",
+        "USE_GL4ES": "OFF",
+        "BUILD_NULLSOUNDDRV": "ON",
+        "BUILD_NOPENALDRV": "OFF"
+      }
     }
   ],
   "buildPresets": [
     { "name": "native", "configurePreset": "native" },
     { "name": "wasm", "configurePreset": "wasm" },
     { "name": "wasm-debug", "configurePreset": "wasm-debug" },
-    { "name": "wasm-perf", "configurePreset": "wasm-perf" }
+    { "name": "wasm-perf", "configurePreset": "wasm-perf" },
+    { "name": "windows", "configurePreset": "windows" }
   ]
 }
