@@ -292,7 +292,14 @@ UStruct::UStruct( ENativeConstructor, INT InSize, const TCHAR* InName, const TCH
 ,	ConfigLink	    ( NULL )
 ,	ConstructorLink	( NULL )
 ,	FriendlyName	( /*Uninitialized*/ )
-{}
+{
+	// Layout guard: record the native C++ sizeof (InSize) keyed by object pointer, so UStruct::Link can
+	// compare it against the size derived from the LOADED .u property offsets and warn on any C++/script
+	// disagreement. Plain globals (BSS) -> safe at the static-init time these native constructors run.
+	extern UStruct* GLayoutStructs[]; extern INT GLayoutSizes[]; extern INT GLayoutCount;
+	if( GLayoutCount < 4096 ) { GLayoutStructs[GLayoutCount]=this; GLayoutSizes[GLayoutCount]=InSize; GLayoutCount++; }
+}
+UStruct* GLayoutStructs[4096]; INT GLayoutSizes[4096]; INT GLayoutCount=0;
 UStruct::UStruct( UStruct* InSuperStruct )
 :	UField( InSuperStruct )
 ,	PropertiesSize( InSuperStruct ? InSuperStruct->GetPropertiesSize() : 0 )
@@ -356,6 +363,26 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 			}
 		}
 		PropertiesSize = Align(PropertiesSize,4);
+		// Layout guard (ported from feat/v436-compat, where it was a GENERAL fix living on a
+		// target-specific branch): a native class's C++ sizeof must equal the size derived from the
+		// loaded .u property offsets. A mismatch means the class's own members — and any native
+		// subclass's — are read from the wrong offsets.
+		//
+		// ⚠ IT IS NECESSARY BUT NOT SUFFICIENT, and step 2.32 is the proof: the ABrush/AMover keyframe
+		// bug passed this check. C++ may place a derived class's members in the base's TAIL PADDING, so
+		// sizeof(base) is unchanged while the derived member moves, and AMover re-aligned before its end
+		// so its size matched too. Only a per-PROPERTY offset comparison sees that class of bug.
+		{
+			extern UStruct* GLayoutStructs[]; extern INT GLayoutSizes[]; extern INT GLayoutCount;
+			for( INT li=0; li<GLayoutCount; li++ )
+				if( GLayoutStructs[li]==this )
+				{
+					if( GLayoutSizes[li] != PropertiesSize )
+						debugf( NAME_Warning, TEXT("[layout] native %s: C++ sizeof=%i but script layout=%i -- member-offset shift risk"),
+							GetName(), GLayoutSizes[li], PropertiesSize );
+					break;
+				}
+		}
 	}
 	else
 	{
