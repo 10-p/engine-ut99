@@ -29,6 +29,12 @@ jobs:
     # resolves normally — and it is the same distro SDL2/OpenAL the local `native` build links, which is
     # the whole point of that preset.
     container: ubuntu:24.04
+    # ⚠ A container job defaults to `sh -e`, not bash — GitHub only picks bash on the bare runner image.
+    # dash has no `set -o pipefail`, so a step that opens with `set -euo pipefail` dies on line 1 with a
+    # bare "exit code 2" and no message about the shell. Pin it.
+    defaults:
+      run:
+        shell: bash
     steps:
       # The image is bare: even git has to be installed before checkout can use it.
       - name: Base tools
