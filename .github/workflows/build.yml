@@ -22,15 +22,29 @@ jobs:
   linux:
     name: linux (32-bit, one static binary)
     runs-on: ubuntu-24.04
+    # ⚠ A CONTAINER, not the bare runner. The runner image preinstalls a large set of amd64 -dev packages,
+    # and `libsdl2-dev:i386` then cannot be installed at all: it depends on libglib2.0-dev:i386, whose
+    # libglib2.0-dev-bin is Multi-Arch: foreign and so cannot be co-installed for two architectures. apt
+    # ends in "held broken packages". A stock ubuntu:24.04 has none of that preinstalled, so multiarch
+    # resolves normally — and it is the same distro SDL2/OpenAL the local `native` build links, which is
+    # the whole point of that preset.
+    container: ubuntu:24.04
     steps:
+      # The image is bare: even git has to be installed before checkout can use it.
+      - name: Base tools
+        run: |
+          apt-get update
+          apt-get install -y --no-install-recommends \
+            git ca-certificates cmake make g++ pkg-config
+
       - uses: actions/checkout@v4
 
       # The engine is a 32-bit build (-m32), so every dev package it links has to be the :i386 one.
       - name: Install the 32-bit toolchain
         run: |
-          sudo dpkg --add-architecture i386
-          sudo apt-get update
-          sudo apt-get install -y --no-install-recommends \
+          dpkg --add-architecture i386
+          apt-get update
+          apt-get install -y --no-install-recommends \
             gcc-multilib g++-multilib libsdl2-dev:i386 libopenal-dev:i386
 
       # FetchContent clones into the build dir, so cache that rather than a home directory. Keyed on the
@@ -127,6 +141,13 @@ jobs:
         with:
           version: 5.0.7
           actions-cache-folder: emsdk-cache
+
+      # ★ A fresh emsdk has an EMPTY ports cache, and the SDL2 port's headers only land in the sysroot
+      # once the port has been built. Without this the very first compile fails with
+      # "'SDL2/SDL.h' file not found" — which never happens on a developer box, where some earlier build
+      # warmed the cache. Reproduced locally with EM_CACHE pointed at an empty directory.
+      - name: Build the SDL2 port into the emsdk sysroot
+        run: embuilder build sdl2
 
       - name: Cache fetched dependencies
         uses: actions/cache@v4
