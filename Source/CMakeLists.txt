@@ -472,20 +472,18 @@ elseif(TARGET_IS_DREAMCAST)
   list(APPEND INSTALL_TARGETS KOSDrv)
 endif()
 
-# ufront 2.9 — static/wasm builds link under --whole-archive; NOpenGLESDrv and XOpenGLDrv both vendor a
-# `glad` (duplicate globals), so they cannot co-link there. Native (.so) builds can carry both.
-# ufront 2.9 / 2.19 — static builds link under --whole-archive, so every object of every driver is force
-# included. NOpenGLESDrv and XOpenGLDrv both used to vendor a `glad` with byte-identical symbol names
-# (glad_glActiveTexture … and even gladLoadGLES2Loader), which is a duplicate-definition link failure.
-# On EMSCRIPTEN that is now fixed at the source — NOpenGLESDrv compiles no glad there and takes the GLES2
-# entry points Emscripten links in directly — so the two co-link and the web ships both. Everywhere else
-# the vendored glad is still compiled (native needs it to resolve GLES2 through the driver), so the guard
-# stands for a non-Emscripten static build.
-if(BUILD_STATIC AND NOT EMSCRIPTEN AND BUILD_NOPENGLESDRV AND BUILD_XOPENGLDRV)
-  message(FATAL_ERROR "NOpenGLESDrv and XOpenGLDrv cannot both be built into a NON-Emscripten static binary "
-                      "(duplicate glad globals under --whole-archive). Enable at most one, or build shared. "
-                      "See Source/XOpenGLDrv/ENGINE_CHANGES.md.")
-endif()
+# ufront 2.9 / 2.19 / 2.34 — static builds link under --whole-archive, so every object of every driver
+# is force-included. NOpenGLESDrv and XOpenGLDrv each vendor a `glad`, and the two generators emit
+# byte-identical external names for everything GLES2 and desktop GL share (glad_glActiveTexture, …) —
+# a duplicate-definition link failure that used to make the combination illegal outside Emscripten:
+#
+#   2.19 fixed it for the WEB at the source: NOpenGLESDrv compiles no glad there (Emscripten links the
+#        GLES2 entry points in directly), so the web has shipped both drivers ever since.
+#   2.34 fixes it EVERYWHERE ELSE, because the single-exe Linux/Windows targets need the same thing:
+#        Thirdparty/glad_es now renames its externals UTGLES_* (Thirdparty/glad_es/glad_symbol_prefix.h),
+#        so the two loaders simply no longer collide. The FATAL_ERROR that stood here is gone with it —
+#        `native` is now a static build carrying ALL FIVE renderers, which is what kept the compat
+#        oracle (NOpenGLES, the web renderer's twin) available after the switch to one binary.
 
 if(BUILD_NOPENGLDRV)
   # gl4es (desktop GL -> GLES2) for the OpenGLDrv/UTGLR WebGL path. Fetched when USE_GL4ES (native gl4es

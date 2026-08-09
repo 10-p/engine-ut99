@@ -53,6 +53,24 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE UNREAL_EXPORTS UPACKAGE_NAME=${PROJECT_NAME})
 
+# ufront 2.34 — tell the launcher which OPTIONAL audio subsystem this build contains, so the Windows ini
+# normalisation can point at the REAL one instead of the silent null fallback. Keyed off the CMake option,
+# so no other target's preprocessor output moves.
+if(BUILD_NOPENALDRV)
+  target_compile_definitions(${PROJECT_NAME} PRIVATE UT_HAS_NOPENALDRV=1)
+endif()
+
+# ufront 2.34 — OpenAL Soft is the one library the Windows build loads rather than links (see
+# cmake/OpenALMingw.cmake). Put it beside the .exe as part of the build, so the output directory IS the
+# runnable set.
+if(OPENAL_MINGW_RUNTIME_DLL)
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "${OPENAL_MINGW_RUNTIME_DLL}"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/${OPENAL_MINGW_RUNTIME_DLL_NAME}"
+    COMMENT "Copying ${OPENAL_MINGW_RUNTIME_DLL_NAME} (OpenAL Soft) next to the executable")
+endif()
+
 if(TARGET_IS_DREAMCAST AND DREAMCAST_USE_FATFS)
   target_link_libraries(${PROJECT_NAME} fatfs)
 endif()

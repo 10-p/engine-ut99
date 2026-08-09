@@ -26,6 +26,10 @@
 #ifndef __glad_h_
 #define __glad_h_
 
+// ufront 2.34: this loader's externals are renamed UTGLES_* so the GLES2 and desktop-GL glads can
+// co-link in one static binary (NOpenGLESDrv + XOpenGLDrv). Must precede every declaration below.
+#include "glad_symbol_prefix.h"
+
 #ifdef __gl2_h_
 #error OpenGL ES 2 header already included, remove this include, glad already provides it
 #endif

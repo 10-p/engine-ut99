@@ -95,7 +95,12 @@ UNOpenGLESRenderDevice::UNOpenGLESRenderDevice()
 // longer compiles (see NOpenGLESDrvPrivate.h). Ask the LIVE context instead — same question, same
 // semantics, just sourced from the thing that actually answers it. (Exactly the lesson of XOpenGL's S3TC
 // bug: a driver that asks anything other than its own context gets told "absent" and silently degrades.)
-#ifdef __EMSCRIPTEN__
+// ufront 2.34: this is now the answer on EVERY platform, not just the web. Native used glad's
+// GLAD_GL_* flags, but this tree's glad_es was generated WITHOUT EXT_texture_filter_anisotropic, so
+// `GLAD_GL_EXT_texture_filter_anisotropic` simply does not exist and the native driver had not compiled
+// since 2.19. Asking the live context is the same question with a better source — and it cannot go stale
+// against the generator's extension list again. The web's token stream is unchanged (it already took
+// this branch), so the wasm is untouched.
 #include <string.h>
 static UBOOL NOpenGLESHasExtension( const char* Name )
 {
@@ -124,12 +129,6 @@ static UBOOL NOpenGLESHasExtensionEither( const char* GLName )
 	( NOpenGLESHasExtensionEither( "GL_APPLE_texture_format_BGRA8888" ) || \
 	  NOpenGLESHasExtensionEither( "GL_EXT_texture_format_BGRA8888" )   || \
 	  NOpenGLESHasExtensionEither( "GL_MESA_bgra" ) )
-#else
-#define UFRONT_GLES_BGRA_SUPPORTED()                     \
-	( GLAD_GL_APPLE_texture_format_BGRA8888 ||           \
-	  GLAD_GL_EXT_texture_format_BGRA8888   ||           \
-	  GLAD_GL_MESA_bgra )
-#endif
 
 // ufront 2.19: EXT_texture_filter_anisotropic tokens. gl2ext.h supplies them on the web and glad on
 // native, but both are optional extensions — define defensively so the driver still builds if absent.
@@ -140,11 +139,7 @@ static UBOOL NOpenGLESHasExtensionEither( const char* GLName )
 #define GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT 0x84FF
 #endif
 
-#ifdef __EMSCRIPTEN__
-# define UFRONT_GLES_HAS_ANISO() NOpenGLESHasExtensionEither( "GL_EXT_texture_filter_anisotropic" )
-#else
-# define UFRONT_GLES_HAS_ANISO() ( GLAD_GL_EXT_texture_filter_anisotropic != 0 )
-#endif
+#define UFRONT_GLES_HAS_ANISO() NOpenGLESHasExtensionEither( "GL_EXT_texture_filter_anisotropic" )
 
 UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, INT NewColorBytes, UBOOL Fullscreen )
 {

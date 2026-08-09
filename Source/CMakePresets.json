@@ -4,8 +4,8 @@
   "configurePresets": [
     {
       "name": "native",
-      "displayName": "Native (SDL2, all 5 renderers) -- the WASM twin / compat oracle",
-      "description": "32-bit native build (needs libsdl2-dev:i386). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). Not static, so NOpenGLES + XOpenGL co-link fine (glad-clash guard is BUILD_STATIC-only). Builds in build-native/.",
+      "displayName": "Native (SDL2, all 5 renderers) -- the WASM twin / compat oracle, one binary",
+      "description": "32-bit native build (needs libsdl2-dev:i386). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). BUILD_STATIC links every package into ONE UnrealTournament -- no Core.so/Engine.so beside it, and appGetDllHandle resolves through the internal UNREAL_STATIC registry instead of dlopen (ufront 2.34; system libs SDL2/OpenAL/libGL stay dynamic). NOpenGLES and XOpenGL co-link in that single binary because Thirdparty/glad_es now carries a private symbol prefix -- keeping the compat oracle intact through the switch. Builds in build-native/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-native",
       "cacheVariables": {
@@ -16,7 +16,8 @@
         "BUILD_DCUTIL": "OFF",
         "BUILD_XOPENGLDRV": "ON",
         "BUILD_NOPENGLDRV": "ON",
-        "BUILD_NOPENALDRV": "ON"
+        "BUILD_NOPENALDRV": "ON",
+        "BUILD_STATIC": "ON"
       }
     },
     {
@@ -47,7 +48,7 @@
     {
       "name": "windows",
       "displayName": "Windows x86 (MinGW-w64) -- one self-contained .exe",
-      "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the SAME preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe — no Core.dll/Engine.dll, and appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers: SoftDrv + NullDrv (CPU-only, so it verifies headless under wine+Xvfb). Hardware GL is a scoped follow-up, NOT a blocker of principle: UTGLR needs no GL4ES on Windows (it resolves GL through SDL_GL_GetProcAddress against the system opengl32, so there is nothing to ship), but building it needs two fixes first — the fetched utglr's OpenGLDrv.h wants SDL types it only includes off-WIN32, and UnGnuG.h must stop #undef-ing VOID on Windows. BUILD_EDITOR is ON for the same reason the web build sets it: UT99 loads bot meshes/skins through Editor classes, so standalone bot matches abort without it. Builds in build-windows/. [ufront 2.33]",
+      "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the SAME preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe — no Core.dll/Engine.dll, and appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers: UTGLR (OpenGLDrv) + XOpenGLDrv, both hardware GL through the system opengl32 (they resolve every entry point via SDL_GL_GetProcAddress, so nothing GL ships beside the exe), plus SoftDrv + NullDrv (CPU-only, so the build still verifies headless under wine+Xvfb). NOpenGLESDrv is OFF here: it and XOpenGL vendor clashing glad globals in a non-Emscripten static link. Audio is the REAL NOpenALDrv (OpenAL Soft + libxmp), whose OpenAL32.dll the build copies next to the exe — a silent binary is not a usable default. [ufront 2.33, renderers + audio 2.34] BUILD_EDITOR is ON for the same reason the web build sets it: UT99 loads bot meshes/skins through Editor classes, so standalone bot matches abort without it. Builds in build-windows/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-windows",
       "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",
@@ -59,10 +60,11 @@
         "BUILD_SOFTDRV": "ON",
         "BUILD_NULLDRV": "ON",
         "BUILD_NOPENGLESDRV": "OFF",
-        "BUILD_XOPENGLDRV": "OFF",
+        "BUILD_XOPENGLDRV": "ON",
+        "BUILD_NOPENGLDRV": "ON",
         "USE_GL4ES": "OFF",
         "BUILD_NULLSOUNDDRV": "ON",
-        "BUILD_NOPENALDRV": "OFF"
+        "BUILD_NOPENALDRV": "ON"
       }
     }
   ],

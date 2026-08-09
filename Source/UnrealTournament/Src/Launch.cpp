@@ -211,12 +211,13 @@ static const TCHAR* GRenderPreference[] =
 // The class a -*RENDERER switch requested (empty if none) — persisted after a successful Init().
 static FString GRequestedRenderDevice;
 
-// True iff the render-device class is compiled into this build. The web build disables exception
+// True iff the named "Package.Class" is compiled into this build — asked of render devices, and since
+// ufront 2.34 of viewport clients and audio subsystems too. The web build disables exception
 // CATCHING, so StaticLoadClass on an absent package appThrowf's ("Can't find file for package X") ->
 // Aborted() (uncatchable — ut99 lacks unreal1's 2.6g GetPackageLinker-returns-NULL fix). StaticFindObject
 // only inspects ALREADY-REGISTERED objects (a statically-linked native render device registers at
 // startup) — no file system, no throw. Match the class' short name (after the last '.') vs ANY_PACKAGE.
-static UBOOL IsRenderDeviceAvailable( const TCHAR* Device )
+static UBOOL IsPackageClassAvailable( const TCHAR* Device )
 {
 #ifdef __EMSCRIPTEN__
 	// web (single static binary, exception CATCHING disabled): StaticFindObject inspects ALREADY-registered
@@ -230,9 +231,51 @@ static UBOOL IsRenderDeviceAvailable( const TCHAR* Device )
 	// and SelectRenderDevice() runs before Engine->Init(), so StaticFindObject would see nothing. Load the
 	// class by name instead (LOAD_NoWarn) — a compiled-in driver resolves + registers, an absent one returns
 	// NULL. Every native preset builds the full render set, so this resolves for all GRenderSwitches/Preference.
-	return UObject::StaticLoadClass( URenderDevice::StaticClass(), NULL, Device, NULL, LOAD_NoWarn, NULL ) != NULL;
+	// UObject (not URenderDevice) is the base: this same probe answers for viewport clients and audio
+	// subsystems, which are not render devices (ufront 2.34).
+	return UObject::StaticLoadClass( UObject::StaticClass(), NULL, Device, NULL, LOAD_NoWarn, NULL ) != NULL;
 #endif
 }
+
+#ifndef __EMSCRIPTEN__
+// ★ ufront 2.34 — "if we have the wrong driver, select a NON-NULL driver" (owner's rule, and it applies to
+// sound and networking as much as to graphics).
+//
+// Every ini this engine can meet names subsystems it may not contain: the retail UT99 one says
+// `ViewportManager=WinDrv.WindowsClient` and `AudioDevice=Galaxy.GalaxyAudioSubsystem` — packages the
+// ut99dc lineage deleted years ago and no target here builds. The engine loads them with LOAD_NoFail, so a
+// missing one is not a degraded mode, it is an appError before the first frame (on native it does not even
+// get that far: the error path itself segfaults, exit 139, empty log). Nor can a user fix it by editing the
+// ini on a BUILD_STATIC target, where packages resolve through the internal registry and no .so/.dll
+// dropped beside the binary can answer.
+//
+// So: if what the ini names is not present, substitute the best REAL driver this build has. Null drivers
+// (SoundDrv's silent subsystem, NullDrv's no-op renderer) are never candidates — they stay explicit opt-ins
+// via their own switches. A configured driver that IS present is left completely alone, so this cannot
+// override anybody's deliberate choice.
+//
+// Excluded on Emscripten: the web block below already sets every subsystem unconditionally, so this would
+// be dead code there — and leaving the web preprocessor output untouched keeps the wasm identical.
+static void NormalizeSubsystem( const TCHAR* Section, const TCHAR* Key, const TCHAR* const* Preference, INT Num )
+{
+	FString Configured;
+	if( GConfig->GetString( Section, Key, Configured ) && Configured.Len() && IsPackageClassAvailable( *Configured ) )
+		return;	// what the user asked for is here — do not touch it
+
+	for( INT i=0; i<Num; i++ )
+	{
+		if( IsPackageClassAvailable( Preference[i] ) )
+		{
+			debugf( TEXT("ufront 2.34: [%s] %s=%s is not in this build -> %s"),
+				Section, Key, Configured.Len() ? *Configured : TEXT("(unset)"), Preference[i] );
+			GConfig->SetString( Section, Key, Preference[i] );
+			return;
+		}
+	}
+	debugf( NAME_Warning, TEXT("ufront 2.34: [%s] %s=%s is not in this build and no replacement is either"),
+		Section, Key, Configured.Len() ? *Configured : TEXT("(unset)") );
+}
+#endif
 
 static void SetRenderDeviceConfig( const TCHAR* Device )
 {
@@ -266,7 +309,7 @@ static void SelectRenderDevice()
 		if( ParseParam( appCmdLine(), GRenderSwitches[i].Param ) )
 		{
 			const TCHAR* Device = GRenderSwitches[i].Device;
-			if( IsRenderDeviceAvailable( Device ) )
+			if( IsPackageClassAvailable( Device ) )
 			{
 				debugf( TEXT("ufront 2.9: -%s selects render device %s"), GRenderSwitches[i].Param, Device );
 				SetRenderDeviceConfig( Device );
@@ -294,7 +337,7 @@ static void SelectRenderDevice()
 		const UBOOL bUserSelected =
 			GConfig->GetString( TEXT("Engine.Engine"), TEXT("ufrontUserRenderDevice"), UserSel )
 			&& UserSel.Len()>0 && appStricmp( *Persisted, *UserSel )==0;
-		if( IsRenderDeviceAvailable( *Persisted ) && ( IsHardwareDefaultEligible( *Persisted ) || bUserSelected ) )
+		if( IsPackageClassAvailable( *Persisted ) && ( IsHardwareDefaultEligible( *Persisted ) || bUserSelected ) )
 		{
 			debugf( TEXT("ufront 2.12: using the persisted %s render device %s"), bUserSelected ? TEXT("user-selected") : TEXT("hardware"), *Persisted );
 			SetRenderDeviceConfig( *Persisted );
@@ -306,7 +349,7 @@ static void SelectRenderDevice()
 	// 3) Preference order — first compiled-in device wins.
 	for( INT i=0; i<ARRAY_COUNT(GRenderPreference); i++ )
 	{
-		if( IsRenderDeviceAvailable( GRenderPreference[i] ) )
+		if( IsPackageClassAvailable( GRenderPreference[i] ) )
 		{
 			debugf( TEXT("ufront 2.9: default render device %s (preference order)"), GRenderPreference[i] );
 			SetRenderDeviceConfig( GRenderPreference[i] );
@@ -378,19 +421,27 @@ static UEngine* InitEngine()
 	GConfig->SetString( TEXT("NSDLDrv.NSDLClient"),  TEXT("CaptureMouse"),    TEXT("True") );
 #endif
 
-#if defined(PLATFORM_WIN32) && defined(PLATFORM_SDL)
-	// ufront 2.33 (the Windows build) — same reasoning as the Emscripten block above, different platform:
-	// a real UT99 install's ini names packages THIS build does not contain, so it dies before the first
-	// frame with "Can't find file for package 'WinDrv'".
+#ifndef __EMSCRIPTEN__
+	// ufront 2.33 introduced this for Windows, where a real UT99 install's ini killed the build before the
+	// first frame ("Can't find file for package 'WinDrv'"). ufront 2.34 makes it every non-web target,
+	// because native Linux has exactly the same problem with exactly the same inis — running the shipped
+	// retail ini natively segfaulted in the error path with an empty log.
 	//   ViewportManager=WinDrv.WindowsClient    -> WinDrv is not in this tree AT ALL (the ut99dc lineage
 	//     removed it); windowing/input is NSDLDrv on every target we build, Windows included.
 	//   AudioDevice=Galaxy.GalaxyAudioSubsystem -> the retail sound package, likewise absent.
-	// Nor could the user fix it by editing the ini: BUILD_STATIC resolves packages through the internal
-	// registry, so a WinDrv.dll sitting next to the exe can never be loaded. NetworkDevice is deliberately
-	// left alone — IpDrv.TcpNetDriver is correct here (WebRTC is only the web's substitute for it).
-	// Keeping the override in code rather than shipping an ini leaves the user's game data untouched.
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"), TEXT("NSDLDrv.NSDLClient") );
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("AudioDevice"),     TEXT("SoundDrv.NullAudioSubsystem") );
+	// Each list is best-real-driver-first and contains NO null driver: SoundDrv's silent subsystem is an
+	// opt-out, not a fallback. NormalizeSubsystem leaves a present, deliberately-chosen value untouched,
+	// so this only ever fires on a driver this build cannot load. NetworkDevice is checked for the same
+	// reason, and lands on IpDrv.TcpNetDriver (WebRTC is only the web's substitute for it).
+	{
+		static const TCHAR* const ViewportPreference[] = { TEXT("NSDLDrv.NSDLClient") };
+		static const TCHAR* const AudioPreference[]    = { TEXT("NOpenALDrv.NOpenALAudioSubsystem"),
+		                                                   TEXT("SoundDrv.NullAudioSubsystem") };
+		static const TCHAR* const NetPreference[]      = { TEXT("IpDrv.TcpNetDriver") };
+		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("ViewportManager"), ViewportPreference, ARRAY_COUNT(ViewportPreference) );
+		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("AudioDevice"),     AudioPreference,    ARRAY_COUNT(AudioPreference) );
+		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("NetworkDevice"),   NetPreference,      ARRAY_COUNT(NetPreference) );
+	}
 #endif
 
 	// ufront 2.12: unified render-device selection — SHARED native+web, run BEFORE Engine->Init() (which loads

@@ -49,6 +49,11 @@ set(LIBXMP_LIBRARY xmp_static)
 if(EMSCRIPTEN)
   # Emscripten's OpenAL (built-in) — the fetched libxmp static target overrides any parent -lxmp.
   set(OPENAL_LIBRARY "-lopenal")
+elseif(MINGW AND CMAKE_CROSSCOMPILING)
+  # ufront 2.34 — cross-building for Windows: no system OpenAL, so fetch OpenAL Soft's official prebuilt
+  # Windows binaries (same pattern as SDL2Mingw). Real audio on Windows, because a silent build is not a
+  # usable default; see cmake/OpenALMingw.cmake for why this one library is loaded rather than linked.
+  include(OpenALMingw)
 else()
   # Native (Linux): system OpenAL (openal-soft) provides the full feature set (EFX/reverb/HRTF).
   find_package(OpenAL)

@@ -59,7 +59,15 @@
 #undef MAXWORD
 #undef MAXDWORD
 #undef MAXINT
+#ifndef PLATFORM_WIN32
+// ufront 2.34 — do NOT undefine VOID on Windows. Unlike the names above it is not an engine type that
+// the Win32 headers happen to collide with; it is <winnt.h>'s own `#define VOID void`, and the Windows
+// and GL headers included AFTER this point declare hundreds of prototypes with it (`VOID WINAPI ...`,
+// `void APIENTRY glFoo(... VOID)`). Undefining it here turns every one of them into a parse error far
+// from the cause — the same trap already fixed in engine-ut2004 and engine-unreal1 during 2.33. It
+// surfaced here the moment a GL render device (UTGLR) was enabled for the Windows build.
 #undef VOID
+#endif
 #undef CDECL
 
 #ifndef _WINDOWS_
