@@ -39,6 +39,21 @@ jobs:
 
       - uses: actions/checkout@v4
 
+      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
+      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
+      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
+      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
+      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
+      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      - name: Identify the engine variant
+        id: variant
+        run: |
+          set -euo pipefail
+          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
+          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Engine variant: v$v"
+
       # The engine is a 32-bit build (-m32), so every dev package it links has to be the :i386 one.
       - name: Install the 32-bit toolchain
         run: |
@@ -75,7 +90,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-linux
+          name: ut99-${{ steps.variant.outputs.version }}-linux
           path: |
             build-native/UnrealTournament/UnrealTournament
             build-native/UCC/ucc-bin
@@ -86,6 +101,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
+      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
+      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
+      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
+      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
+      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      - name: Identify the engine variant
+        id: variant
+        run: |
+          set -euo pipefail
+          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
+          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Engine variant: v$v"
 
       - name: Install MinGW-w64
         run: |
@@ -123,7 +153,7 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-windows
+          name: ut99-${{ steps.variant.outputs.version }}-windows
           path: |
             build-windows/UnrealTournament/UnrealTournament.exe
             build-windows/UnrealTournament/OpenAL32.dll
@@ -134,6 +164,21 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
+
+      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
+      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
+      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
+      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
+      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
+      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      - name: Identify the engine variant
+        id: variant
+        run: |
+          set -euo pipefail
+          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
+          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
+          echo "version=$v" >> "$GITHUB_OUTPUT"
+          echo "Engine variant: v$v"
 
       # ⚠ emsdk must be on PATH BEFORE cmake configures: emcc is probed at configure time and
       # `cmake --build` never re-probes. The preset's toolchain file also reads $EMSDK.
@@ -176,6 +221,6 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-web
+          name: ut99-${{ steps.variant.outputs.version }}-web
           path: build-wasm/SDLLaunch/
           if-no-files-found: error
