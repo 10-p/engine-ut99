@@ -1,0 +1,160 @@
+name: build
+
+# ufront 2.34 — CI for the engine build matrix.
+#
+# Scope, decided with the owner: build on EVERY push and pull request and upload the binaries as workflow
+# artifacts. No GitHub Releases — the artifacts on the run page are the deliverable.
+#
+# What this does NOT do: run the game. The web E2E suite needs a GPU (it is guarded by the monorepo's
+# tools/e2e-gpu-guard.mjs) and a hosted runner has none, so CI proves every target still BUILDS and that
+# the Windows exe is self-contained. Rendering stays a human check on the owner's box, which is where the
+# screenshots in the 2.34 write-up come from.
+
+on:
+  push:
+  pull_request:
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  linux:
+    name: linux (32-bit, one static binary)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # The engine is a 32-bit build (-m32), so every dev package it links has to be the :i386 one.
+      - name: Install the 32-bit toolchain
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            gcc-multilib g++-multilib libsdl2-dev:i386 libopenal-dev:i386
+
+      # FetchContent clones into the build dir, so cache that rather than a home directory. Keyed on the
+      # files that decide WHAT is fetched — a pin bump invalidates it, an unrelated source edit does not.
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-native/_deps
+          key: deps-native-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
+
+      - name: Configure
+        run: cmake --preset native
+        working-directory: Source
+
+      - name: Build
+        run: cmake --build --preset native -j$(nproc)
+        working-directory: Source
+
+      - name: Check it really is one binary
+        run: |
+          test -x build-native/UnrealTournament/UnrealTournament
+          test -x build-native/UCC/ucc-bin   # the command-line tool (dedicated server / commandlets)
+          # BUILD_STATIC means no engine packages beside the executable. System libraries (SDL2, OpenAL,
+          # libGL, libc) stay dynamic — "single binary" is about the ENGINE, not about static libc.
+          if ls build-native/*/*.so >/dev/null 2>&1; then
+            echo "::error::engine .so modules were produced — BUILD_STATIC is not in effect"; exit 1
+          fi
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut99-linux
+          path: |
+            build-native/UnrealTournament/UnrealTournament
+            build-native/UCC/ucc-bin
+          if-no-files-found: error
+
+  windows:
+    name: windows (MinGW-w64 cross, one self-contained .exe)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install MinGW-w64
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends mingw-w64
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-windows/_deps
+          key: deps-windows-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
+
+      - name: Configure
+        run: cmake --preset windows
+        working-directory: Source
+
+      - name: Build
+        run: cmake --build --preset windows -j$(nproc)
+        working-directory: Source
+
+      # ★ The check that matters for a "drop it somewhere and run it" binary. Without -static-libgcc /
+      # -static-libstdc++ the exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll and runs ONLY on the
+      # machine that built it — and nothing else in the build fails when that happens.
+      - name: Assert the exe imports nothing but system DLLs
+        run: |
+          set -euo pipefail
+          imports=$(i686-w64-mingw32-objdump -p build-windows/UnrealTournament/UnrealTournament.exe \
+                    | sed -n 's/^\tDLL Name: //p' | sort -u)
+          echo "$imports"
+          # OpenAL32.dll is deliberate: OpenAL Soft is the one library this build loads rather than links
+          # (see Source/cmake/OpenALMingw.cmake), and the build copies it next to the exe.
+          bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|OpenAL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
+          if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
+          test -f build-windows/UnrealTournament/OpenAL32.dll
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut99-windows
+          path: |
+            build-windows/UnrealTournament/UnrealTournament.exe
+            build-windows/UnrealTournament/OpenAL32.dll
+          if-no-files-found: error
+
+  web:
+    name: web (Emscripten)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # ⚠ emsdk must be on PATH BEFORE cmake configures: emcc is probed at configure time and
+      # `cmake --build` never re-probes. The preset's toolchain file also reads $EMSDK.
+      - uses: mymindstorm/setup-emsdk@v14
+        with:
+          version: 5.0.7
+          actions-cache-folder: emsdk-cache
+
+      - name: Cache fetched dependencies
+        uses: actions/cache@v4
+        with:
+          path: build-wasm/_deps
+          key: deps-wasm-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
+
+      # No game assets are needed: this engine's web link preloads only the TRACKED web config
+      # (Config/System/web), by design — the asset tree streams in at runtime via FetchFS.
+      - name: Configure
+        run: cmake --preset wasm
+        working-directory: Source
+
+      - name: Build
+        run: cmake --build --preset wasm -j$(nproc)
+        working-directory: Source
+
+      # meta.json carries the gitSha captured at CONFIGURE time. Assert it matches the commit actually
+      # built, or provenance silently describes a different tree (a real near-miss in 2.13).
+      - name: Check artifact provenance
+        run: |
+          set -euo pipefail
+          sha=$(python3 -c "import json;print(json.load(open('build-wasm/SDLLaunch/meta.json'))['provenance']['gitSha'])")
+          echo "meta.json gitSha=$sha  HEAD=$GITHUB_SHA"
+          case "$GITHUB_SHA" in "$sha"*) ;; *) echo "::error::meta.json gitSha does not match HEAD"; exit 1;; esac
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut99-web
+          path: build-wasm/SDLLaunch/
+          if-no-files-found: error
