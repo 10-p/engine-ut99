@@ -31,6 +31,61 @@ void UNSDLClient::StaticConstructor()
 	new(GetClass(), "ScaleRUV",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleRUV),         "Joystick", CPF_Config );
 	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
 	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
+
+	// ★ COMPILED DEFAULTS (ufront 2.35). Registration above only makes an option ADDRESSABLE by the ini;
+	// it assigns no value. UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp) is the same — it registers
+	// its ~15 display options and assigns none of them — so with no [NSDLDrv.NSDLClient] section EVERY
+	// setting below fell back to a zero-initialised default, and the zeroes are wrong:
+	//
+	//   Decals = 0            -> ADecal::execAttachDecal (UnScript.cpp) early-returns on
+	//                            `!Engine->Client->Decals`, so no decal is ever placed. Silently.
+	//   Brightness = 0        -> a black picture.
+	//   WindowedViewportX/Y=0 -> a 0x0 window (measured: 320x240 under Xvfb during the 2.34 Windows pass).
+	//   CurvedSurfaces = 0    -> flat-shaded curved geometry.
+	//   MinDesiredFrameRate=0 -> the dynamic-detail governor has no target to hold.
+	//
+	// ⚠ THE NATIVE CONFIG NEVER SUPPLIED THEM. Config/System/web/Default.ini carries a full section, so the
+	// WEB build has always been fine; Config/System/UnrealTournament.ini and Default.ini carry NONE, which
+	// is why a native install writes `Decals=False` back into its own ini and then honours it forever. That
+	// is the "no decals" the owner kept hitting. Fixed in both places: the values here, and a matching
+	// section added to the native ini so the knob is documented rather than merely implied.
+	//
+	// Values mirror Config/System/web/Default.ini's section exactly, so the compiled default and the shipped
+	// ini now AGREE. Every line stays overridable by ini, like any other config option.
+	CaptureMouse        = 1;
+	CurvedSurfaces      = 1;
+	ScreenFlashes       = 1;
+	NoLighting          = 0;
+	Decals              = 1;   // ← the one the owner asked for; off-by-default was never a decision
+	NoDynamicLights     = 0;
+
+	WindowedViewportX   = 1280;
+	WindowedViewportY   = 720;
+	WindowedColorBits   = 32;
+	FullscreenViewportX = 1280;
+	FullscreenViewportY = 720;
+	FullscreenColorBits = 32;
+
+	Brightness          = 0.5f;
+	MipFactor           = 1.0f;
+	MinDesiredFrameRate = 20.0f;
+
+	// TextureDetail / SkinDetail index the `Details` enum (High, Medium, Low, Ultra Low), so 0 is already
+	// High. Written out so it is a decision rather than a coincidence.
+	TextureLODSet[1]    = 0;   // TextureDetail = High
+	TextureLODSet[2]    = 0;   // SkinDetail    = High
+
+	// This driver's own nine, likewise unassigned until now.
+	DefaultDisplay      = 0;
+	StartupFullscreen   = 0;
+	UseJoystick         = 1;
+	DeadZoneXYZ         = 0.1f;
+	DeadZoneRUV         = 0.1f;
+	ScaleXYZ            = 200.0f;
+	ScaleRUV            = 500.0f;
+	InvertY             = 0;
+	InvertV             = 0;
+
 	unguard;
 }
 
@@ -61,6 +116,15 @@ void UNSDLClient::Init( UEngine* InEngine )
 
 	// Init base.
 	UClient::Init( InEngine );
+
+	// ★ SAY WHAT THE CLIENT ACTUALLY RESOLVED TO (ufront 2.35). These options are read off this object by
+	// the renderer and by ADecal::execAttachDecal, and until now the resolved values were invisible -- so
+	// "why are there no decals" had no answer short of reading the ini and knowing which of the four client
+	// sections this build even uses. Same lesson as 2.30's "GL4ES: Vertex buffers:" line: a silent decision
+	// is indistinguishable from a broken one. One line, at Init, naming the values that matter.
+	debugf( NAME_Init, TEXT("NSDLClient: %ix%i, Brightness=%.2f, Decals=%i, CurvedSurfaces=%i, ScreenFlashes=%i, NoDynamicLights=%i, MinDesiredFrameRate=%.0f"),
+		WindowedViewportX, WindowedViewportY, Brightness, (INT)Decals, (INT)CurvedSurfaces,
+		(INT)ScreenFlashes, (INT)NoDynamicLights, MinDesiredFrameRate );
 
 	Controller = NULL;
 

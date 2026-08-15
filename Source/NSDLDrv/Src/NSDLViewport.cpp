@@ -307,6 +307,20 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 				NewX = ConfigX;
 			if( GConfig->GetInt( TEXT("NSDLDrv.NSDLClient"), TEXT("WindowedViewportY"), ConfigY ) && ConfigY > 0 )
 				NewY = ConfigY;
+
+			// ufront 2.35 — then the CLIENT OBJECT, before the 320x240 floor below.
+			//
+			// The GConfig reads above ask the INI DIRECTLY and so bypass the client entirely: an install
+			// whose ini has no [NSDLDrv.NSDLClient] section (every retail UT99 ini — this client class did
+			// not exist then) fell straight through to 320x240, no matter what default the client carried.
+			// That is what made UNSDLClient::StaticConstructor's WindowedViewportX unreachable, and it is
+			// why the 2.34 Windows render pass photographed a 320x240 CityIntro. Ini still wins; this only
+			// fills the gap between "ini says nothing" and the last-resort floor.
+			if( Client )
+			{
+				if( NewX <= 0 && Client->WindowedViewportX > 0 ) NewX = Client->WindowedViewportX;
+				if( NewY <= 0 && Client->WindowedViewportY > 0 ) NewY = Client->WindowedViewportY;
+			}
 		}
 		// Final fallback
 		if( NewX <= 0 ) NewX = 320;
