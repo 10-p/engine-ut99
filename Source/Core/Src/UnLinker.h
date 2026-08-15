@@ -332,7 +332,9 @@ class ULinkerLoad : public ULinker, public FArchive
 		debugf( TEXT("Loading: %s"), InParent->GetFullName() );
 		Loader = GFileManager->CreateFileReader( InFilename, 0, GError );
 		if( !Loader )
-			appThrowf( LocalizeError("OpenFailed") );
+			// ufront 2.35 — NAME THE FILE. "Error opening file" with no filename is unactionable, and with
+			// exceptions disabled this throw is fatal, so it is the last thing the log ever says.
+			appThrowf( TEXT("%s: %s"), LocalizeError("OpenFailed"), InFilename );
 
 		// Error if linker already loaded.
 		{for( INT i=0; i<GObjLoaders.Num(); i++ )
@@ -1057,7 +1059,8 @@ class ULinkerSave : public ULinker, public FArchive
 		// Create file saver.
 		Saver = GFileManager->CreateFileWriter( InFilename, 0, GThrow );
 		if( !Saver )
-			appThrowf( LocalizeError("OpenFailed") );
+			// ufront 2.35 — name the file (see the loader above).
+			appThrowf( TEXT("%s: %s"), LocalizeError("OpenFailed"), InFilename );
 
 		// Set main summary info.
 		Summary.Tag           = PACKAGE_FILE_TAG;

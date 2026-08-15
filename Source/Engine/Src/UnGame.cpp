@@ -1777,7 +1777,17 @@ void UGameEngine::SaveGame( INT Position )
 	guard(UGameEngine::SaveGame);
 
 	TCHAR Filename[256];
-	GFileManager->MakeDirectory( *GSys->SavePath, 0 );
+	// ufront 2.35 — Tree=1, i.e. create the WHOLE chain, not just the last component.
+	//
+	// Stock passes 0 (a single mkdir), which is fine for the base game's one-level `SavePath=../Save`:
+	// the parent is the VFS root, so the mkdir succeeds. A total conversion that nests its saves —
+	// Spatial Fear ships `SavePath=../spatial-fear/save` — needs the intermediate directory first, so the
+	// single mkdir fails with ENOENT, ULinkerSave's CreateFileWriter then returns NULL, and it appThrowf's
+	// "Error opening file". On a build with exceptions ENABLED that is a caught, recoverable "save failed";
+	// with -fno-exceptions it is ___cxa_throw -> abort(), and the whole engine thread dies mid-play.
+	// Same shape as the case-order package bug (engine-ut99 1e35a01): an ordinary error made fatal by
+	// exceptions being off. Reproduced with `?conv=-ini=spatialfear.ini` + `savegame 0`.
+	GFileManager->MakeDirectory( *GSys->SavePath, 1 );
 	appSprintf( Filename, TEXT("%s") PATH_SEPARATOR TEXT("Save%i.usa"), *GSys->SavePath, Position );
 	GLevel->GetLevelInfo()->LevelAction=LEVACT_Saving;
 	PaintProgress();
