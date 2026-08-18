@@ -78,6 +78,7 @@ struct FLanServer
 {
 	FString Room, Name, Map, GameType;
 	INT     Players, MaxPlayers, Ping;
+	FLanServer() : Players(0), MaxPlayers(0), Ping(0) {}
 };
 
 // Append-only: an index handed out in a synthetic address must keep meaning the same room for as long
@@ -209,11 +210,27 @@ static void PumpDiscovery()
 		return;
 	GDiscoveryPending = 0;
 
+	// ⚠ BUILT AS A LOCAL, THEN APPENDED — deliberately, and not stylistic.
+	//
+	// The first cut did `FLanServer& S = GServers( GServers.AddZeroed() )` and then filled the referenced
+	// element in place, which is the UE1 idiom for a struct of PODs. FLanServer is not that: it holds
+	// FStrings, so the element is being ZEROED and then assigned into while the array may reallocate under
+	// a live reference, and `TArray::Empty()` frees the storage without destructing anything in it. That
+	// combination crashed the module with `memory access out of bounds` on the exact tick discovery was
+	// drained — and, because the module then dies, it presented downstream as "the link stopped ticking"
+	// and "the server list is empty".
+	//
+	// A local + AddItem has none of those properties: the copy constructor runs, nothing holds a reference
+	// across a growth, and the old contents are released by the array's own element handling.
 	GServers.Empty();
 	const INT Count = webrtc_get_server_count();
 	char nameBuf[256], roomBuf[256], mapBuf[128], gtBuf[128];
 	for( INT i=0; i<Count; i++ )
 	{
+		appMemzero( nameBuf, sizeof(nameBuf) );
+		appMemzero( roomBuf, sizeof(roomBuf) );
+		appMemzero( mapBuf,  sizeof(mapBuf)  );
+		appMemzero( gtBuf,   sizeof(gtBuf)   );
 		if( !webrtc_get_server_info( i, nameBuf, sizeof(nameBuf), roomBuf, sizeof(roomBuf) ) )
 			continue;
 		FString Room = ANSI_TO_TCHAR(roomBuf);
@@ -224,7 +241,7 @@ static void PumpDiscovery()
 		webrtc_get_server_map( i, mapBuf, sizeof(mapBuf) );
 		webrtc_get_server_gametype( i, gtBuf, sizeof(gtBuf) );
 
-		FLanServer& S = GServers( GServers.AddZeroed() );
+		FLanServer S;
 		S.Room       = Room;
 		S.Name       = ANSI_TO_TCHAR(nameBuf);
 		S.Map        = mapBuf[0] ? FString(ANSI_TO_TCHAR(mapBuf)) : FString(TEXT("?"));
@@ -235,10 +252,10 @@ static void PumpDiscovery()
 		if( S.MaxPlayers <= 0 ) S.MaxPlayers = 16;
 		if( S.Ping      <= 0 )  S.Ping = 1;
 		if( !S.Name.Len() )     S.Name = Room;
-		RoomIndex( S.Room );  // reserve the index now so the address is stable from first sight
-		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] '%s' room=%s map=%s %d/%d %dms -> %s"),
-			*S.Name, *S.Room, *S.Map, S.Players, S.MaxPlayers, S.Ping,
-			*WebRTCLan_HostForRoom( *S.Room ) );
+		const FString Host = WebRTCLan_HostForRoom( *S.Room );   // also reserves the room's index
+		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] '%s' room=%s map=%s %i/%i %ims -> %s"),
+			*S.Name, *S.Room, *S.Map, S.Players, S.MaxPlayers, S.Ping, *Host );
+		GServers.AddItem( S );
 	}
 	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery done: %i server(s)"), GServers.Num() );
 }
