@@ -437,7 +437,10 @@ endif()
 
 # Subprojects
 
-set(INSTALL_TARGETS Core Engine Render IpDrv Fire)
+# ufront 2.38 — UWeb joins the list. The game has always SHIPPED UWeb.u; without its natives compiled,
+# loading that package is a hard `Can't bind to native class UWeb.WebRequest` appError — which is what
+# killed "Start New Multiplayer Game". See UWeb/CMakeLists.txt.
+set(INSTALL_TARGETS Core Engine Render IpDrv UWeb Fire)
 
 set(CMAKE_SHARED_LIBRARY_PREFIX "")
 
@@ -446,6 +449,7 @@ add_subdirectory(Core)
 add_subdirectory(Engine)
 add_subdirectory(Render)
 add_subdirectory(IpDrv)
+add_subdirectory(UWeb)
 add_subdirectory(Fire)
 # ufront 2.12 Part B: ucc command-line tool (dedicated server / make / commandlets) — native-only executable.
 if(NOT EMSCRIPTEN)

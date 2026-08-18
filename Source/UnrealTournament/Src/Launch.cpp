@@ -419,6 +419,26 @@ static UEngine* InitEngine()
 	// ESC-to-unlock (SDL2's Emscripten port defers the lock to the next click + re-grabs after ESC). Mirrors
 	// engine-unreal1; native keeps the ini's CaptureMouse (revisit in the native pass).
 	GConfig->SetString( TEXT("NSDLDrv.NSDLClient"),  TEXT("CaptureMouse"),    TEXT("True") );
+	// ★ ufront 2.38 (web multiplayer): turn off the two 1999-era internet services the "Start new
+	// Multiplayer Game -> Server" tab still offers, BEFORE anything can spawn them. Both talk to hosts and
+	// subsystems that do not exist here, and the owner hit an exception starting a listen game from that
+	// page.
+	//
+	//  * ngWorldStats ("ngWorldStats Logging" checkbox -> GameInfo.bWorldLog). Its service died with the
+	//    1990s. Worse, it is not inert: GameInfo spawns a StatLogFile, and the world-log path ends in
+	//    AStatLog::execExecuteWorldLogBatcher -> appCreateProc(), i.e. fork/exec — of a batcher binary that
+	//    does not exist, from a browser, which has no processes at all. The owner asked for it to stop
+	//    bothering us; this is that switch. (bLocalLog goes with it: same StatLogFile, same appCreateProc.)
+	//  * "Advertise Server" (-> IpServer.UdpServerUplink DoUplink) uplinks to the GameSpy master server
+	//    list over UDP. There is no UDP in a browser and no master server left to answer. ⚠ It is also
+	//    NOT how our server browser finds anything — discovery is the PeerJS peer list (2.38) — so a
+	//    player who ticks it gains nothing and risks a failed socket on the way to their own match.
+	//
+	// Set as ini defaults rather than excised: the checkboxes still exist and still work for anyone who
+	// insists, they just start OFF and nothing spawns on a normal Start.
+	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bWorldLog"), TEXT("False") );
+	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bLocalLog"), TEXT("False") );
+	GConfig->SetString( TEXT("IpServer.UdpServerUplink"),  TEXT("DoUplink"),  TEXT("False") );
 #endif
 
 #ifndef __EMSCRIPTEN__

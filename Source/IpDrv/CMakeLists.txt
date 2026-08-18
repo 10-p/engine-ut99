@@ -19,6 +19,10 @@ target_include_directories(${PROJECT_NAME}
   ${CMAKE_CURRENT_SOURCE_DIR}/Inc
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/Src
+  # ufront 2.38 — AUdpLink calls the synthetic LAN in WebRTCDrv (WebRTCLan.h). HEADER ONLY: the
+  # dependency is one-way and resolved at the final --whole-archive link, so IpDrv does NOT link
+  # WebRTCDrv and there is no module cycle. Mirrors engine-ut2004's IpDrv -> WebRTCDiscovery hook.
+  ${CMAKE_CURRENT_SOURCE_DIR}/../WebRTCDrv
 )
 
 target_link_libraries(${PROJECT_NAME} Engine Core)

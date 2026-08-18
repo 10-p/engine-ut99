@@ -15,6 +15,7 @@
 
 #include "Engine.h"
 #include "UnNet.h"
+#include "WebRTCLan.h"
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #endif
@@ -71,6 +72,18 @@ inline void webrtc_set_listen_status( const char*, const char*, int, int, const 
 
 // Engine pointer for the listen-server status push (set in Launch.cpp after InitEngine).
 extern UEngine* GWebRTCEngine;
+
+// TCHAR -> a caller-owned ANSI buffer. appToAnsi() hands back one shared static string, so anything that
+// needs two converted strings alive at the same time (the listen-status push needs three) must copy.
+static void ToAnsiBuf( const TCHAR* Src, ANSICHAR* Dst, INT Max )
+{
+	const ANSICHAR* A = Src ? appToAnsi( Src ) : NULL;
+	INT i = 0;
+	if( A )
+		for( ; i < Max-1 && A[i]; i++ )
+			Dst[i] = A[i];
+	Dst[i] = 0;
+}
 
 /*-----------------------------------------------------------------------------
 	UWebRTCConnection — a UNetConnection over one WebRTC data channel (by connId).
@@ -183,6 +196,19 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		// Client. ConnectURL.Host carries the room (HostID); the server registered as "<prefix>-<room>-srv".
 		bIsListenServer = 0;
 		RoomName = ConnectURL.Host;
+		// ★ ufront 2.38 — a join FROM THE SERVER BROWSER arrives as a dotted address, not a room: both
+		// stock UE1 browsers can only carry an IPv4 string through to the travel URL. The synthetic LAN
+		// handed that address out, so it can hand the room back. A real-looking address that is not one
+		// of ours translates to "" and is left alone.
+		{
+			FString FromBrowser = WebRTCLan_RoomForHost( *RoomName );
+			if( FromBrowser.Len() )
+			{
+				debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: browser address %s -> room '%s'"),
+					*RoomName, *FromBrowser );
+				RoomName = FromBrowser;
+			}
+		}
 		if( RoomName.Len() <= 0 )
 			RoomName = TEXT("default");
 		FString ServerPeerId = FString::Printf( TEXT("%s-%s-srv"), TEXT(WEBRTC_PEER_PREFIX), *RoomName );
@@ -208,6 +234,9 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		RoomName   = ListenURL.GetOption( TEXT("room="), TEXT("default") );
 		ServerName = ListenURL.GetOption( TEXT("ServerName="), TEXT("") );
 		debugf( NAME_DevNet, TEXT("[WebRTC] InitListen: room='%s' name='%s'"), *RoomName, *ServerName );
+		// ufront 2.38 — tell the synthetic LAN which room is OURS, so a host browsing its own server
+		// list does not find itself and try to connect a peer to itself.
+		WebRTCLan_SetLocalRoom( *RoomName );
 		webrtc_init_listen( appToAnsi(*RoomName) );
 
 		return 1;
@@ -266,7 +295,19 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		}
 
 #ifdef __EMSCRIPTEN__
-		// Listen server: publish status for browser discovery (~1s throttle). Minimal for now — name + room.
+		// Listen server: publish current status for browser discovery (~1s throttle).
+		//
+		// ★ ufront 2.38 — this used to push `(Name, RoomName, 0, 0, "")`: it advertised the ROOM as the
+		// MAP and hard-coded zero players, with the original author's own comment admitting "Minimal for
+		// now". Nothing ever noticed, because until 2.38 no UE1 client could see a server list at all —
+		// the payload had no reader. Now it has one (the synthetic LAN responder feeds these fields
+		// straight into the stock beacon + \status\ replies), so a wrong map here is a wrong map in the
+		// player's server browser.
+		//
+		// ⚠ Player count is derived from the TRANSPORT, not from the GameInfo: UE1's native AGameInfo
+		// does not export NumPlayers on every engine in this family (Unreal 1 v200 keeps it script-side),
+		// and ClientConnections + the local listen player is both universally available and the number a
+		// browser actually wants — how many people are in there right now.
 		if( bIsListenServer )
 		{
 			static DOUBLE LastPush = 0.0;
@@ -274,8 +315,40 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 			if( Now - LastPush > 1.0 )
 			{
 				LastPush = Now;
-				const char* Name = ServerName.Len() > 0 ? appToAnsi(*ServerName) : "UT Server";
-				webrtc_set_listen_status( Name, appToAnsi(*RoomName), 0, 0, "" );
+				FString SName = ServerName, MapName = TEXT("?"), GType = TEXT("");
+				INT Players = 1 + ClientConnections.Num();   // the listen host counts
+				INT MaxPl   = 16;
+				UGameEngine* GE = Cast<UGameEngine>( GWebRTCEngine );
+				if( GE && GE->GLevel )
+				{
+					if( GE->GLevel->URL.Map.Len() )
+						MapName = GE->GLevel->URL.Map;
+					ALevelInfo* LI = GE->GLevel->GetLevelInfo();
+					AGameInfo* GI = LI ? LI->Game : NULL;
+					if( GI )
+					{
+						if( GI->MaxPlayers > 0 )
+							MaxPl = GI->MaxPlayers;
+						// GameName is the human label ("DeathMatch"); the class name is the fallback so the
+						// browser row is never blank.
+						if( GI->GameName.Len() )
+							GType = GI->GameName;
+						else
+							GType = FString( GI->GetClass()->GetName() );
+						if( !SName.Len() && GI->GameReplicationInfo )
+							SName = GI->GameReplicationInfo->ServerName;
+					}
+				}
+				if( !SName.Len() )
+					SName = TEXT("UT Server");
+				// ⚠ appToAnsi() returns ONE shared static buffer, so three calls in a single expression
+				// would clobber each other the moment this engine is built UNICODE. Copy each into its
+				// own frame buffer.
+				ANSICHAR NameBuf[128], MapBuf[128], GTypeBuf[128];
+				ToAnsiBuf( *SName, NameBuf, ARRAY_COUNT(NameBuf) );
+				ToAnsiBuf( *MapName, MapBuf, ARRAY_COUNT(MapBuf) );
+				ToAnsiBuf( *GType, GTypeBuf, ARRAY_COUNT(GTypeBuf) );
+				webrtc_set_listen_status( NameBuf, MapBuf, Players, MaxPl, GTypeBuf );
 			}
 		}
 
