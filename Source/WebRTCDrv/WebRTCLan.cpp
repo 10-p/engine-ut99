@@ -89,6 +89,8 @@ static UBOOL              GDiscoveryPending = 0;
 static DOUBLE             GLastDiscoveryAt  = 0.0;
 // Set by the net driver when WE are the listen server, so we never advertise ourselves to ourselves.
 static FString            GLocalRoom;
+// Set from a context where proxying is unsafe (see WebRTCLan_Bind); acted on from the tick.
+static UBOOL              GWantKick = 0;
 
 // A link that wants synthetic traffic. `BeaconPort` is set for a passive Unreal 1 listener.
 struct FLanLink
@@ -111,6 +113,9 @@ struct FLanReply
 	DWORD   Addr;
 	INT     Port;
 	FString Text;
+	FLanReply() : LinkId(NULL), Addr(0), Port(0) {}
+	FLanReply( const void* InLinkId, DWORD InAddr, INT InPort, const FString& InText )
+	: LinkId(InLinkId), Addr(InAddr), Port(InPort), Text(InText) {}
 };
 static TArray<FLanReply> GReplies;
 
@@ -136,13 +141,20 @@ static FLanLink& TouchLink( const void* Id )
 	return N;
 }
 
-/** Stable index for a room. Append-only — see GRooms. */
+/**
+ * Stable index for a room. Append-only — see GRooms.
+ *
+ * ⚠ `new( Array )T( Item )`, NOT `Array.AddItem( Item )`. See the note above PumpDiscovery: UE1's
+ * `AddItem` ASSIGNS into an uninitialised slot, and assigning an FString reallocs whatever garbage
+ * pointer was sitting there.
+ */
 static INT RoomIndex( const FString& Room )
 {
 	for( INT i=0; i<GRooms.Num(); i++ )
 		if( appStricmp( *GRooms(i), *Room )==0 )
 			return i;
-	return GRooms.AddItem( Room );
+	new( GRooms )FString( Room );
+	return GRooms.Num() - 1;
 }
 
 static DWORD AddrForIndex( INT Index )
@@ -210,18 +222,35 @@ static void PumpDiscovery()
 		return;
 	GDiscoveryPending = 0;
 
-	// ⚠ BUILT AS A LOCAL, THEN APPENDED — deliberately, and not stylistic.
+	// ⚠⚠ COPY-CONSTRUCTED IN PLACE (`new( Array )T( Item )`) — AND NOTHING ELSE WORKS.
 	//
-	// The first cut did `FLanServer& S = GServers( GServers.AddZeroed() )` and then filled the referenced
-	// element in place, which is the UE1 idiom for a struct of PODs. FLanServer is not that: it holds
-	// FStrings, so the element is being ZEROED and then assigned into while the array may reallocate under
-	// a live reference, and `TArray::Empty()` frees the storage without destructing anything in it. That
-	// combination crashed the module with `memory access out of bounds` on the exact tick discovery was
-	// drained — and, because the module then dies, it presented downstream as "the link stopped ticking"
-	// and "the server list is empty".
+	// ★ THIS FILE HAS NOW BEEN BITTEN TWICE BY THE SAME UE1 FACT, ONCE PER FLAVOUR, SO IT IS WRITTEN OUT
+	// IN FULL. `TArray<T>` IS A POD CONTAINER. It has no idea T might own memory, and both of its obvious
+	// "add an element" spellings hand you a slot that is not a T yet:
 	//
-	// A local + AddItem has none of those properties: the copy constructor runs, nothing holds a reference
-	// across a growth, and the old contents are released by the array's own element handling.
+	//     INT AddItem( const T& Item ) { INT Index=Add(); (*this)(Index)=Item; }   // UnTemplate.h
+	//     INT FArray::Add( INT n, INT Size ) { ... Realloc(Size); return Index; }  // NO zeroing, NO ctor
+	//
+	// so `AddItem` ASSIGNS into raw memory, and FString's assignment operator is:
+	//
+	//     FString& operator=( const FString& Other ) { ArrayNum=ArrayMax=Other.Num(); Realloc(...); }
+	//
+	// i.e. `appRealloc( Data, … )` on whatever bit pattern the allocator happened to leave in that slot.
+	// `FLanServer` holds four FStrings, so one AddItem is four reallocs of four garbage pointers.
+	//
+	// ★★ AND IT IS HEAP LUCK, WHICH IS WHY IT READ AS FLAKINESS. Fresh dlmalloc pages come back zeroed, and
+	// a zeroed FString is a valid empty one — so on a quiet heap this "works". Measured 2.38: ut99 died on
+	// it 3 runs out of 3 (`memory access out of bounds`, and inside a suite a CRASH-PANEL), while unreal1 —
+	// same source, lighter heap — drained 4 for 4 and looked perfectly healthy. The tell is in the log:
+	// the per-server line below prints and "discovery done" never does, because the module is gone in
+	// between. Downstream that is a browser window with no rows in it, then a page that stops painting.
+	//
+	// ⚠ The FIRST version of this comment claimed "a local + AddItem is safe: the copy constructor runs".
+	// It does not run. There is no construction anywhere in AddItem. Placement new is the only spelling
+	// that copy-constructs, and it is what `TArray::operator=` itself uses.
+	//
+	// (Removal and Empty() are fine as they are: TTypeInfo<T>::NeedsDestructor() defaults to 1, so TArray
+	// does destruct elements it drops — it just never constructs the ones it adds.)
 	GServers.Empty();
 	const INT Count = webrtc_get_server_count();
 	char nameBuf[256], roomBuf[256], mapBuf[128], gtBuf[128];
@@ -255,7 +284,7 @@ static void PumpDiscovery()
 		const FString Host = WebRTCLan_HostForRoom( *S.Room );   // also reserves the room's index
 		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] '%s' room=%s map=%s %i/%i %ims -> %s"),
 			*S.Name, *S.Room, *S.Map, S.Players, S.MaxPlayers, S.Ping, *Host );
-		GServers.AddItem( S );
+		new( GServers )FLanServer( S );
 	}
 	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery done: %i server(s)"), GServers.Num() );
 }
@@ -264,13 +293,12 @@ static void PumpDiscovery()
 	Reply builders.
 -----------------------------------------------------------------------------*/
 
+// ⚠ Placement new, like every other append in this file — see the note above PumpDiscovery. (AddZeroed +
+// assign would in fact survive here, because a zeroed FString is a valid empty one, but "survives because
+// zero happens to be a legal value" is exactly the reasoning that cost this file two crashes.)
 static void Queue( const void* LinkId, DWORD Addr, INT Port, const FString& Text )
 {
-	FLanReply& R = GReplies( GReplies.AddZeroed() );
-	R.LinkId = LinkId;
-	R.Addr   = Addr;
-	R.Port   = Port;
-	R.Text   = Text;
+	new( GReplies )FLanReply( LinkId, Addr, Port, Text );
 }
 
 /** Unreal 1: an unsolicited server beacon. "<Product> <address> <what the menu shows>". */
@@ -333,14 +361,21 @@ void WebRTCLan_Bind( const void* LinkId, INT Port )
 	FLanLink& L = TouchLink( LinkId );
 	L.BoundPort = Port;
 
-	// ★ WARM THE CACHE ON ANY BIND, not just the beacon port.
+	// ★ WARM THE CACHE ON ANY BIND, not just the beacon port — but ⚠ NOT FROM HERE.
 	//
 	// The stock browser's link is SHORT-LIVED — it binds, broadcasts its sweep once, and is destroyed a
 	// few seconds later. Discovery is asynchronous (a peer-list XHR plus a status handshake per server),
 	// so a sweep issued microseconds after the bind routinely outlives its own answer, and the list shows
 	// nothing at all. Kicking here buys those few seconds and, more importantly, leaves GServers populated
 	// for the NEXT query — which is why a REFRESH always works even when the first look did not.
-	KickDiscovery();
+	//
+	// ⚠⚠ DEFERRED, NOT CALLED. BindPort can be reached from INSIDE a script event that our own delivery
+	// triggered (a beacon reply -> FoundServer -> spawn UBrowserServerPing -> BindPort), i.e. from inside
+	// the engine's tick, inside script, inside an Asyncify-unwound stack. Every webrtc_* bridge is a
+	// SYNC CROSS-THREAD call, and making one from there hangs the engine — the drain completes, the log
+	// stops mid-flow, and nothing ever ticks again. So record the wish and grant it from the tick's own
+	// context (WebRTCLan_NextReply), which is a safe place to proxy from.
+	GWantKick = 1;
 
 	// Unreal 1's ClientBeaconReceiver is PASSIVE: it binds the beacon port and waits for servers to
 	// shout. Nothing will ever arrive to trigger us, so binding that port IS the trigger.
@@ -426,6 +461,12 @@ UBOOL WebRTCLan_Send( const void* LinkId, DWORD DestAddr, INT DestPort, const TC
 
 UBOOL WebRTCLan_NextReply( const void* LinkId, DWORD* OutAddr, INT* OutPort, FString& OutText )
 {
+	// Grant any deferred discovery kick here: this is tick context, which is safe to proxy from.
+	if( GWantKick )
+	{
+		GWantKick = 0;
+		KickDiscovery();
+	}
 	// One line per link, the first time it polls. Whether the stock link TICKS AT ALL is the load-bearing
 	// assumption of this whole file — if it does not, nothing can ever be delivered — so it is worth
 	// knowing from the log rather than by inference.
