@@ -184,7 +184,10 @@ void UGameEngine::Init()
 	if
 	(	!ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 )
 	||	(appStricmp(Parm,TEXT("SERVER"))==0 && !ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 ))
-	||	Parm[0]=='-' )
+	||	Parm[0]=='-'
+	// ufront 2.38: …and a global option is not a map either. See appIsGlobalOptionToken — one launcher
+	// dropping its leading flag turned `CPUSPEED=3000` into "the map" and cost the main menu entirely.
+	||	appIsGlobalOptionToken(Parm) )
 		appStrcpy( Parm, *FURL::DefaultLocalMap );
 	FURL URL( &DefaultURL, Parm, TRAVEL_Partial );
 	if( !URL.Valid )
@@ -1569,23 +1572,31 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	// pause->unpause transition gated on Client->CaptureMouse (or the MOUSE_FirstHit click gates), and neither
 	// reliably engages SDL relative-mouse-mode on the web. Drive it directly here instead.
 	//
-	// Owner feedback (2.12): keep the mouse LOCKED for the WHOLE game, menus included. UT99's UWindow menu
-	// cursor is RELATIVE (moved by IK_MouseX/IK_MouseY axis; UWindow ignores the absolute WindowsMouseX/Y).
-	// An UNLOCKED relative cursor desynced from the browser cursor (~half speed + offscreen-reentry drift, so
-	// the lower-right menu buttons were unreachable). Keeping relative-mouse-mode engaged during menus makes
-	// the single game-drawn cursor (visible in software AND GL) the only pointer -> nothing to misalign,
-	// movement is unbounded. So: request capture whenever a live level is up with a player actor, regardless
-	// of menu/pause. The browser force-exits pointer lock on ESC (which opens the UT menu), but SDL keeps
-	// relative_mode set, and its Emscripten mousedown handler RE-GRABS the lock on the next click (see
-	// SDL_emscriptenevents.c: relative_mode && !has_pointer_lock -> emscripten_request_pointerlock). So after
-	// ESC the menu re-locks with one click; the absolute-branch axis feed in TickInput keeps the cursor moving
-	// during that brief unlocked window. State-change only (no per-frame SetRelativeMouseMode churn).
+	// Owner feedback (2.12): keep the mouse LOCKED for the WHOLE game, menus included. ⚠ SUPERSEDED BY
+	// 2.38 — see below. The 2.12 reasoning was: "UT99's UWindow menu cursor is RELATIVE (moved by
+	// IK_MouseX/IK_MouseY axis; UWindow ignores the absolute WindowsMouseX/Y). An UNLOCKED relative cursor
+	// desynced from the browser cursor (~half speed + offscreen-reentry drift, so the lower-right menu
+	// buttons were unreachable)."
+	//
+	// ★★ The premise was WRONG. UWindow does NOT ignore WindowsMouseX/Y — `WindowConsole.RenderUWindow`
+	// reads them directly, gated on `Viewport.bWindowsMouseAvailable`, and NSDLViewport simply never set
+	// that flag (engine-ut2004's SDL2Viewport does, which is why its menus have always been absolute).
+	// So the 2.12 cursor was relative only because the absolute path was switched off, and locking the
+	// pointer through menus was a workaround for a flag.
+	//
+	// 2.38 sets the flag (NSDLViewport::ResizeViewport) and pairs it here: RELEASE relative capture while
+	// a menu is up, so the browser delivers absolute motion, WindowsMouseX/Y track the real cursor, and
+	// the UWindow cursor lands exactly under it — the UT2004 model, and what makes a menu button
+	// addressable by position at all. Captured whenever a live level is up and NO menu is showing; the
+	// browser drops pointer lock on ESC anyway (which is what opens the menu), and SDL's Emscripten
+	// mousedown handler re-grabs it on the first click after the menu closes. State-change only (no
+	// per-frame SetRelativeMouseMode churn).
 	{
 		static INT WebCap = -1;
 		static INT WebMenu = -1;
 		UViewport* WV = ( Client && Client->Viewports.Num()==1 ) ? Client->Viewports(0) : NULL;
-		INT Want = ( WV && GLevel && WV->Actor ) ? 1 : 0;
 		INT Menu = ( WV && WV->Actor && ( WV->Actor->bShowMenu || WV->bShowWindowsMouse ) ) ? 1 : 0;
+		INT Want = ( WV && GLevel && WV->Actor && !Menu ) ? 1 : 0;
 		if( WV && ( Want != WebCap || Menu != WebMenu ) )
 		{
 			debugf( TEXT("[webmouse] relative-capture=%i menu=%i (bShowMenu=%i bShowWinMouse=%i)"),

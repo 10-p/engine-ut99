@@ -1074,6 +1074,25 @@ CORE_API void ParseNext( const TCHAR** Stream )
 // Grab the next space-delimited string from the input stream.
 // If quoted, gets entire quoted string.
 //
+//
+// Is this command-line token a global option (Key=Value) rather than a URL? See UnFile.h.
+//
+CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token )
+{
+	guard(appIsGlobalOptionToken);
+	if( !Token || !*Token )
+		return 0;
+	for( const TCHAR* P=Token; *P; P++ )
+	{
+		if( *P == '?' )
+			return 0;   // a URL's own options start here — the token is a URL
+		if( *P == '=' )
+			return P != Token;   // Key=Value, and Key is not empty
+	}
+	return 0;
+	unguard;
+}
+
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape )
 {
 	guard(ParseToken);
@@ -1908,15 +1927,45 @@ CORE_API const TCHAR* appFromUnicode( const UNICHAR* UCh )
 //
 CORE_API void VARARGS appUnwindf( const TCHAR* Fmt, ... )
 {
-	GIsCriticalError = 1;
+	// ★★ ufront 2.38 — this used to begin `GIsCriticalError = 1;`, unconditionally, and NOTHING in the
+	// engine ever cleared it again. (Same bug, same fix, as engine-ut2004 2.37c; UE1 inherited it from the
+	// same Epic source and it had gone unnoticed here for exactly the same reason.)
+	//
+	// unguard calls this for EVERY exception that passes through a guarded scope, and most of them are not
+	// fatal: `appThrowf` is how a failed load unwinds, and the loaders CATCH it and carry on -- that is all
+	// a recoverable "Failed to load 'X'" is. So the first missing package of a session latched the engine
+	// into permanent-critical-error mode.
+	//
+	// ⚠ What that costs is not a stray flag. UObject::~UObject reads it (UnObj.cpp):
+	//     if( Index!=INDEX_NONE && GObjInitialized && !GIsCriticalError ) { GObjObjects(Index)=NULL;
+	//                                                                      GObjAvailable.AddItem(Index); }
+	// so from the first recovered load error onward, EVERY destroyed object skips its own cleanup: it stays
+	// in the object table as a dangling pointer and its index never returns to the free list. Anything that
+	// then WALKS the object table reads freed memory, and the next index reuse trips its own check.
+	//
+	// ★★ And FOutputDeviceFile::Serialize opens `if( !GIsCriticalError || Entry )`, so the latch ALSO GAGGED
+	// THE LOG -- which is why a UT99 crash report can arrive with no explanation in it at all.
+	//
+	// A genuinely fatal error does NOT rely on this: FOutputDeviceAnsiError::Serialize sets GIsCriticalError
+	// itself, before it throws (FOutputDeviceAnsiError.h:38), so the flag is already 1 by the time the unwind
+	// starts. Setting it here only ever mislabelled the recoverable case.
+	//
+	// ⚠ NOT web-specific. The same latch happens natively; there the dangling entries usually do not fault,
+	// so the corruption is silent.
 
 	TCHAR TempStr[4096];
 	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt );
 
-	static INT Count=0;
-	if( Count++ )
-		appStrncat( GErrorHist, TEXT(" <- "), ARRAY_COUNT(GErrorHist) );
-	appStrncat( GErrorHist, TempStr, ARRAY_COUNT(GErrorHist) );
+	// Accumulate the History chain only for a REAL error -- otherwise every recovered load failure in the
+	// session appends to GErrorHist forever, and a crash report arrives carrying a kilobyte of unrelated
+	// history from packages that loaded fine.
+	if( GIsCriticalError )
+	{
+		static INT Count=0;
+		if( Count++ )
+			appStrncat( GErrorHist, TEXT(" <- "), ARRAY_COUNT(GErrorHist) );
+		appStrncat( GErrorHist, TempStr, ARRAY_COUNT(GErrorHist) );
+	}
 
 	debugf( NAME_Critical, TempStr );
 }

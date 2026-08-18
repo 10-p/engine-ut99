@@ -350,6 +350,15 @@ CORE_API UBOOL ParseUBOOL( const TCHAR* Stream, const TCHAR* Match, UBOOL& OnOff
 CORE_API UBOOL ParseObject( const TCHAR* Stream, const TCHAR* Match, class UClass* Type, class UObject*& DestRes, class UObject* InParent );
 CORE_API UBOOL ParseLine( const TCHAR** Stream, TCHAR* Result, INT MaxLen, UBOOL Exact=0 );
 CORE_API UBOOL ParseLine( const TCHAR** Stream, FString& Resultd, UBOOL Exact=0 );
+// ufront 2.38 — is this command-line token a GLOBAL OPTION (`Key=Value`) rather than a URL?
+//
+// ★ The startup code takes the FIRST token of the command line as the map/URL to browse, skipping it
+// only when it starts with '-'. That was enough while every launcher happened to pass a flag first —
+// and it silently stopped being enough the moment one did not: `CPUSPEED=3000` (a global option every
+// web launch carries) became "the map", failed to load, and the game never reached its main menu.
+// A `Key=Value` token is an option wherever it sits; a URL that carries options spells them after a
+// '?' (`DM-Deck16][?Game=X`), which is exactly what tells the two apart.
+CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token );
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape );
 CORE_API UBOOL ParseToken( const TCHAR*& Str, FString& Arg, UBOOL UseEscape );
 CORE_API FString ParseToken( const TCHAR*& Str, UBOOL UseEscape );

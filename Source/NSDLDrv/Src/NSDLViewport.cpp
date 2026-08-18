@@ -794,6 +794,25 @@ UBOOL UNSDLViewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 	// Update color depth if requested (render devices read this).
 	ColorBytes = NewColorBytes;
 
+	// ★ ufront 2.38 — enable the engine's ABSOLUTE Windows-mouse path (mirrors engine-ut2004's
+	// SDL2Viewport.cpp and the stock WinViewport, which both set this from the windowed flag).
+	//
+	// UWindow has supported an absolute cursor all along and we never turned it on:
+	// `WindowConsole.RenderUWindow` does
+	//     if( Viewport.bWindowsMouseAvailable && Root != None )
+	//     { MouseX = Viewport.WindowsMouseX/Root.GUIScale; MouseY = Viewport.WindowsMouseY/Root.GUIScale; }
+	// and UnGame's MousePosition already fills WindowsMouseX/Y from absolute SDL motion. With this flag
+	// clear, that branch never ran, so the menu cursor moved only by IK_MouseX/IK_MouseY DELTAS scaled by
+	// MouseScale — which is why 2.12 found the unlocked cursor drifting out of sync (~half speed plus
+	// offscreen-reentry error, lower-right buttons unreachable) and worked around it by keeping the
+	// pointer LOCKED during menus. That workaround treated the symptom: the two cursors were fighting
+	// because only one of them was being told where the mouse actually was.
+	//
+	// The browser canvas is always "windowed", so this is on for the web; native SDL follows the same
+	// rule as every other platform. UnGame's capture block is the other half of the pair — it now
+	// releases relative mode while a menu is up, so absolute motion can arrive.
+	bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen);
+
 	// Update audio.
 	if( SavedViewport && SavedViewport!=Client->Engine->Audio->GetViewport() )
 		Client->Engine->Audio->SetViewport( SavedViewport );
