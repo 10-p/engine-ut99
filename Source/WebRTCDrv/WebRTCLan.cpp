@@ -100,6 +100,7 @@ struct FLanLink
 	// ★ A sweep this link asked for that we could not answer yet. See WebRTCLan_Send.
 	UBOOL   bSweepPending;
 	DOUBLE  SweepDeadline;
+	DOUBLE  LastPendingLog;
 };
 static TArray<FLanLink> GLinks;
 
@@ -409,6 +410,16 @@ UBOOL WebRTCLan_NextReply( const void* LinkId, DWORD* OutAddr, INT* OutPort, FSt
 	// does (or until the deadline — after that the player's REFRESH is the retry).
 	if( L && L->bSweepPending )
 	{
+		// ⚠ While a sweep is outstanding, say so every few seconds. "The link stopped ticking" and
+		// "discovery found nothing" produce the same silence otherwise, and telling them apart by
+		// inference has already been wrong once in both directions.
+		DOUBLE Now2 = appSeconds();
+		if( Now2 - L->LastPendingLog > 5.0 )
+		{
+			L->LastPendingLog = Now2;
+			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] sweep pending: discovery %s, %i server(s) known"),
+				GDiscoveryPending ? TEXT("in flight") : TEXT("idle"), GServers.Num() );
+		}
 		if( GServers.Num() > 0 )
 		{
 			QueueBeaconQueries( LinkId );
