@@ -12,7 +12,7 @@
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
         "CMAKE_C_FLAGS": "-m32",
         "CMAKE_CXX_FLAGS": "-m32",
-        "BUILD_EDITOR": "OFF",
+        "BUILD_EDITOR": "ON",
         "BUILD_DCUTIL": "OFF",
         "BUILD_XOPENGLDRV": "ON",
         "BUILD_NOPENGLDRV": "ON",

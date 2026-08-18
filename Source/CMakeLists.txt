@@ -21,7 +21,22 @@ option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inl
 option(USE_SDL "Use NSDLDrv instead of WinDrv" ON)
 option(LOW_MEMORY "Conserve memory as much as possible" OFF)
 option(BUILD_UNREALTOURNAMENT "Build the launcher" ON)
-option(BUILD_EDITOR "Build Editor (GUI support requires Windows)" ON)
+# ★ ufront 2.39 — BUILD_EDITOR IS NOT OPTIONAL FOR A PLAYABLE GAME, on any platform.
+#
+# UE1 ships game CONTENT that references classes living in the Editor package, so "the editor" here is
+# not a tool you are choosing to build — it is a runtime dependency of maps and meshes. The web build has
+# forced it ON since 2.6f; the NATIVE and WINDOWS presets still said OFF, and the symptom is exactly what
+# the owner reported:
+#
+#     Warning: Failed to load 'Editor': Can't find Class Editor.TransBuffer in file '../System/Editor.u'
+#     Warning: Failed to load 'Level None.MyLevel':
+#
+# — Dug.unr silently falls back to the default map. (Editor.u, the SCRIPT half, ships with the game; it is
+# the NATIVE half that was missing. Same shape as UT99's UWeb crash in 2.38.) The Editor built here is the
+# stripped, no-GUI NullEdHook variant that links only Engine+Core, so this costs a static library and
+# nothing at runtime. Verified natively: before, Dug fell back to Unreal.unr; after,
+# "Bringing Level Dug.MyLevel up for play".
+option(BUILD_EDITOR "Build the Editor package (a RUNTIME dependency — see above)" ON)
 option(BUILD_NOPENGLDRV "Build NOpenGLDrv" OFF)
 option(BUILD_PVRDRV "Build PVRDrv (Dreamcast only)" OFF)
 option(BUILD_NULLSOUNDDRV "Build SoundDrv (Null driver)" ON)
