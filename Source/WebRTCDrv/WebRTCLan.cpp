@@ -97,6 +97,9 @@ struct FLanLink
 	UBOOL   WantsBeacons;      // Unreal 1: emit unsolicited beacons on a timer
 	DOUBLE  NextBeaconAt;
 	UBOOL   bLoggedFirstPoll;
+	// ★ A sweep this link asked for that we could not answer yet. See WebRTCLan_Send.
+	UBOOL   bSweepPending;
+	DOUBLE  SweepDeadline;
 };
 static TArray<FLanLink> GLinks;
 
@@ -320,14 +323,34 @@ UBOOL WebRTCLan_Send( const void* LinkId, DWORD DestAddr, INT DestPort, const TC
 		return 0;
 	TouchLink( LinkId );
 
-	// UT99's LAN sweep. It fires ten of these (ServerBeaconPort+0..9); answer the sweep once.
+	// UT99's LAN sweep. It fires ten of these (ServerBeaconPort+0..9).
+	//
+	// ★★ THE ANSWER USUALLY CANNOT BE IMMEDIATE, AND PRETENDING OTHERWISE LOSES THE LIST.
+	// Discovery is a peer-list XHR plus a status handshake per server — hundreds of milliseconds at best.
+	// The stock browser broadcasts ONCE when its window opens and then waits; it does not ask again until
+	// the player hits REFRESH. So answering synchronously with whatever is cached means an empty list
+	// whenever the window opens before discovery has finished, which is most of the time.
+	//
+	// ⚠ Measured, and it cost several suite runs to see: standalone the cache happened to be warm and the
+	// list filled; inside a suite the guest reached its menu in 20 s, opened the browser first, and the
+	// list stayed empty — with the window demonstrably open and discovery demonstrably succeeding a
+	// second later. It read as "the server browser is broken".
+	//
+	// So the sweep is remembered and answered when the answer exists. That is also what a real LAN sweep
+	// looks like from the client's side: replies trickle in after the broadcast, not with it.
 	if( appStrnicmp( Text, TEXT("REPORTQUERY"), 11 )==0 )
 	{
 		KickDiscovery();
 		FLanLink& L = TouchLink( LinkId );
-		L.WantsBeacons = 0;
+		L.WantsBeacons  = 0;
+		L.bSweepPending = 1;
+		L.SweepDeadline = appSeconds() + 30.0;   // stop re-kicking eventually; the browser has REFRESH
 		PumpDiscovery();
-		QueueBeaconQueries( LinkId );
+		if( GServers.Num() > 0 )
+		{
+			QueueBeaconQueries( LinkId );
+			L.bSweepPending = 0;
+		}
 		return 1;
 	}
 	// "REPORT" (the plain beacon request) — same answer shape as an unsolicited beacon.
@@ -379,6 +402,27 @@ UBOOL WebRTCLan_NextReply( const void* LinkId, DWORD* OutAddr, INT* OutPort, FSt
 			L->NextBeaconAt = Now + LAN_BEACON_REPEAT_INTERVAL;
 			KickDiscovery();
 			QueueBeacons( LinkId );
+		}
+	}
+
+	// A sweep we owed an answer to: deliver it as soon as discovery has one, and keep asking until it
+	// does (or until the deadline — after that the player's REFRESH is the retry).
+	if( L && L->bSweepPending )
+	{
+		if( GServers.Num() > 0 )
+		{
+			QueueBeaconQueries( LinkId );
+			L->bSweepPending = 0;
+			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] answered a pending LAN sweep with %i server(s)"), GServers.Num() );
+		}
+		else if( appSeconds() > L->SweepDeadline )
+		{
+			L->bSweepPending = 0;
+			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] LAN sweep found nothing before its deadline") );
+		}
+		else
+		{
+			KickDiscovery();
 		}
 	}
 
