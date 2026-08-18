@@ -96,6 +96,7 @@ struct FLanLink
 	INT     BoundPort;
 	UBOOL   WantsBeacons;      // Unreal 1: emit unsolicited beacons on a timer
 	DOUBLE  NextBeaconAt;
+	UBOOL   bLoggedFirstPoll;
 };
 static TArray<FLanLink> GLinks;
 
@@ -354,6 +355,17 @@ UBOOL WebRTCLan_Send( const void* LinkId, DWORD DestAddr, INT DestPort, const TC
 
 UBOOL WebRTCLan_NextReply( const void* LinkId, DWORD* OutAddr, INT* OutPort, FString& OutText )
 {
+	// One line per link, the first time it polls. Whether the stock link TICKS AT ALL is the load-bearing
+	// assumption of this whole file — if it does not, nothing can ever be delivered — so it is worth
+	// knowing from the log rather than by inference.
+	{
+		FLanLink* L0 = FindLink( LinkId );
+		if( L0 && !L0->bLoggedFirstPoll )
+		{
+			L0->bLoggedFirstPoll = 1;
+			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] link %p is polling (port %i)"), LinkId, L0->BoundPort );
+		}
+	}
 	PumpDiscovery();
 
 	// Passive Unreal 1 listeners get a fresh beacon every couple of seconds, because the receiver ages
