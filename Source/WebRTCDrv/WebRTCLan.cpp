@@ -181,10 +181,31 @@ static void KickDiscovery()
 	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery started") );
 }
 
-/** Drain a finished discovery into GServers. No-op while one is still in flight. */
+/**
+ * Drain a finished discovery into GServers. No-op while one is still in flight.
+ *
+ * ★★ THROTTLED, AND THE THROTTLE IS NOT AN OPTIMISATION — IT IS THE DIFFERENCE BETWEEN RUNNING AND
+ * ABORTING. Every webrtc_* call here is `__proxy: 'sync'`: a CROSS-THREAD round trip from the engine
+ * pthread to the main thread. This function is reached from AUdpLink::Tick, i.e. once per link per
+ * FRAME, and while a sweep was outstanding it asked "is discovery done?" every single one of them.
+ *
+ * ⚠ Under load that overflows Emscripten's proxy queue and the module dies:
+ *     Aborted(Assertion failed: false && "emscripten_proxy_async failed",
+ *             at: system/lib/html5/callback.c,42,_emscripten_run_callback_on_thread)
+ * — measured 2.38. It survived a standalone run and aborted inside a suite, which made it look like a
+ * dead tick, a stale artifact and an empty server list in turn. Ask four times a second instead.
+ */
+static DOUBLE GLastPumpAt = 0.0;
+
 static void PumpDiscovery()
 {
-	if( !GDiscoveryPending || !webrtc_is_discovery_done() )
+	if( !GDiscoveryPending )
+		return;
+	const DOUBLE PumpNow = appSeconds();
+	if( PumpNow - GLastPumpAt < 0.25 )
+		return;
+	GLastPumpAt = PumpNow;
+	if( !webrtc_is_discovery_done() )
 		return;
 	GDiscoveryPending = 0;
 
