@@ -316,6 +316,15 @@ void WebRTCLan_Bind( const void* LinkId, INT Port )
 	FLanLink& L = TouchLink( LinkId );
 	L.BoundPort = Port;
 
+	// ★ WARM THE CACHE ON ANY BIND, not just the beacon port.
+	//
+	// The stock browser's link is SHORT-LIVED — it binds, broadcasts its sweep once, and is destroyed a
+	// few seconds later. Discovery is asynchronous (a peer-list XHR plus a status handshake per server),
+	// so a sweep issued microseconds after the bind routinely outlives its own answer, and the list shows
+	// nothing at all. Kicking here buys those few seconds and, more importantly, leaves GServers populated
+	// for the NEXT query — which is why a REFRESH always works even when the first look did not.
+	KickDiscovery();
+
 	// Unreal 1's ClientBeaconReceiver is PASSIVE: it binds the beacon port and waits for servers to
 	// shout. Nothing will ever arrive to trigger us, so binding that port IS the trigger.
 	INT BeaconPort = 7776;
