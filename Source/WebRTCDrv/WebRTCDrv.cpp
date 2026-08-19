@@ -170,6 +170,8 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 	FString	RoomName;
 	FString	ServerName;      // ?ServerName= for browser discovery
 	UBOOL	bIsListenServer;
+	// Pipes the level told us to IGNORE (not refuse) — re-offered on a later tick. See TickDispatch().
+	TArray<INT>	ParkedAccepts;
 
 	// Constructor.
 	UWebRTCNetDriver()
@@ -250,19 +252,48 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		BYTE Data[WEBRTC_RECV_BUFFER];
 
 		// Server: accept newly-opened peer connections.
+		//
+		// ★ ACCEPTC_Ignore IS NOT A REFUSAL. ULevel::NotifyAcceptingConnection (UnLevel.cpp) returns it
+		// for every incoming connection while a server travel is pending (`NextURL` set) — i.e. for the
+		// whole ServerTravelPause window. On UDP that means "drop this connect packet on the floor":
+		// nothing is torn down, the client just keeps retrying and gets in once the new level listens.
+		//
+		// Our transport is a PIPE, and closing it is a loud, visible event: the client's glue sees the
+		// data channel die, tears the peer down, reconnects, is ignored again, and the two livelock.
+		// Measured on the sibling v200 engine during a coop travel: 306 connect/close rounds inside a
+		// ~6s pause, after which the guest never rejoined at all.
+		//
+		// So park the pipe and re-offer it on a later tick, leaving the transport untouched — the
+		// pipe-oriented equivalent of dropping the packet. ⚠ Parked ids are re-offered BEFORE new
+		// arrivals, or a client that has been waiting loses its place to a newer one.
+		TArray<INT> Incoming = ParkedAccepts;
+		ParkedAccepts.Empty();
 		INT NewConnId;
 		while( (NewConnId = webrtc_accept_connection()) > 0 )
+			Incoming.AddItem( NewConnId );
+
+		for( INT i=0; i<Incoming.Num(); i++ )
 		{
-			if( Notify->NotifyAcceptingConnection() != ACCEPTC_Accept )
+			INT ConnId = Incoming(i);
+			// The client may have given up (or the page closed) while we were ignoring it.
+			if( webrtc_get_connection_state( ConnId ) == WEBRTC_STATE_CLOSED )
+				continue;
+			EAcceptConnection Acc = Notify->NotifyAcceptingConnection();
+			if( Acc == ACCEPTC_Ignore )
 			{
-				webrtc_close( NewConnId );
+				ParkedAccepts.AddItem( ConnId );
 				continue;
 			}
-			UWebRTCConnection* Conn = new UWebRTCConnection( NewConnId, this, USOCK_Open, 0, FURL() );
-			Conn->URL.Host = FString::Printf( TEXT("webrtc:%i"), NewConnId );
+			if( Acc != ACCEPTC_Accept )
+			{
+				webrtc_close( ConnId );
+				continue;
+			}
+			UWebRTCConnection* Conn = new UWebRTCConnection( ConnId, this, USOCK_Open, 0, FURL() );
+			Conn->URL.Host = FString::Printf( TEXT("webrtc:%i"), ConnId );
 			Notify->NotifyAcceptedConnection( Conn );
 			ClientConnections.AddItem( Conn );
-			debugf( NAME_DevNet, TEXT("[WebRTC] Accepted connection connId=%i (clients=%i)"), NewConnId, ClientConnections.Num() );
+			debugf( NAME_DevNet, TEXT("[WebRTC] Accepted connection connId=%i (clients=%i)"), ConnId, ClientConnections.Num() );
 		}
 
 		// Poll receive on the client's server connection + all server-side client connections.
@@ -375,6 +406,8 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 	{
 		guard(UWebRTCNetDriver::LowLevelDestroy);
 		debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: room='%s'"), *RoomName );
+		// The parked pipes are about to be closed wholesale by webrtc_destroy(); just drop our list.
+		ParkedAccepts.Empty();
 		webrtc_destroy();
 		unguard;
 	}
