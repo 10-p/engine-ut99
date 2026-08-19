@@ -162,6 +162,13 @@ IMPLEMENT_CLASS(UWebRTCConnection);
 /*-----------------------------------------------------------------------------
 	UWebRTCNetDriver.
 -----------------------------------------------------------------------------*/
+class UWebRTCNetDriver;
+
+// ★ THE CLIENT HAS EXACTLY ONE TRANSPORT SLOT. The glue hands every client connect the same conn id (0),
+// so only one client driver can own the wire at a time. Tracked here so a second InitConnect can take the
+// slot cleanly instead of silently sharing it. Server-side ids are per peer and unaffected.
+static UWebRTCNetDriver* GClientDriver = NULL;
+
 class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 {
 	DECLARE_CLASS(UWebRTCNetDriver,UNetDriver,CLASS_Transient|CLASS_Config)
@@ -170,6 +177,8 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 	FString	RoomName;
 	FString	ServerName;      // ?ServerName= for browser discovery
 	UBOOL	bIsListenServer;
+	// Set when a NEWER client driver has taken the one client transport slot from us.
+	UBOOL	bDetached;
 	// Pipes the level told us to IGNORE (not refuse) — re-offered on a later tick. See TickDispatch().
 	TArray<INT>	ParkedAccepts;
 
@@ -215,6 +224,20 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 			RoomName = TEXT("default");
 		FString ServerPeerId = FString::Printf( TEXT("%s-%s-srv"), TEXT(WEBRTC_PEER_PREFIX), *RoomName );
 		debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: room='%s' -> peer '%s'"), *RoomName, *ServerPeerId );
+		// ★ TAKE THE ONE CLIENT SLOT. A server map change calls InitConnect again while the OLD level is
+		// still ticking and flushing — the engine keeps you playing until the new level has loaded. On UDP
+		// the two connections have different local ports and coexist; here they would share glue conn 0, so
+		// the departing level's driver goes on writing into the NEW session.
+		bDetached = 0;
+		if( GClientDriver && GClientDriver!=this && GClientDriver->GetServerConnection() )
+		{
+			debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: detaching the previous client connection (one transport slot)") );
+			// ⚠ DETACHED, NOT CLOSED — marking it USOCK_Closed reads as "connection lost" and aborts the travel.
+			GClientDriver->GetServerConnection()->WebRTCConnId = -1;
+			// …and its LowLevelDestroy must NOT call webrtc_destroy(): that transport is now OURS.
+			GClientDriver->bDetached = 1;
+		}
+		GClientDriver = this;
 		webrtc_connect( appToAnsi(*ServerPeerId) );
 
 		// Pending server connection + control channel (channel 0) — like UTcpNetDriver::InitConnect.
@@ -297,7 +320,9 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		}
 
 		// Poll receive on the client's server connection + all server-side client connections.
-		if( GetServerConnection() )
+		// A DETACHED connection (WebRTCConnId < 0) no longer owns the slot — asking the glue about a connId
+		// we gave away would report CLOSED and the departing level would be called "connection lost".
+		if( GetServerConnection() && GetServerConnection()->WebRTCConnId >= 0 )
 		{
 			UWebRTCConnection* SC = GetServerConnection();
 			if( webrtc_get_connection_state( SC->WebRTCConnId ) == WEBRTC_STATE_CLOSED && SC->State != USOCK_Closed )
@@ -405,10 +430,18 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 	void LowLevelDestroy()
 	{
 		guard(UWebRTCNetDriver::LowLevelDestroy);
-		debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: room='%s'"), *RoomName );
+		debugf( NAME_Exit, TEXT("[WebRTC] LowLevelDestroy: room='%s'%s"), *RoomName, bDetached ? TEXT(" (detached — transport left alone)") : TEXT("") );
 		// The parked pipes are about to be closed wholesale by webrtc_destroy(); just drop our list.
 		ParkedAccepts.Empty();
-		webrtc_destroy();
+		if( GClientDriver==this )
+			GClientDriver = NULL;
+		// ★★ A DEPARTING DRIVER MUST NOT DESTROY THE ARRIVING DRIVER'S TRANSPORT. webrtc_destroy() is
+		// GLOBAL, and on a CLIENT the two drivers overlap: InitConnect for the pending level runs FIRST and
+		// the old level's driver is destroyed LATER, inside LoadMap. Measured on the sibling v200 engine:
+		// the guest loaded the new map and then sat on "CONNECTING…" forever, and only a page reload
+		// cleared it. The host is safe — there the old driver dies BEFORE InitListen.
+		if( !bDetached )
+			webrtc_destroy();
 		unguard;
 	}
 	FString LowLevelGetNetworkNumber()
