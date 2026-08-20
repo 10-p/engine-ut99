@@ -258,11 +258,33 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		bIsListenServer = 1;
 		RoomName   = ListenURL.GetOption( TEXT("room="), TEXT("default") );
 		ServerName = ListenURL.GetOption( TEXT("ServerName="), TEXT("") );
+
+		// ★★ ufront 2.40 — WHEN THE URL DOES NOT SAY, ASK OUR OWN CONFIG. A room now holds SEVERAL
+		// servers, and the transport identifies one as `<room>_<slug of the server name>` — so the name is
+		// no longer decoration, it is half of the address other players dial.
+		//
+		// The stock in-game LISTEN button sends a travel URL with neither `room=` nor `ServerName=`, so
+		// without this the host would register under a bare room and every menu-hosted game would collide.
+		// The value is right here: `[Engine.GameReplicationInfo] ServerName` is a `globalconfig`, so
+		// GConfig has held it since appInit — from the shipped ini, from the launcher's `-ini:` seed, or
+		// from a rename the player made in-game and saved. GameReplicationInfo itself does NOT exist yet at
+		// this point (the level is not up), which is why this reads the CONFIG rather than the object the
+		// status push in TickDispatch uses.
+		//
+		// ⚠ THE ENGINE IS THE SOURCE OF TRUTH FOR THIS, NOT THE LAUNCHER. The launcher seeds the ini and
+		// reads it back to show in its panel; asking it at listen time would be a second copy that goes
+		// stale the moment the name changes in-game.
+		if( !ServerName.Len() )
+			GConfig->GetString( TEXT("Engine.GameReplicationInfo"), TEXT("ServerName"), ServerName );
+
 		debugf( NAME_DevNet, TEXT("[WebRTC] InitListen: room='%s' name='%s'"), *RoomName, *ServerName );
 		// ufront 2.38 — tell the synthetic LAN which room is OURS, so a host browsing its own server
 		// list does not find itself and try to connect a peer to itself.
 		WebRTCLan_SetLocalRoom( *RoomName );
-		webrtc_init_listen( appToAnsi(*RoomName) );
+		// `room/serverName` — the transport slugs the name and builds `<prefix>-<room>_<slug>-srv`. The
+		// separator is a `/` because a server name may contain anything, including the `_` the peer id uses.
+		FString ListenKey = ServerName.Len() ? (RoomName + TEXT("/") + ServerName) : RoomName;
+		webrtc_init_listen( appToAnsi(*ListenKey) );
 
 		return 1;
 		unguard;
