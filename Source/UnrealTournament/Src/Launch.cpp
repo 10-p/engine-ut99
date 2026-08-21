@@ -25,9 +25,63 @@ Revision history:
 // emscripten_sleep(0) pays two costs: the Asyncify unwind/rewind, and a setTimeout(0) that no browser
 // honours at 0 — the HTML timer clamp floors it at >= 1 ms. A MessagePort message is a macrotask with NO
 // clamp: the same task boundary the compositor needs, minus the floor. EM_ASYNC_JS names its import
-// __asyncjs__ufront_yield_frame and link.py's DEFAULT_ASYNCIFY_IMPORTS is ['__asyncjs__*'], so it is
+// __asyncjs__ufront_yield_frame_mode and link.py's DEFAULT_ASYNCIFY_IMPORTS is ['__asyncjs__*'], so it is
 // registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
-EM_ASYNC_JS(void, ufront_yield_frame, (void), {
+//
+// ★ ufront 2.43 — AND THAT LAST CLAIM IS WHERE THE BUG IS: "the same task boundary the compositor needs"
+// was assumed, never measured. It is false. THE YIELD IS THE PRESENT POINT, AND NOT EVERY MACROTASK
+// PRESENTS.
+//
+// Measured on test-particle-stress-brutal (RTX 3090, XOpenGL/WebGL2), same map, same build, cap only:
+//   cap 30  — 606 frames, ALL via emscripten_sleep  -> 607 distinct images presented   (1:1)
+//   cap 60  — 1205 frames, 954 sleep + 251 yield    -> 955 distinct images presented   (= the sleeps)
+//   cap 120 — 1256 frames, ALL via the MessagePort  -> 753 distinct images presented   (0.6:1)
+// So a frame that resumes from a TIMER is presented; a frame that resumes from a MessagePort macrotask
+// very often is not — the next frame overwrites it before the compositor ever picks it up. That is the
+// owner's whole complaint ("40 fps that feels like 1"): the engine really renders those frames and really
+// counts them, and the screen never shows them.
+//
+// The direct A/B, same scene, switching ONLY this primitive (engine fps -> distinct images presented):
+//   1024x768   port 62.08 -> 37.26 (40% lost)      timer 59.64 -> 59.61 (0% lost)
+//   2560x1440  port 30.36 -> 15.67 (48% lost)      timer 25.36 -> 25.43 (0% lost)
+//   3840x2160  port 18.42 ->  9.40 (49% lost)      timer 16.24 -> 16.19 (0% lost)
+// Engine fps falls a little in every row and PRESENTED fps rises by 60-100%. Judder (frame intervals
+// over 2x the median) goes from 8-30% to under 1%.
+//
+// This selector exists so the alternatives stay measurable rather than argued about.
+// `-YIELDMODE=port|timer|raf`:
+//   timer — setTimeout(0), which the HTML timer clamp floors at ~1 ms. THE DEFAULT, and what the engine
+//           did before 2.13.7. Every frame is presented.
+//   port  — MessagePort macrotask, unclamped (2.13.7's change). Fastest resume, worst presentation.
+//           Kept ONLY so the regression can be re-measured; it is not a supported way to play.
+//   raf   — requestAnimationFrame on the worker. Also presents every frame, but rounds each one up to a
+//           refresh boundary, so a frame that overruns by 1 ms waits a whole extra refresh: measured
+//           48.23 fps against timer's 59.64 on the same scene. Correct, and slower. (2.17 §C10 tried raf
+//           and rejected it — on a scene where the engine ran BELOW the compositor cadence, where this
+//           defect cannot appear, and with a distinct-frame counter later shown to be reading compositor
+//           cadence rather than distinct images.)
+//
+// ⚠ THE 2.17 BENCHMARK NUMBERS GO DOWN WITH THIS AND THAT IS THE POINT. 2.13.7 was landed on a measured
+// engine-fps gain (SIMPLE-1 100.75 -> 179.93). That build was uncapped, so every frame took this path,
+// and what it bought was frames the engine COUNTED — not frames anyone saw. Do not "restore" it.
+// Falls back LOUDLY, never silently: a run that quietly ran `port` while reporting `raf` would be the
+// exact instrument-lie this investigation has already been bitten by once.
+EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Mode), {
+    if (Mode === 2) {
+        if (typeof requestAnimationFrame === 'function') {
+            await new Promise((resolve) => { requestAnimationFrame(resolve); });
+            return;
+        }
+        if (!globalThis.__ufrontRafWarned) {
+            globalThis.__ufrontRafWarned = 1;
+            console.warn('[ufront] YIELDMODE=raf requested but requestAnimationFrame is absent here — using timer');
+        }
+        Mode = 1;
+    }
+    if (Mode === 1) {
+        await new Promise((resolve) => { setTimeout(resolve, 0); });
+        return;
+    }
     let y = globalThis.__ufrontYield;
     if (!y) {
         const ch = new MessageChannel();
@@ -39,9 +93,67 @@ EM_ASYNC_JS(void, ufront_yield_frame, (void), {
     await new Promise((resolve) => { y.q.push(resolve); y.ch.port2.postMessage(0); });
 });
 
+// 0 = port (2.13.7), 1 = timer (default), 2 = raf. Resolved once in MainLoop from -YIELDMODE=.
+static INT GUfrontYieldMode = 1;
+
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
 // after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
 UEngine* GWebRTCEngine = NULL;
+
+// ufront 2.43 — THE FRAME-PACING RING.
+//
+// Owner's complaint: "the in-game stats show 40 FPS, yet it runs at 1 FPS… as if 39 FPS got compressed
+// into 1 ms and the remaining frame took the rest of the second." That is an INTERVAL-DISTRIBUTION fault,
+// and no mean-fps counter — including the engine's own `CurrentTickRate` — can see it: 39 fast frames and
+// one 950 ms frame average out to exactly the 40 fps the display claims.
+//
+// So record every frame's timing rather than a rate, and let the reader compute distributions. Three
+// segments per frame, because "where did the second go" has exactly three candidate answers here:
+//   TickMs  — Engine->Tick + GWindowManager->Tick: simulation AND the whole render/submit path.
+//   YieldMs — the frame's PRESENT point (2.13.7): emscripten_sleep when there is cap budget left,
+//             the -YIELDMODE primitive when there is not. A worker-owned OffscreenCanvas is composited when the
+//             engine thread returns to its event loop, so time spent here is time the compositor had.
+//   SleepReq — what the cap ASKED for, so truncation and the sleep/yield alternation are both visible.
+// A ring, because a pacing fault is diagnosed from a window of recent frames, not from a running total.
+#define UFRONT_PACE_MAX 4096
+struct FUfrontPaceSample
+{
+	DOUBLE Start;      // appSeconds() at the top of the frame
+	FLOAT  TickMs;
+	FLOAT  YieldMs;
+	INT    SleepReqMs; // what the cap computed; INDEX_NONE marks the yield (no-budget) path
+};
+static FUfrontPaceSample GUfrontPace[UFRONT_PACE_MAX];
+static INT GUfrontPaceHead  = 0; // next write slot
+static INT GUfrontPaceCount = 0; // total frames ever recorded (so the ring's fill level is known)
+
+static void UfrontPaceRecord( DOUBLE Start, FLOAT TickMs, FLOAT YieldMs, INT SleepReqMs )
+{
+	FUfrontPaceSample& S = GUfrontPace[GUfrontPaceHead];
+	S.Start      = Start;
+	S.TickMs     = TickMs;
+	S.YieldMs    = YieldMs;
+	S.SleepReqMs = SleepReqMs;
+	GUfrontPaceHead = (GUfrontPaceHead+1) % UFRONT_PACE_MAX;
+	GUfrontPaceCount++;
+}
+
+// Dump the ring as CSV. Deliberately RAW rather than pre-summarised: every summary this bug has survived
+// so far was a mean, and the reader (packages/e2e/tools/pacing-probe.cjs) needs the per-frame series to
+// compute percentiles, judder counts and the sleep/yield split. One header line, then one line per frame.
+static FString UfrontPaceDump()
+{
+	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
+	const INT First = (GUfrontPaceHead - N + UFRONT_PACE_MAX) % UFRONT_PACE_MAX;
+	FString Out = FString::Printf( TEXT("ufront_pacing v1 frames=%i total=%i now=%f\n"), N, GUfrontPaceCount, appSeconds() );
+	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms\n");
+	for( INT i=0; i<N; i++ )
+	{
+		const FUfrontPaceSample& S = GUfrontPace[(First+i) % UFRONT_PACE_MAX];
+		Out += FString::Printf( TEXT("%f,%.3f,%.3f,%i\n"), S.Start, S.TickMs, S.YieldMs, S.SleepReqMs );
+	}
+	return Out;
+}
 
 // ADR-10: run a console command and RETURN its captured output (not fire-and-forget). The frontend/E2E call
 // this via ccall for deterministic assertions + live debugging. FStringOutputDevice is a string-capturing
@@ -51,6 +163,19 @@ extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
 {
 	static FString Captured;
 	Captured = TEXT("");
+	// ufront 2.43: the pacing ring answers here rather than through UEngine::Exec, because it belongs to
+	// the LAUNCHER's main loop, not to the engine — Exec would have to reach back out to a global anyway.
+	// `ufront_pacing reset` re-arms the window so a measurement is not diluted by map load.
+	if( Cmd && appStrnicmp( Cmd, TEXT("ufront_pacing"), 13 )==0 )
+	{
+		if( appStrfind( (TCHAR*)Cmd, TEXT("reset") ) )
+		{
+			GUfrontPaceHead = GUfrontPaceCount = 0;
+			Captured = TEXT("ufront_pacing reset\n");
+		}
+		else Captured = UfrontPaceDump();
+		return (char*)(*Captured);
+	}
 	if( GWebRTCEngine && Cmd )
 	{
 		FStringOutputDevice Out;
@@ -550,11 +675,29 @@ static void MainLoop( UEngine* Engine )
 
 	// Loop while running.
 	GIsRunning = 1;
+#ifdef __EMSCRIPTEN__
+	// ufront 2.43 — resolve the yield mode once (see ufront_yield_frame_mode above for what it decides).
+	{
+		FString ModeStr;
+		if( Parse( appCmdLine(), TEXT("YIELDMODE="), ModeStr ) )
+		{
+			if     ( ModeStr==TEXT("port")  ) GUfrontYieldMode = 0;
+			else if( ModeStr==TEXT("raf")   ) GUfrontYieldMode = 2;
+			else                              GUfrontYieldMode = 1;
+		}
+		debugf( NAME_Init, TEXT("ufront: frame yield mode %s"), GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port") );
+	}
+#endif
 	DOUBLE OldTime = appSeconds();
 	DOUBLE SecondStartTime = OldTime;
 	INT TickCount = 0;
 	while( GIsRunning && !GIsRequestingExit )
 	{
+#ifdef __EMSCRIPTEN__
+		// ufront 2.43 — hoisted out of the guard() blocks below (each opens its own scope, so a variable
+		// declared inside UpdateWorld is not visible in EnforceTickRate where the yield happens).
+		DOUBLE PaceFrameStart = 0.0, PaceTickEnd = 0.0;
+#endif
 		// Update the world.
 		guard(UpdateWorld);
 		DOUBLE NewTime   = appSeconds();
@@ -562,6 +705,10 @@ static void MainLoop( UEngine* Engine )
 		Engine->Tick( DeltaTime );
 		if( GWindowManager )
 			GWindowManager->Tick( DeltaTime );
+#ifdef __EMSCRIPTEN__
+		PaceFrameStart = NewTime;
+		PaceTickEnd    = appSeconds(); // end of simulate+render, start of the yield
+#endif
 		OldTime = NewTime;
 		TickCount++;
 		if( OldTime > SecondStartTime + 1 )
@@ -624,7 +771,11 @@ static void MainLoop( UEngine* Engine )
 			if( SleepMs > 1 )
 				emscripten_sleep( SleepMs );
 			else
-				ufront_yield_frame();
+				ufront_yield_frame_mode( GUfrontYieldMode );
+			// ufront 2.43 — one sample per frame. Recorded AFTER the yield so YieldMs covers the present
+			// point; SleepReqMs is INDEX_NONE on the yield path so the two mechanisms stay distinguishable.
+			const DOUBLE PaceEnd = appSeconds();
+			UfrontPaceRecord( PaceFrameStart, (FLOAT)((PaceTickEnd-PaceFrameStart)*1000.0), (FLOAT)((PaceEnd-PaceTickEnd)*1000.0), SleepMs>1 ? SleepMs : INDEX_NONE );
 		}
 #else
 		if( Cap>0.0 )
