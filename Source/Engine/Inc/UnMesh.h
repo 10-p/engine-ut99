@@ -420,6 +420,16 @@ struct FSkelCoords
 	FVector AX, AY, AZ;	// axis rows
 };
 
+// One bone's LOCAL pose: the (position, orientation) pair sampled from its animation track, BEFORE
+// the skeleton hierarchy is composed. This is the space animation blending happens in -- blending
+// locals and then composing keeps every bone's transform rigid, which blending composed world frames
+// would not. Stored in the per-actor tween cache; see USkeletalMesh::ComputeSkinnedPose.
+struct FSkelBonePose
+{
+	FVector		Pos;
+	FSkelQuat	Rot;
+};
+
 // Extended LOD wedge with floating-point UVs.
 struct FMeshExtWedge
 {

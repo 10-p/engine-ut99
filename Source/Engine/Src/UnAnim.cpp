@@ -12,6 +12,9 @@
 
 #include "EnginePrivate.h"
 
+// -skelanimlog / -skelnoblend (defined near ComputeSkinnedPose, used from Serialize/GetFrame above it).
+static UBOOL SkelAnimLogging();
+
 IMPLEMENT_CLASS(UAnimation);
 
 // v436-compat port: minimal SkeletalMesh native class so OldSkool/ONP and other v436 mods that
@@ -44,6 +47,10 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	Ar << DefaultAnimation;
 	Ar << WeaponBoneIndex;
 	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
+	if( SkelAnimLogging() )
+		debugf( NAME_Log, TEXT("[skelload] %s bones=%i points=%i wedges=%i anim=%s"),
+			GetName(), RefSkeleton.Num(), Points.Num(), ExtWedges.Num(),
+			DefaultAnimation ? DefaultAnimation->GetName() : TEXT("none") );
 	unguard;
 }
 
@@ -163,8 +170,12 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 
 	// Skin Points into the current animation pose if one applies; else use the static bind pose.
 	TArray<FVector> Skinned;
-	const FVector* Src = ( Points.Num() && ComputeSkinnedPose( Owner, Skinned ) && Skinned.Num()==Points.Num() )
-		? &Skinned(0) : ( Points.Num() ? &Points(0) : NULL );
+	UBOOL bSkinned = ( Points.Num() && ComputeSkinnedPose( Owner, Skinned ) && Skinned.Num()==Points.Num() );
+	const FVector* Src = bSkinned ? &Skinned(0) : ( Points.Num() ? &Points(0) : NULL );
+	if( SkelAnimLogging() )
+		debugf( NAME_Log, TEXT("[skeldraw] %s mesh=%s skinned=%i seq=%s af=%f anim=%s bones=%i"),
+			Owner->GetName(), GetName(), bSkinned?1:0, *Owner->AnimSequence, Owner->AnimFrame,
+			DefaultAnimation ? DefaultAnimation->GetName() : TEXT("none"), RefSkeleton.Num() );
 
 	// Resolve the weapon attachment bone (set by ComputeSkinnedPose) into a view-space frame that
 	// DrawLodMesh publishes as SpecialCoords, so the third-person weapon attaches to the hand.
@@ -373,6 +384,53 @@ static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFram
 }
 
 //
+// v436-compat animation blending: per-actor tween state, held in the engine's GCache exactly as
+// ULodMesh::GetFrame holds its vertex-tween state. The payload following this header is
+// CachedBones x FSkelBonePose -- the LOCAL pose currently being displayed, which is both what the
+// next frame blends FROM and the reason an interrupted blend resumes instead of snapping.
+//
+// CachedMesh/CachedBones guard against reading a payload written for a different mesh (the cache is
+// keyed on the actor AND the mesh, so this is belt and braces, and it also sizes the payload).
+//
+struct FSkelTweenHeader
+{
+	UMesh*	CachedMesh;
+	INT		CachedBones;
+	FName	CachedSeq;
+	FLOAT	CachedFrame;
+	FLOAT	TweenIndicator;
+};
+
+// Angle between two unit quaternions, in degrees. Instrumentation only. There is no appAcos in this
+// engine's math family, and atan2(sin,cos) is better conditioned near 0 anyway: |dot| is cos(a/2).
+static FLOAT SkelQuatAngleDeg( const FSkelQuat& a, const FSkelQuat& b )
+{
+	FLOAT d = Clamp( Abs( a.X*b.X + a.Y*b.Y + a.Z*b.Z + a.W*b.W ), 0.f, 1.f );
+	return (FLOAT)( 2.0 * appAtan2( appSqrt(1.0-(DOUBLE)d*(DOUBLE)d), (DOUBLE)d ) * 180.0 / PI );
+}
+
+// -skelanimlog on the command line turns on the per-frame bone-delta trace below. Resolved once.
+static UBOOL SkelAnimLogging()
+{
+	static INT Enabled = -1;
+	if( Enabled < 0 )
+		Enabled = ParseParam( appCmdLine(), TEXT("skelanimlog") ) ? 1 : 0;
+	return Enabled != 0;
+}
+
+// -skelnoblend restores the pre-blend behaviour (a tweening AnimFrame clamps to 0, so the pose snaps
+// to the new sequence's first frame). It exists so the blending test can prove its own instrument:
+// a measurement that only ever reports "smooth" is worth nothing until it has been shown to report
+// "snap" for the code that actually snapped. Not a user-facing option.
+static UBOOL SkelBlendDisabled()
+{
+	static INT Disabled = -1;
+	if( Disabled < 0 )
+		Disabled = ParseParam( appCmdLine(), TEXT("skelnoblend") ) ? 1 : 0;
+	return Disabled != 0;
+}
+
+//
 // v436-compat: skin Points from the reference pose into the current animation pose for Owner.
 // Returns 0 (falls back to bind pose) when there is no linked animation or no matching sequence.
 //
@@ -399,7 +457,154 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 		return 0;
 	FSkelMotionChunk& Move = Anim->Moves(SeqIdx);
 	INT NumFrames = Max( 1, Anim->AnimSeqs(SeqIdx).NumFrames );
-	FLOAT Frame = Clamp( AnimOwner->AnimFrame, 0.f, 1.f ) * NumFrames;
+
+	// ---- Sequence blending (tweening) --------------------------------------------------------
+	//
+	// A NEGATIVE AnimFrame is UE1's "tweening" state. PlayAnim/LoopAnim/TweenAnim (UnScript.cpp) set
+	// AnimSequence to the NEW sequence immediately and AnimFrame to -1/NumFrames, then UnLevTic.cpp
+	// advances it up to 0 at TweenRate. So while tweening, AnimSequence already names the sequence we
+	// are heading INTO, its first frame is the target pose, and AnimFrame measures the remaining gap.
+	//
+	// This used to sample at Clamp(AnimFrame,0,1), which clamps a tweening (negative) AnimFrame flat
+	// to 0 -- the pose jumped to the new sequence's frame 0 the instant PlayAnim was called. Walking
+	// -> jumping snapped; a fast crouch/stand toggle teleported between poses.
+	//
+	// The fix is ULodMesh::GetFrame's tween, moved from vertices to bones: keep the CURRENT pose in a
+	// per-actor cache and, each frame, close a fraction Alpha of the REMAINING gap toward the target
+	// (Cached += (Target-Cached)*Alpha). Because every step starts from where the model actually is
+	// rather than from a remembered start pose, interrupting a blend simply retargets it and the model
+	// resumes from its current pose -- it never jumps. Alpha = 1 - now/before makes the accumulated
+	// blend exactly linear in AnimFrame while staying expressible as that incremental step.
+	//
+	// Bones are blended in LOCAL space (position lerp + quaternion slerp) and composed up the
+	// hierarchy afterwards, so each bone stays rigid through the blend -- which blending composed
+	// world frames, or the vertex path's blending of skinned points, would not guarantee.
+	//
+	UBOOL bTween = ( AnimOwner->AnimFrame < 0.0f ) && !SkelBlendDisabled();
+	FLOAT Frame  = bTween ? 0.0f : Clamp( AnimOwner->AnimFrame, 0.f, 1.f ) * NumFrames;
+
+	// Sample the sequence at Frame: the pose we are heading TOWARD (and the pose itself when not
+	// tweening). Bones with no matching track keep their reference-skeleton local pose.
+	TArray<FSkelBonePose> Target; Target.Add(NB);
+	for( INT b=0; b<NB; b++ )
+	{
+		Target(b).Pos = RefSkeleton(b).BonePos.Position;
+		Target(b).Rot = RefSkeleton(b).BonePos.Orientation;
+		// Map mesh bone -> animation track by bone name.
+		INT ab = INDEX_NONE;
+		for( INT j=0; j<Anim->RefBones.Num(); j++ )
+			if( Anim->RefBones(j).Name == RefSkeleton(b).Name ) { ab = j; break; }
+		if( ab!=INDEX_NONE && ab<Move.AnimTracks.Num() )
+			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, Move.TrackTime, AnimOwner->bAnimLoop, Target(b).Pos, Target(b).Rot );
+	}
+
+	// Resolve the pose actually drawn, blending through the per-actor cache.
+	TArray<FSkelBonePose> Pose; Pose.Add(NB);
+	FLOAT MaxBoneDelta = -1.0f;		// instrumentation only; see SkelQuatAngleDeg.
+	{
+		// Keyed on (actor, mesh): distinct from ULodMesh::GetFrame's vertex tween cache, which keys on
+		// (actor, NULL), so the two can never read each other's payload.
+		FCacheItem* Item    = NULL;
+		QWORD       CacheID = MakeCacheID( CID_TweenAnim, Owner, this );
+		BYTE*       Mem     = GCache.Get( CacheID, Item );
+		FSkelTweenHeader* Hdr = (FSkelTweenHeader*)Mem;
+		UBOOL WasCached = ( Mem!=NULL && Hdr->CachedMesh==this && Hdr->CachedBones==NB );
+		if( Mem && !WasCached )
+		{
+			// Stale entry (the actor's mesh or its bone count changed): drop it and start clean.
+			Item->Unlock();
+			GCache.Flush( CacheID );
+			Mem = NULL;
+		}
+		if( !Mem )
+		{
+			Mem = GCache.Create( CacheID, Item, sizeof(FSkelTweenHeader) + NB*sizeof(FSkelBonePose) );
+			Hdr = (FSkelTweenHeader*)Mem;
+			Hdr->CachedMesh     = this;
+			Hdr->CachedBones    = NB;
+			Hdr->CachedSeq      = NAME_None;
+			Hdr->CachedFrame    = 0.0f;
+			Hdr->TweenIndicator = 1.0f;
+		}
+		FSkelBonePose* Cached = (FSkelBonePose*)( Mem + sizeof(FSkelTweenHeader) );
+
+		if( !bTween || !WasCached )
+		{
+			// Normal playback -- or this actor's first draw, where there is no previous pose to blend
+			// from and the sampled pose is the only honest answer. Record it either way: this is what a
+			// later tween blends FROM, and keeping it current is the whole reason an interruption
+			// resumes smoothly instead of snapping.
+			for( INT b=0; b<NB; b++ )
+			{
+				if( WasCached )
+					MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cached[b].Rot, Target(b).Rot ) );
+				Cached[b] = Target(b);
+			}
+			Hdr->CachedSeq      = AnimOwner->AnimSequence;
+			Hdr->CachedFrame    = AnimOwner->AnimFrame;
+			Hdr->TweenIndicator = 1.0f;		// the cache IS the target pose: nothing left to blend.
+			// ⚠ That invariant is also what makes the OTHER way into this branch correct. A first draw
+			// that happens mid-tween stores a NEGATIVE CachedFrame, so the next frame computes a real
+			// Alpha rather than tripping the divisor guard below — but TweenIndicator is 1, the 0.97
+			// cutoff fires, and the pose holds. Which is right: the cache already holds the target
+			// (Frame is 0 while tweening), so there was never anything to blend from.
+		}
+		else
+		{
+			// Alpha = the fraction of the remaining gap to close this frame. During a tween both frames
+			// are negative and rising toward 0, so a tween in progress yields Alpha in [0,1]. Anything
+			// else means a NEW tween just began -- including the normal-playback exit above, which
+			// leaves CachedFrame >= 0 and so trips the divisor guard on the tween's very first frame.
+			FLOAT Alpha = ( Hdr->CachedFrame < 0.0f ) ? ( 1.0f - AnimOwner->AnimFrame / Hdr->CachedFrame ) : -1.0f;
+			if( Hdr->CachedSeq != AnimOwner->AnimSequence || Alpha < 0.0f || Alpha > 1.0f )
+			{
+				// A tween just started. Adopt it and blend NOTHING this frame (Alpha=0) so the pose
+				// stays exactly where it is; the following frames ease away from there.
+				//
+				// Deviation from ULodMesh::GetFrame, deliberately: it clears TweenIndicator only on a
+				// sequence CHANGE. Re-tweening into the sequence already playing (PlayAnim on the
+				// current sequence -- crouch, stand, crouch again) therefore inherited the finished
+				// tween's indicator of ~1, which forces Alpha to 0 below for the entire tween: the pose
+				// freezes and then jumps when normal playback resumes. Clearing it on every restart is
+				// what makes a fast toggle blend instead of teleport.
+				Hdr->CachedSeq      = AnimOwner->AnimSequence;
+				Hdr->TweenIndicator = 0.0f;
+				Alpha               = 0.0f;
+			}
+
+			// Progress tracker, same exponential form: 1-TweenIndicator is the fraction of the original
+			// gap still to cover. Past 0.97 the remainder is not worth another pass over the bones.
+			Hdr->TweenIndicator += ( 1.0f - Hdr->TweenIndicator ) * Alpha;
+			if( Hdr->TweenIndicator > 0.97f )
+				Alpha = 0.0f;
+
+			MaxBoneDelta = 0.0f;
+			if( Alpha > 0.0f )
+				for( INT b=0; b<NB; b++ )
+				{
+					FSkelQuat Blended = SkelSlerp( Cached[b].Rot, Target(b).Rot, Alpha );
+					MaxBoneDelta   = Max( MaxBoneDelta, SkelQuatAngleDeg( Cached[b].Rot, Blended ) );
+					Cached[b].Pos += ( Target(b).Pos - Cached[b].Pos ) * Alpha;
+					Cached[b].Rot  = Blended;
+				}
+
+			// Drawing the same actor twice in one frame must not advance the blend twice: with
+			// CachedFrame == AnimFrame the next call computes Alpha = 0 and holds.
+			Hdr->CachedFrame = AnimOwner->AnimFrame;
+		}
+
+		for( INT b=0; b<NB; b++ )
+			Pose(b) = Cached[b];
+		Item->Unlock();
+	}
+
+	// Instrumentation for the blending E2E (-skelanimlog): smoothness is not OCR-able, but a snap is,
+	// by definition, the whole pose change delivered in ONE frame. Report the largest per-frame bone
+	// rotation step so a spec can assert that a sequence switch produces a bounded ramp rather than a
+	// single spike. Off unless asked for -- this is one line per skeletal actor per drawn frame.
+	if( MaxBoneDelta >= 0.0f && SkelAnimLogging() )
+		debugf( NAME_Log, TEXT("[skelanim] %s seq=%s af=%f tween=%i maxdeg=%f"),
+			Owner->GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame, bTween?1:0, MaxBoneDelta );
 
 	ComputeBindPose();
 
@@ -408,14 +613,8 @@ UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
 	TArray<FSkelCoords> Xf; Xf.Add(NB);		// skinning transform (ref pose -> anim pose)
 	for( INT b=0; b<NB; b++ )
 	{
-		FVector   lp = RefSkeleton(b).BonePos.Position;
-		FSkelQuat lr = RefSkeleton(b).BonePos.Orientation;
-		// Map mesh bone -> animation track by bone name.
-		INT ab = INDEX_NONE;
-		for( INT j=0; j<Anim->RefBones.Num(); j++ )
-			if( Anim->RefBones(j).Name == RefSkeleton(b).Name ) { ab = j; break; }
-		if( ab!=INDEX_NONE && ab<Move.AnimTracks.Num() )
-			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, Move.TrackTime, AnimOwner->bAnimLoop, lp, lr );
+		FVector   lp = Pose(b).Pos;
+		FSkelQuat lr = Pose(b).Rot;
 		// Mirror into the same space as the bind pose (see ComputeBindPose).
 		lr.X = -lr.X; lr.W = -lr.W; lp.X = -lp.X;
 		if( b==0 ) lr = lr.Conj();
