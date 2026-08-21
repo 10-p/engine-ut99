@@ -1169,9 +1169,21 @@ static inline DWORD FogAttenuate( DWORD Light, DWORD Fog )
 //
 // Halve the sum of two fog samples without letting a channel carry into its neighbour.
 //
+// ⚠ Masking BEFORE the add is carry-safe but NOT exact: it clears the low bit of BOTH operands, so
+// whenever both are odd the result lands one short of floor((A+B)/2). That is 25% of byte pairs, and
+// the error only ever goes DARK. It shows up as regular vertical streaks roughly 8 pixels apart,
+// because the two pixels that carry the raw sample (X+0/X+1 in LightPassPentiumFog) are the only ones
+// in the group that never pass through here — every other pixel is averaged once or twice and comes
+// out up to 2/255 darker, so the sample column reads as a brighter stripe.
+//
+// (A&B) + (((A^B)>>1) & 0x7f7f7f) is the standard carry-free byte average: the shared bits plus half
+// the differing bits. It is exact for all 65536 byte pairs and still cannot carry between lanes.
+// The light path above can keep its cheaper ((A+B)&0xfefefe)>>1 form because LightPentium has already
+// clamped those samples to 7 bits, so the sum cannot overflow a lane in the first place.
+//
 static inline DWORD FogAvg( DWORD A, DWORD B )
 {
-	return ((A & 0xfefefe) + (B & 0xfefefe)) >> 1;
+	return (A & B) + ((((A ^ B) & 0xfefefe) >> 1));
 }
 
 
