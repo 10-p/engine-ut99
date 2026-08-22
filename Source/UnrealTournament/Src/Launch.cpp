@@ -44,32 +44,9 @@ Revision history:
 // ⚠ There was briefly a -YIELDMODE switch here to compare the three. It is deleted on purpose: the
 // comparison is DONE, its answer is recorded above, and a switch nobody would know to set is exactly the
 // kind of dangling scaffolding that let 2.17 leave a stubbed present call in the build for months.
-EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Raf), {
-    if (Raf) {
-        if (typeof requestAnimationFrame === 'function') {
-            await new Promise((resolve) => { requestAnimationFrame(resolve); });
-            return;
-        }
-        if (!globalThis.__ufrontRafWarned) {
-            globalThis.__ufrontRafWarned = 1;
-            console.warn('[ufront] -YIELDMODE=raf asked for, but requestAnimationFrame is absent here — using the timer');
-        }
-    }
+EM_ASYNC_JS(void, ufront_yield_frame, (void), {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
-
-// 0 = timer (default — the one verified hands-on), 1 = worker rAF. Resolved once in MainLoop.
-//
-// ★ THIS SWITCH IS ON LOAN, NOT FURNITURE. It answers exactly one open question. rAF renders ~8% more
-// frames than the timer AND costs less median yield-wait — measured on this build (brutal, RTX 3090):
-// timer yield p50 4.0 ms / p95 5.0 / max 5.0; rAF p50 0.0 / p95 7.0 / max 9.0. `setTimeout(0)` is clamped
-// to ~4 ms and pays that every single frame; rAF waits only until the compositor's next frame, which when
-// the frame already overran is ~0. What that does NOT settle is the full input->photon path, which no
-// instrument here can judge and a player can. So the owner A/Bs it by feel on heavy maps and mods, and
-// THE VERDICT BECOMES THE DEFAULT AND THIS SWITCH IS DELETED. It must not outlive that answer: a knob
-// nobody knows to set is the dangling scaffolding that let a stubbed present call sit in the build for
-// months (2.17 found it, wrote it down, moved on).
-static INT GUfrontYieldRaf = 0;
 
 
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
@@ -127,8 +104,7 @@ static FString UfrontPaceDump()
 {
 	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
 	const INT First = (GUfrontPaceHead - N + UFRONT_PACE_MAX) % UFRONT_PACE_MAX;
-	FString Out = FString::Printf( TEXT("ufront_pacing v3 frames=%i total=%i now=%f yieldmode=%s\n"),
-		N, GUfrontPaceCount, appSeconds(), GUfrontYieldRaf ? TEXT("raf") : TEXT("timer") );
+	FString Out = FString::Printf( TEXT("ufront_pacing v3 frames=%i total=%i now=%f\n"), N, GUfrontPaceCount, appSeconds() );
 	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms,heap_mb\n");
 	for( INT i=0; i<N; i++ )
 	{
@@ -658,15 +634,7 @@ static void MainLoop( UEngine* Engine )
 
 	// Loop while running.
 	GIsRunning = 1;
-#ifdef __EMSCRIPTEN__
-	{
-		FString ModeStr;
-		if( Parse( appCmdLine(), TEXT("YIELDMODE="), ModeStr ) && ModeStr==TEXT("raf") )
-			GUfrontYieldRaf = 1;
-		debugf( NAME_Init, TEXT("ufront: frame yield mode %s"), GUfrontYieldRaf ? TEXT("raf") : TEXT("timer") );
-	}
-#endif
-	DOUBLE OldTime = appSeconds();
+DOUBLE OldTime = appSeconds();
 	DOUBLE SecondStartTime = OldTime;
 	INT TickCount = 0;
 	while( GIsRunning && !GIsRequestingExit )
@@ -749,7 +717,7 @@ static void MainLoop( UEngine* Engine )
 			if( SleepMs > 1 )
 				emscripten_sleep( SleepMs );
 			else
-				ufront_yield_frame_mode( GUfrontYieldRaf );
+				ufront_yield_frame();
 			// ufront 2.43 — one sample per frame. Recorded AFTER the yield so YieldMs covers the present
 			// point; SleepReqMs is INDEX_NONE on the yield path so the two mechanisms stay distinguishable.
 			const DOUBLE PaceEnd = appSeconds();
