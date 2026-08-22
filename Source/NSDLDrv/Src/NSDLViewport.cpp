@@ -6,7 +6,6 @@
 #include <stdint.h>
 #include <emscripten/html5.h>
 #include <emscripten/html5_webgl.h>
-#include <GLES3/gl3.h> // ufront 2.43b — glFenceSync/glClientWaitSync for the frames-in-flight bound
 #endif
 
 #include "NSDLDrv.h"
@@ -829,84 +828,6 @@ UBOOL UNSDLViewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 //
 // Unlock the viewport window.  If Blit=1, blits the viewport's frame buffer.
 //
-// ufront 2.43b — BOUND HOW FAR THE ENGINE MAY RUN AHEAD OF THE DISPLAY.
-//
-// THE SYMPTOM THIS EXISTS FOR, measured off a 100 Hz panel capture of the owner's machine (a mode that
-// mean-fps calls "33 fps"): 21 stalls averaging 579 ms, separated by bursts of ~13 images arriving ONE
-// REFRESH APART — i.e. at 100 fps. A heavy scene cannot render at 100 fps; those burst frames were
-// already rendered and queued, and were released together. Meanwhile the control map on the same machine
-// is a metronome: 2 refreshes per image, every image, one 50 ms blip in ten seconds. So the machine is
-// fine and the fault is a producer/consumer oscillation — the engine runs unbounded frames ahead.
-//
-// ★ WHY THE PRESENT POINT DOES NOT ALREADY BOUND IT. The context is created with explicitSwapControl and
-// we do not link -sOFFSCREEN_FRAMEBUFFER, so emscripten_webgl_commit_frame() is a documented NO-OP ("swap
-// is implicit") and the real present is the worker returning to its event loop. Nothing in that path waits
-// for the GPU, so the engine can issue frame N+1's commands while frame N is still executing. That is also
-// why swapping the yield primitive (-YIELDMODE) could never fix this: every one of those choices changes
-// WHEN we return to the event loop, and none of them changes how many frames are in flight when we do.
-//
-//   -PRESENTSYNC=fence   wait on a fence for the PREVIOUS frame -> at most one frame in flight. The cheap
-//                        correct bound: the GPU still overlaps with the next frame's CPU work.
-//   -PRESENTSYNC=finish  glFinish() -> zero frames in flight. Blunter and slower, but it works on a WebGL1
-//                        context too, and as a hypothesis test it is decisive: if burst-then-stall survives
-//                        glFinish, the queue is not in the GPU pipeline at all and this whole line of
-//                        attack is wrong.
-//   -PRESENTSYNC=off     current behaviour (default until this is measured on real hardware).
-//
-// Falls back LOUDLY: a WebGL1 context has no glFenceSync, and silently degrading `fence` to nothing would
-// produce a clean-looking run that proves the opposite of what it claims.
-enum EUfrontPresentSync { UPS_Off=0, UPS_Fence=1, UPS_Finish=2 };
-static INT GUfrontPresentSync = -1;
-// Published to Launch.cpp so `ufront_pacing` reports the mode that ACTUALLY ran — the log line alone is
-// unreliable (FOutputDeviceFile caps the MEMFS log at 8192 bytes and a long boot loses it).
-extern TCHAR GUfrontPresentSyncName[16];
-
-static void UfrontPresentSync()
-{
-	if( GUfrontPresentSync < 0 )
-	{
-		TCHAR Buf[32];
-		GUfrontPresentSync = UPS_Off;
-		if( Parse( appCmdLine(), TEXT("PRESENTSYNC="), Buf, ARRAY_COUNT(Buf) ) )
-		{
-			if     ( appStricmp(Buf,TEXT("fence" ))==0 ) GUfrontPresentSync = UPS_Fence;
-			else if( appStricmp(Buf,TEXT("finish"))==0 ) GUfrontPresentSync = UPS_Finish;
-		}
-		appStrcpy( GUfrontPresentSyncName, GUfrontPresentSync==UPS_Fence ? TEXT("fence") : GUfrontPresentSync==UPS_Finish ? TEXT("finish") : TEXT("off") );
-		debugf( NAME_Init, TEXT("ufront: present sync %s"), GUfrontPresentSyncName );
-	}
-	if( GUfrontPresentSync == UPS_Off )
-		return;
-	if( GUfrontPresentSync == UPS_Finish )
-	{
-		glFinish();
-		return;
-	}
-	// Fence: wait for the frame BEFORE this one, then fence this one. Waiting on the frame just submitted
-	// would be glFinish with extra steps and would leave the GPU idle during our next frame's CPU work.
-	static GLsync Prev = 0;
-	if( Prev )
-	{
-		// GL_SYNC_FLUSH_COMMANDS_BIT so the wait cannot deadlock on commands still sitting unflushed.
-		glClientWaitSync( Prev, GL_SYNC_FLUSH_COMMANDS_BIT, 1000000000ull );
-		glDeleteSync( Prev );
-		Prev = 0;
-	}
-	Prev = glFenceSync( GL_SYNC_GPU_COMMANDS_COMPLETE, 0 );
-	if( !Prev )
-	{
-		static UBOOL Warned = 0;
-		if( !Warned )
-		{
-			Warned = 1;
-			debugf( NAME_Warning, TEXT("ufront: PRESENTSYNC=fence unavailable on this context (WebGL1?) — falling back to glFinish") );
-		}
-		GUfrontPresentSync = UPS_Finish;
-		appStrcpy( GUfrontPresentSyncName, TEXT("finish(fallback)") ); // never let a fallback read as `fence`
-		glFinish();
-	}
-}
-
 void UNSDLViewport::Unlock( UBOOL Blit )
 {
 	guard(UNSDLViewport::Unlock);
@@ -926,7 +847,6 @@ void UNSDLViewport::Unlock( UBOOL Blit )
 			// The context was created with explicitSwapControl, so THIS is the present (2.13.2 hatch (c)).
 			// SDL_GL_SwapWindow would go through the EGL emulation that cannot see our worker context.
 			emscripten_webgl_commit_frame();
-			UfrontPresentSync(); // ufront 2.43b — bound the frames in flight (see above); off by default
 #else
 
 			SDL_GL_SwapWindow( hWnd );

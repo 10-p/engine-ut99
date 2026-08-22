@@ -97,13 +97,6 @@ EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Mode), {
 // 0 = port (2.13.7), 1 = timer (default), 2 = raf. Resolved once in MainLoop from -YIELDMODE=.
 static INT GUfrontYieldMode = 1;
 
-// ufront 2.43b — the render device's resolved -PRESENTSYNC, published HERE so `ufront_pacing` can report
-// it. ⚠ This exists because the MEMFS log is capped at 8192 bytes by FOutputDeviceFile's buffer, so the
-// "present sync <mode>" line survives on a short boot and is LOST on a long one — and a measurement whose
-// treatment cannot be verified is not a measurement. The switch is parsed in NSDLViewport (it needs the GL
-// context); it writes the name here. `unset` means the present path never ran.
-TCHAR GUfrontPresentSyncName[16] = TEXT("unset");
-
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
 // after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
 UEngine* GWebRTCEngine = NULL;
@@ -159,10 +152,9 @@ static FString UfrontPaceDump()
 {
 	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
 	const INT First = (GUfrontPaceHead - N + UFRONT_PACE_MAX) % UFRONT_PACE_MAX;
-	FString Out = FString::Printf( TEXT("ufront_pacing v2 frames=%i total=%i now=%f yieldmode=%s presentsync=%s\n"),
+	FString Out = FString::Printf( TEXT("ufront_pacing v2 frames=%i total=%i now=%f yieldmode=%s\n"),
 		N, GUfrontPaceCount, appSeconds(),
-		GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port"),
-		GUfrontPresentSyncName );
+		GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port") );
 	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms,heap_mb\n");
 	for( INT i=0; i<N; i++ )
 	{
