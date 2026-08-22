@@ -150,6 +150,28 @@ if(EMSCRIPTEN)
     # QUOTED: CMake treats an unquoted '#' as a comment, which silently truncates this to
     # "OFFSCREENCANVASES_TO_PTHREAD=" and fails the link with "string index out of range".
     "-sOFFSCREENCANVASES_TO_PTHREAD=#canvas"
+    # ★ ufront 2.43d — WITHOUT THIS, OUR PRESENT CALL IS A STUB.
+    #
+    # NSDLViewport creates the context with explicitSwapControl=1 + renderViaOffscreenBackBuffer=1 and
+    # then presents each frame with emscripten_webgl_commit_frame(). Emscripten implements BOTH of those
+    # attributes only under -sOFFSCREEN_FRAMEBUFFER, which was never linked — so the shipped loader reads:
+    #
+    #   var _emscripten_webgl_do_commit_frame = () => { ...checks...; return 0 };   // that is all of it
+    #
+    # and blitOffscreenFramebuffer / defaultFbo occur ZERO times in SDLLaunch.js. So the engine has been
+    # calling a no-op 80 times a second and presentation fell back entirely to Chromium's implicit
+    # "the worker's task ended" propagation for a transferred OffscreenCanvas.
+    #
+    # That implicit path works on Linux and does NOT work on Windows/D3D11: measured on the owner's
+    # machine with nothing attached, the engine produced 79.99 fps with a worst frame of 45 ms and
+    # judder 3.4% — i.e. flawless — while the panel showed ~1 fps, and a DevTools trace of the same
+    # session recorded UpdateLayer = 0/s with the main thread committing 5 frames/s. Only a CDP
+    # screencast (which forces a real capture of the tab) ever made it smooth.
+    #
+    # ⚠ This is the cost 2.17 §C flagged when it found renderViaOffscreenBackBuffer being ignored: an
+    # explicit blit per frame. That warning assumed the implicit path was working and the blit was pure
+    # overhead. It is not working, so the trade is a per-frame blit against showing 1 frame in 80.
+    -sOFFSCREEN_FRAMEBUFFER
     # main() itself is one of these; this engine spawns no others on the web, so a small pool avoids
     # paying for workers nothing will use.
     -sPTHREAD_POOL_SIZE=2

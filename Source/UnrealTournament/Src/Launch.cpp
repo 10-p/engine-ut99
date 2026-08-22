@@ -12,6 +12,7 @@ Revision history:
 #endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
+#include <emscripten/heap.h> // emscripten_get_heap_size (ufront 2.43a — the pacing ring's heap column)
 #include <unistd.h> // chdir (ufront 2.7b — main-loop inversion + base-dir)
 
 // ufront 2.13.7 — the per-frame yield, WITHOUT setTimeout's clamp. (Ported from engine-ut2004, where it
@@ -96,6 +97,13 @@ EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Mode), {
 // 0 = port (2.13.7), 1 = timer (default), 2 = raf. Resolved once in MainLoop from -YIELDMODE=.
 static INT GUfrontYieldMode = 1;
 
+// ufront 2.43b — the render device's resolved -PRESENTSYNC, published HERE so `ufront_pacing` can report
+// it. ⚠ This exists because the MEMFS log is capped at 8192 bytes by FOutputDeviceFile's buffer, so the
+// "present sync <mode>" line survives on a short boot and is LOST on a long one — and a measurement whose
+// treatment cannot be verified is not a measurement. The switch is parsed in NSDLViewport (it needs the GL
+// context); it writes the name here. `unset` means the present path never ran.
+TCHAR GUfrontPresentSyncName[16] = TEXT("unset");
+
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
 // after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
 UEngine* GWebRTCEngine = NULL;
@@ -122,6 +130,11 @@ struct FUfrontPaceSample
 	FLOAT  TickMs;
 	FLOAT  YieldMs;
 	INT    SleepReqMs; // what the cap computed; INDEX_NONE marks the yield (no-budget) path
+	// ufront 2.43a — wasm heap size, because the fault the owner actually reports on real hardware is a
+	// 300-1100 ms STALL, not the frame coalescing 2.43 fixed, and `-sALLOW_MEMORY_GROWTH` with `-pthread`
+	// is a prime suspect: a memory.grow has to rebuild every typed-array view in EVERY thread. If a stall
+	// frame is also the frame the heap grew, that is the answer and no further guessing is needed.
+	INT    HeapMB;
 };
 static FUfrontPaceSample GUfrontPace[UFRONT_PACE_MAX];
 static INT GUfrontPaceHead  = 0; // next write slot
@@ -134,6 +147,7 @@ static void UfrontPaceRecord( DOUBLE Start, FLOAT TickMs, FLOAT YieldMs, INT Sle
 	S.TickMs     = TickMs;
 	S.YieldMs    = YieldMs;
 	S.SleepReqMs = SleepReqMs;
+	S.HeapMB     = (INT)(emscripten_get_heap_size() / (1024*1024));
 	GUfrontPaceHead = (GUfrontPaceHead+1) % UFRONT_PACE_MAX;
 	GUfrontPaceCount++;
 }
@@ -145,12 +159,15 @@ static FString UfrontPaceDump()
 {
 	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
 	const INT First = (GUfrontPaceHead - N + UFRONT_PACE_MAX) % UFRONT_PACE_MAX;
-	FString Out = FString::Printf( TEXT("ufront_pacing v1 frames=%i total=%i now=%f\n"), N, GUfrontPaceCount, appSeconds() );
-	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms\n");
+	FString Out = FString::Printf( TEXT("ufront_pacing v2 frames=%i total=%i now=%f yieldmode=%s presentsync=%s\n"),
+		N, GUfrontPaceCount, appSeconds(),
+		GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port"),
+		GUfrontPresentSyncName );
+	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms,heap_mb\n");
 	for( INT i=0; i<N; i++ )
 	{
 		const FUfrontPaceSample& S = GUfrontPace[(First+i) % UFRONT_PACE_MAX];
-		Out += FString::Printf( TEXT("%f,%.3f,%.3f,%i\n"), S.Start, S.TickMs, S.YieldMs, S.SleepReqMs );
+		Out += FString::Printf( TEXT("%f,%.3f,%.3f,%i,%i\n"), S.Start, S.TickMs, S.YieldMs, S.SleepReqMs, S.HeapMB );
 	}
 	return Out;
 }
