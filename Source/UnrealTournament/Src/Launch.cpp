@@ -29,73 +29,25 @@ Revision history:
 // __asyncjs__ufront_yield_frame_mode and link.py's DEFAULT_ASYNCIFY_IMPORTS is ['__asyncjs__*'], so it is
 // registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
 //
-// ★ ufront 2.43 — AND THAT LAST CLAIM IS WHERE THE BUG IS: "the same task boundary the compositor needs"
-// was assumed, never measured. It is false. THE YIELD IS THE PRESENT POINT, AND NOT EVERY MACROTASK
-// PRESENTS.
-//
-// Measured on test-particle-stress-brutal (RTX 3090, XOpenGL/WebGL2), same map, same build, cap only:
-//   cap 30  — 606 frames, ALL via emscripten_sleep  -> 607 distinct images presented   (1:1)
-//   cap 60  — 1205 frames, 954 sleep + 251 yield    -> 955 distinct images presented   (= the sleeps)
-//   cap 120 — 1256 frames, ALL via the MessagePort  -> 753 distinct images presented   (0.6:1)
-// So a frame that resumes from a TIMER is presented; a frame that resumes from a MessagePort macrotask
-// very often is not — the next frame overwrites it before the compositor ever picks it up. That is the
-// owner's whole complaint ("40 fps that feels like 1"): the engine really renders those frames and really
-// counts them, and the screen never shows them.
-//
-// The direct A/B, same scene, switching ONLY this primitive (engine fps -> distinct images presented):
-//   1024x768   port 62.08 -> 37.26 (40% lost)      timer 59.64 -> 59.61 (0% lost)
-//   2560x1440  port 30.36 -> 15.67 (48% lost)      timer 25.36 -> 25.43 (0% lost)
-//   3840x2160  port 18.42 ->  9.40 (49% lost)      timer 16.24 -> 16.19 (0% lost)
-// Engine fps falls a little in every row and PRESENTED fps rises by 60-100%. Judder (frame intervals
-// over 2x the median) goes from 8-30% to under 1%.
-//
-// This selector exists so the alternatives stay measurable rather than argued about.
-// `-YIELDMODE=port|timer|raf`:
-//   timer — setTimeout(0), which the HTML timer clamp floors at ~1 ms. THE DEFAULT, and what the engine
-//           did before 2.13.7. Every frame is presented.
-//   port  — MessagePort macrotask, unclamped (2.13.7's change). Fastest resume, worst presentation.
-//           Kept ONLY so the regression can be re-measured; it is not a supported way to play.
-//   raf   — requestAnimationFrame on the worker. Also presents every frame, but rounds each one up to a
-//           refresh boundary, so a frame that overruns by 1 ms waits a whole extra refresh: measured
-//           48.23 fps against timer's 59.64 on the same scene. Correct, and slower. (2.17 §C10 tried raf
-//           and rejected it — on a scene where the engine ran BELOW the compositor cadence, where this
-//           defect cannot appear, and with a distinct-frame counter later shown to be reading compositor
-//           cadence rather than distinct images.)
-//
-// ⚠ THE 2.17 BENCHMARK NUMBERS GO DOWN WITH THIS AND THAT IS THE POINT. 2.13.7 was landed on a measured
-// engine-fps gain (SIMPLE-1 100.75 -> 179.93). That build was uncapped, so every frame took this path,
-// and what it bought was frames the engine COUNTED — not frames anyone saw. Do not "restore" it.
-// Falls back LOUDLY, never silently: a run that quietly ran `port` while reporting `raf` would be the
-// exact instrument-lie this investigation has already been bitten by once.
-EM_ASYNC_JS(void, ufront_yield_frame_mode, (int Mode), {
-    if (Mode === 2) {
-        if (typeof requestAnimationFrame === 'function') {
-            await new Promise((resolve) => { requestAnimationFrame(resolve); });
-            return;
-        }
-        if (!globalThis.__ufrontRafWarned) {
-            globalThis.__ufrontRafWarned = 1;
-            console.warn('[ufront] YIELDMODE=raf requested but requestAnimationFrame is absent here — using timer');
-        }
-        Mode = 1;
-    }
-    if (Mode === 1) {
-        await new Promise((resolve) => { setTimeout(resolve, 0); });
-        return;
-    }
-    let y = globalThis.__ufrontYield;
-    if (!y) {
-        const ch = new MessageChannel();
-        const q = [];
-        ch.port1.onmessage = () => { const r = q.shift(); if (r) r(); };
-        ch.port1.start();
-        y = globalThis.__ufrontYield = { ch, q };
-    }
-    await new Promise((resolve) => { y.q.push(resolve); y.ch.port2.postMessage(0); });
+// ★ ufront 2.43 — AND THAT LAST CLAIM WAS WRONG, WHICH IS WHY THIS RESUMES FROM A TIMER.
+// "A MessagePort message is the same task boundary the compositor needs" was reasoned, never measured.
+// Chromium will run a chain of MessagePort tasks without giving the compositor a rendering opportunity,
+// so the frame sitting in the OffscreenCanvas is overwritten by the next one before it is picked up. A
+// timer task interleaves with rendering; a MessagePort task does not. Measured on the FIXED present path
+// (brutal, RTX 3090, engine fps -> distinct images presented):
+//   MessagePort  49.00 -> 27.41   (44% of frames never seen, judder 30-35%)
+//   setTimeout   40.81 -> 40.87   ( 0% lost, judder 0%)
+//   worker rAF   44.18 -> 44.20   ( 0% lost, judder 0%)
+// So the MessagePort resume of 2.13.7 is simply wrong and is gone. rAF matches the timer on quality and
+// is ~8% faster in this one headless scene, but it couples the engine to the display refresh — a hazard
+// the owner has already been bitten by on Windows — so it is NOT adopted without real-display evidence.
+// ⚠ There was briefly a -YIELDMODE switch here to compare the three. It is deleted on purpose: the
+// comparison is DONE, its answer is recorded above, and a switch nobody would know to set is exactly the
+// kind of dangling scaffolding that let 2.17 leave a stubbed present call in the build for months.
+EM_ASYNC_JS(void, ufront_yield_frame, (void), {
+    await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
 
-// 0 = port (2.13.7), 1 = timer (default), 2 = raf. Resolved once in MainLoop from -YIELDMODE=.
-static INT GUfrontYieldMode = 1;
 
 // ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
 // after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
@@ -112,7 +64,7 @@ UEngine* GWebRTCEngine = NULL;
 // segments per frame, because "where did the second go" has exactly three candidate answers here:
 //   TickMs  — Engine->Tick + GWindowManager->Tick: simulation AND the whole render/submit path.
 //   YieldMs — the frame's PRESENT point (2.13.7): emscripten_sleep when there is cap budget left,
-//             the -YIELDMODE primitive when there is not. A worker-owned OffscreenCanvas is composited when the
+//             ufront_yield_frame when there is not. A worker-owned OffscreenCanvas is composited when the
 //             engine thread returns to its event loop, so time spent here is time the compositor had.
 //   SleepReq — what the cap ASKED for, so truncation and the sleep/yield alternation are both visible.
 // A ring, because a pacing fault is diagnosed from a window of recent frames, not from a running total.
@@ -152,9 +104,7 @@ static FString UfrontPaceDump()
 {
 	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
 	const INT First = (GUfrontPaceHead - N + UFRONT_PACE_MAX) % UFRONT_PACE_MAX;
-	FString Out = FString::Printf( TEXT("ufront_pacing v2 frames=%i total=%i now=%f yieldmode=%s\n"),
-		N, GUfrontPaceCount, appSeconds(),
-		GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port") );
+	FString Out = FString::Printf( TEXT("ufront_pacing v3 frames=%i total=%i now=%f\n"), N, GUfrontPaceCount, appSeconds() );
 	Out += TEXT("start_s,tick_ms,yield_ms,sleep_req_ms,heap_mb\n");
 	for( INT i=0; i<N; i++ )
 	{
@@ -684,20 +634,7 @@ static void MainLoop( UEngine* Engine )
 
 	// Loop while running.
 	GIsRunning = 1;
-#ifdef __EMSCRIPTEN__
-	// ufront 2.43 — resolve the yield mode once (see ufront_yield_frame_mode above for what it decides).
-	{
-		FString ModeStr;
-		if( Parse( appCmdLine(), TEXT("YIELDMODE="), ModeStr ) )
-		{
-			if     ( ModeStr==TEXT("port")  ) GUfrontYieldMode = 0;
-			else if( ModeStr==TEXT("raf")   ) GUfrontYieldMode = 2;
-			else                              GUfrontYieldMode = 1;
-		}
-		debugf( NAME_Init, TEXT("ufront: frame yield mode %s"), GUfrontYieldMode==2 ? TEXT("raf") : GUfrontYieldMode==1 ? TEXT("timer") : TEXT("port") );
-	}
-#endif
-	DOUBLE OldTime = appSeconds();
+DOUBLE OldTime = appSeconds();
 	DOUBLE SecondStartTime = OldTime;
 	INT TickCount = 0;
 	while( GIsRunning && !GIsRequestingExit )
@@ -780,7 +717,7 @@ static void MainLoop( UEngine* Engine )
 			if( SleepMs > 1 )
 				emscripten_sleep( SleepMs );
 			else
-				ufront_yield_frame_mode( GUfrontYieldMode );
+				ufront_yield_frame();
 			// ufront 2.43 — one sample per frame. Recorded AFTER the yield so YieldMs covers the present
 			// point; SleepReqMs is INDEX_NONE on the yield path so the two mechanisms stay distinguishable.
 			const DOUBLE PaceEnd = appSeconds();
