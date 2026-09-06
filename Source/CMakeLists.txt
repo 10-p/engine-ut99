@@ -366,6 +366,20 @@ else()
     else()
       add_compile_options(-O2 -g)
     endif()
+  # ★ ufront 2.54 — CHECKED, AND THIS ENGINE IS CLEAN; DO NOT "TIDY" IT. CMake injects
+  # CMAKE_<LANG>_FLAGS_<CONFIG> ahead of anything add_compile_options() appends and the compiler takes
+  # the LAST -O, which on engine-ut2004 silently compiled every native build at -O0 (its native branch
+  # appended -O0 to every configuration). Here the appended level MATCHES the injected one, so a
+  # RelWithDebInfo TU reads `-O2 … -O2` — redundant on the line, identical in effect. Measured with
+  # compile_commands.json rather than reasoned about.
+  #
+  # ⚠ AND THE -Og YOU WILL SEE ON TWO FILES IS DELIBERATE, NOT THIS BUG. Core/CMakeLists.txt lowers
+  # UnCorSc.cpp and UnProp.cpp on purpose: gcc miscompiles UE's FFrame::Step() reference juggling at a
+  # higher level. Those two are supposed to win.
+  #
+  # ⚠ The per-config variables are deliberately NOT blanked here. They are where -DNDEBUG comes from on
+  # this engine — the branches below never add it — so clearing them to remove a harmless duplicate -O
+  # would switch assert() back on across the whole engine for no gain.
   elseif(CMAKE_BUILD_TYPE STREQUAL "Debug")
     add_compile_options(-Og -g)
     add_link_options(-g)
