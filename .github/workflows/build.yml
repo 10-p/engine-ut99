@@ -101,6 +101,17 @@ jobs:
             build-native/UnrealTournament/UnrealTournament
             build-native/UCC/ucc-bin
           if-no-files-found: error
+          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
+          # engine repos built and passed its own assertions and the runs were still RED, because
+          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
+          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
+          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
+          # NOT, which is why the note there says "three engine repos" while only one of them had
+          # the fix. 7 days is ~13x less standing storage at the same commit rate.
+          #
+          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
+          # file. That is the whole reason a short age here is safe.
+          retention-days: 7
 
   windows:
     name: windows (MinGW-w64 cross, one self-contained .exe)
@@ -164,6 +175,17 @@ jobs:
             build-windows/UnrealTournament/UnrealTournament.exe
             build-windows/UnrealTournament/OpenAL32.dll
           if-no-files-found: error
+          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
+          # engine repos built and passed its own assertions and the runs were still RED, because
+          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
+          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
+          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
+          # NOT, which is why the note there says "three engine repos" while only one of them had
+          # the fix. 7 days is ~13x less standing storage at the same commit rate.
+          #
+          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
+          # file. That is the whole reason a short age here is safe.
+          retention-days: 7
 
   web:
     name: web (Emscripten)
@@ -230,3 +252,97 @@ jobs:
           name: ut99-${{ steps.variant.outputs.version }}-web
           path: build-wasm/SDLLaunch/
           if-no-files-found: error
+          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
+          # engine repos built and passed its own assertions and the runs were still RED, because
+          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
+          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
+          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
+          # NOT, which is why the note there says "three engine repos" while only one of them had
+          # the fix. 7 days is ~13x less standing storage at the same commit rate.
+          #
+          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
+          # file. That is the whole reason a short age here is safe.
+          retention-days: 7
+
+  # ---------------------------------------------------------------------------
+  # THE ROLLING "latest" RELEASE — the answer to "the 7-day age is fine, but it
+  # must not take the newest build with it" (owner, 2026-09-12).
+  #
+  # ★ IT IS A RELEASE AND NOT A LONGER RETENTION BECAUSE ARTIFACT RETENTION CANNOT
+  # EXPRESS THIS. GitHub expires artifacts purely by age; there is no "keep the
+  # latest" flag, and raising retention-days only moves the cliff — a repository
+  # nobody pushes to for ninety days still ends up with nothing to download, which
+  # is precisely the case where you most want the last good build. RELEASE ASSETS
+  # DO NOT EXPIRE. So per-push artifacts keep their deliberately short 7 days (see
+  # the retention note on every upload above — that limit is what stopped the
+  # quota from turning whole runs red), and the newest build of a tracked branch
+  # is additionally copied here, where it stays until the next one replaces it.
+  #
+  # ⚠ DELETE-THEN-CREATE, ON PURPOSE. A rolling tag has to MOVE, and `gh release
+  # edit --target` does not move a published release's tag. Recreating it also
+  # drops assets that are no longer produced, so a retired build arm cannot leave
+  # a stale binary sitting in "latest" looking current. The cost is a few seconds
+  # where the tag does not exist; the alternative is a release that silently
+  # describes a commit it no longer contains.
+  #
+  # ⚠ `permissions: contents: write` IS LOAD-BEARING. This repository's default
+  # workflow token is READ-ONLY, so without this key every step below succeeds and
+  # the final one fails with HTTP 403.
+  latest:
+    name: rolling "latest" release
+    needs: [linux, windows, web]
+    if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'feat/v436-compat')
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      # Every artifact this run produced, each in its own directory named after it.
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Pack one zip per build
+        run: |
+          set -euo pipefail
+          mkdir -p out
+          shopt -s nullglob
+          n=0
+          for d in artifacts/*/; do
+            name=$(basename "$d")
+            ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
+            n=$((n + 1))
+          done
+          # ⚠ A release that publishes NOTHING is worse than a failed job: it looks
+          # like a successful build whose downloads have quietly gone missing.
+          [ "$n" -gt 0 ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
+          echo "packed $n build(s):"
+          ls -la out/
+
+      - name: Publish (replacing the previous one)
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          # One rolling tag per tracked branch, so branches cannot overwrite each
+          # other's "latest". The default branch keeps the bare name.
+          if [ "$GITHUB_REF_NAME" = "${{ github.event.repository.default_branch }}" ]; then
+            tag="latest"
+          else
+            tag="latest-$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
+          fi
+          echo "tag: $tag"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" out/*.zip \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
+            --notes "$(printf '%s\n' \
+              "The newest UT99 engine build of \`$GITHUB_REF_NAME\`, rebuilt and replaced on every push." \
+              "" \
+              "Commit: \`$GITHUB_SHA\`" \
+              "Built: $(date -u '+%Y-%m-%d %H:%M UTC')" \
+              "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
+              "" \
+              "These assets do not expire. The per-push artifacts on the run page do, after 7 days.")"
