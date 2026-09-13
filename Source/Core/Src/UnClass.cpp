@@ -386,6 +386,16 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 	}
 	else
 	{
+		// ufront 2.70 — this branch links NATIVE properties (CPP_PROPERTY, registered in a StaticConstructor):
+		// their storage is a C++ member, so linking must not move it. Epic restored the OFFSET and forgot the
+		// BIT: UBoolProperty::Link merges a bool into the previous bool's word as if they were packed script
+		// bitfields, so adjacent native bools came out with BitMask 2, 4, 8... while each one is a whole UBOOL.
+		// Harmless for Epic's own drivers (a bool that only config ever writes is simply nonzero or zero), but a
+		// constructor that writes `= true` (bit 1) before config is applied can then never be switched off:
+		// NOpenALDrv's `UseReverb=False` cleared bit 4 and reverb stayed on (measured), and ExportText reads such
+		// a bool back as False. A native property can never be a real bitfield (CPP_PROPERTY takes an offset),
+		// so its bit is restored exactly like its offset. Unreal 1 never merges native bools at all (its
+		// LinkOffsets runs only for loaded/compiled structs), which is why the same driver works there.
 		UProperty* Prev = NULL;
 		for( UField* Field=Children; Field && Field->GetOuter()==this; Field=Field->Next )
 		{
@@ -393,8 +403,12 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 			if( Property )
 			{
 				INT SavedOffset = Property->Offset;
+				UBoolProperty* Bool = Cast<UBoolProperty>( Property );
+				BITFIELD SavedBitMask = Bool ? Bool->BitMask : 0;
 				Property->Link( Ar, Prev );
 				Property->Offset = SavedOffset;
+				if( Bool )
+					Bool->BitMask = SavedBitMask;
 				Prev = Property;
 			}
 		}
