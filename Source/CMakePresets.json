@@ -27,7 +27,7 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF", "UT_WEB_DEBUG": "OFF" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF", "UT_WEB_DEBUG": "OFF", "SOFTDRV_MAX_SCREEN": "8192" }
     },
     {
       "name": "wasm-debug",

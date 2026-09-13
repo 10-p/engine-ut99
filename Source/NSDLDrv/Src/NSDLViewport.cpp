@@ -11,6 +11,32 @@
 #include "NSDLDrv.h"
 #include "UnRender.h"
 
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+#include <math.h>
+// ufront 2.71 (pixel-perfect canvas): the canvas backing store must be the canvas's DEVICE-pixel size.
+// SDL2's Emscripten backend measures and sets the CSS size of #canvas (its pixel_ratio is pinned to 1
+// without SDL_WINDOW_ALLOW_HIGHDPI) and reports that in WINDOWEVENT_RESIZED, so on a 125% desktop the
+// game rendered 4096x1728 on a 5120x2160 panel and the browser resampled it: every glyph blurred
+// (measured: web glyph widths exactly 1.25x native). Passing the device size to SDL_SetWindowSize
+// makes SDL set the backing store to exactly that (CSS untouched), report it from SDL_GetWindowSize
+// and rescale menu mouse coordinates into it by itself. Both calls are sync-proxied to the main
+// thread; SDL already makes the first from this thread on every mouse move. Returns false when the
+// box reads 0x0 (display:none) so the caller keeps SDL's own numbers.
+static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
+{
+	double CssW = 0.0, CssH = 0.0;
+	if( emscripten_get_element_css_size( "#canvas", &CssW, &CssH ) != EMSCRIPTEN_RESULT_SUCCESS )
+		return 0;
+	const double Dpr = emscripten_get_device_pixel_ratio();
+	// lround, not floor: a 1000.8 css box at 1.25 is 1251 device pixels.
+	const INT W = (INT)lround( CssW * Dpr ), H = (INT)lround( CssH * Dpr );
+	if( W <= 0 || H <= 0 )
+		return 0;
+	OutW = W; OutH = H;
+	return 1;
+}
+#endif
+
 IMPLEMENT_CLASS( UNSDLViewport );
 
 /*-----------------------------------------------------------------------------
@@ -591,9 +617,22 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 		// width/height) + software framebuffer to it; WINDOWEVENT_RESIZED (TickInput) keeps it in sync.
 		int RealW = 0, RealH = 0;
 		SDL_GetWindowSize( hWnd, &RealW, &RealH );
-		if( RealW > 0 && RealH > 0 && ( Align( RealW, 4 ) != NewX || RealH != NewY ) )
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+		// ufront 2.71: the canvas's device-pixel size, UNALIGNED — Align rounds up, and any width other
+		// than the box's own is a fractional rescale in the browser, i.e. the blur this exists to remove.
+		INT DevW = 0, DevH = 0;
+		if( ufrontCanvasDevicePixelSize( DevW, DevH ) )
 		{
-			NewX = Align( RealW, 4 );
+			RealW = DevW;
+			RealH = DevH;
+		}
+		const INT WantX = RealW;
+#else
+		const INT WantX = Align( RealW, 4 );
+#endif
+		if( RealW > 0 && RealH > 0 && ( WantX != NewX || RealH != NewY ) )
+		{
+			NewX = WantX;
 			NewY = RealH;
 			SDL_SetWindowSize( hWnd, NewX, NewY );
 			if( SDLRen && SDLTex )
@@ -1234,9 +1273,20 @@ UBOOL UNSDLViewport::TickInput()
 				if( ( Ev.window.event == SDL_WINDOWEVENT_SIZE_CHANGED || Ev.window.event == SDL_WINDOWEVENT_RESIZED )
 					&& Ev.window.data1 > 0 && Ev.window.data2 > 0 )
 				{
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+					// ufront 2.71: SDL reports the CSS size and has just reset the backing store to it, so
+					// re-apply whenever ITS size differs from the device size, not only when ours does. The
+					// echo SIZE_CHANGED from SetClientSize's SDL_SetWindowSize carries the device size and
+					// stays a no-op. Unaligned on purpose (see ufrontCanvasDevicePixelSize).
+					INT NewX = Ev.window.data1, NewY = Ev.window.data2;
+					ufrontCanvasDevicePixelSize( NewX, NewY );
+					if( NewX != Ev.window.data1 || NewY != Ev.window.data2 || NewX != SizeX || NewY != SizeY )
+						SetClientSize( NewX, NewY, false );
+#else
 					const INT NewX = Align( Ev.window.data1, 4 ), NewY = Ev.window.data2;
 					if( NewX != SizeX || NewY != SizeY )
 						SetClientSize( NewX, NewY, false );
+#endif
 				}
 				break;
 			default:

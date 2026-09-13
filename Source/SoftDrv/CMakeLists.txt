@@ -36,5 +36,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE SOFTDRV_EXPORTS UPACKAGE_NAME
 # every resolution — 368 KB at the 4096 default, whether the viewport is 4K or 240x240. Lower this for
 # memory-constrained targets (a 256 ceiling costs 23 KB); viewports above it degrade fail-soft rather
 # than corrupting. See the rationale in Src/SoftDrvPrivate.h.
+# ufront 2.71: the wasm preset raises this to 8192 (cacheVariables, so existing build trees pick it up on
+# re-configure): the web canvas is the display's DEVICE pixel size now (5120 on a 125% 4K-class desktop)
+# and the UE1 resize path bypasses SetRes's clamp, so 4096 would let the X-indexed tables overrun.
 set(SOFTDRV_MAX_SCREEN "4096" CACHE STRING "Max software-renderer viewport dimension (static table bound)")
 target_compile_definitions(${PROJECT_NAME} PRIVATE SOFTDRV_MAX_SCREEN=${SOFTDRV_MAX_SCREEN})
