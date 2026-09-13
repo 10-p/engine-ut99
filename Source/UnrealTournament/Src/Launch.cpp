@@ -690,12 +690,11 @@ DOUBLE OldTime = appSeconds();
 			if( ClientCap < -0.5f )
 			{
 				FLOAT V=0.f;
-				// ufront 2.19: the launcher's Advanced "Frame rate limit" passes -FRAMERATECAP=<n> and wins
-				// over the ini, so the web UI can set it without writing config. <=0 means uncapped.
-				if( Parse(appCmdLine(),TEXT("FRAMERATECAP="),V) )
-					ClientCap = V;
-				else
-					ClientCap = ( GConfig->GetFloat(TEXT("Engine.Engine"),TEXT("FrameRateCap"),V) ) ? V : 120.f;
+				// ufront 2.61: the ini is the ONLY home. 2.19 also parsed a -FRAMERATECAP=<n> switch that won over
+				// it; that was a second way to set one setting, and a per-launch value the ini never learned. The
+				// launcher now sets this key like any other, with -ini:System:[Engine.Engine]:FrameRateCap=<n>,
+				// and only when the player changed it. <=0 means uncapped.
+				ClientCap = ( GConfig->GetFloat(TEXT("Engine.Engine"),TEXT("FrameRateCap"),V) ) ? V : 120.f;
 				debugf( NAME_Init, TEXT("ufront: client frame rate cap %.0f fps%s"), ClientCap, ClientCap>0.f ? TEXT("") : TEXT(" (uncapped)") );
 			}
 			Cap = ClientCap;
