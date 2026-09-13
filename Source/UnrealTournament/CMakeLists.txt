@@ -71,6 +71,18 @@ if(OPENAL_MINGW_RUNTIME_DLL)
     COMMENT "Copying ${OPENAL_MINGW_RUNTIME_DLL_NAME} (OpenAL Soft) next to the executable")
 endif()
 
+# ufront 2.70 — native Linux: our own openal-soft (cmake/OpenALSoft.cmake NATIVE) is DT_NEEDED by NOpenALDrv,
+# so the binary finds it through $ORIGIN and the build puts it there, soname and all. A run tree that takes
+# the binary takes libopenal.so.1 with it; without the file the loader stops before main.
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT EMSCRIPTEN AND NOT ANDROID AND TARGET OpenAL)
+  set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY BUILD_RPATH "$ORIGIN")
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+            "$<TARGET_FILE:OpenAL>"
+            "$<TARGET_FILE_DIR:${PROJECT_NAME}>/$<TARGET_SONAME_FILE_NAME:OpenAL>"
+    COMMENT "Copying $<TARGET_SONAME_FILE_NAME:OpenAL> (openal-soft, the ufront fork) next to the executable")
+endif()
+
 if(TARGET_IS_DREAMCAST AND DREAMCAST_USE_FATFS)
   target_link_libraries(${PROJECT_NAME} fatfs)
 endif()
@@ -242,9 +254,26 @@ if(EMSCRIPTEN)
   execute_process(COMMAND git -C ${CMAKE_SOURCE_DIR}/.. rev-parse --short HEAD
     OUTPUT_VARIABLE META_GIT_SHA OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
   string(TIMESTAMP META_BUILT_AT "%Y-%m-%dT%H:%M:%SZ" UTC)
-  execute_process(COMMAND emcc --version
-    OUTPUT_VARIABLE _emcc_ver OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
-  string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" META_EMCC "${_emcc_ver}")
+  # ufront 2.70: the toolchain file knows where Emscripten is; `emcc --version` on PATH did not (a preset
+  # build has only $EMSDK set), so every shipped descriptor said "unknown".
+  set(META_EMCC "unknown")
+  if(EXISTS "${EMSCRIPTEN_ROOT_PATH}/emscripten-version.txt")
+    file(READ "${EMSCRIPTEN_ROOT_PATH}/emscripten-version.txt" _emcc_ver)
+    string(REGEX MATCH "[0-9]+\\.[0-9]+\\.[0-9]+" META_EMCC "${_emcc_ver}")
+  endif()
+  # ufront 2.70: every fetched library as repo@branch|tag, from the cache variables the fetch itself read
+  # (the web build always has NOpenALDrv, hence openal-soft and libxmp).
+  include(${CMAKE_SOURCE_DIR}/cmake/ArtifactDeps.cmake)
+  set(META_DEPS)
+  ufront_artifact_dep(META_DEPS openal-soft OpenALSoft "${OPENALSOFT_GIT_REPOSITORY}" "${OPENALSOFT_GIT_TAG}")
+  ufront_artifact_dep(META_DEPS libxmp libxmp "${LIBXMP_GIT_REPOSITORY}" "${LIBXMP_GIT_TAG}" "${LIBXMP_SOURCE_DIR}")
+  if(BUILD_XOPENGLDRV)
+    ufront_artifact_dep(META_DEPS xopengl XOpenGLDrv "${XOPENGL_GIT_REPOSITORY}" "${XOPENGL_GIT_TAG}")
+  endif()
+  if(BUILD_NOPENGLDRV)
+    ufront_artifact_dep(META_DEPS utglr utglr "${UTGLR_GIT_REPOSITORY}" "${UTGLR_GIT_TAG}")
+    ufront_artifact_dep(META_DEPS gl4es GL4ES "${GL4ES_GIT_REPOSITORY}" "${GL4ES_GIT_TAG}" "${GL4ES_SOURCE_DIR}")
+  endif()
   find_program(NODE_EXECUTABLE node REQUIRED)
   # ufront 2.13.2 — the emitter is an INPUT to the artifact, and CMake cannot infer that from a
   # POST_BUILD COMMAND: editing it changes nothing the build watches, so the target does not relink,
@@ -258,6 +287,7 @@ if(EMSCRIPTEN)
       --out=$<TARGET_FILE_DIR:${PROJECT_NAME}>
       --target=ut99 --abi=${UE_ABI_VERSION}
       --gitSha=${META_GIT_SHA} --builtAt=${META_BUILT_AT} --emcc=${META_EMCC}
+      ${META_DEPS}
     COMMENT "Emitting artifact meta.json (docs/05 §4)"
     VERBATIM
   )
