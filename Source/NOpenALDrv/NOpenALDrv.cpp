@@ -1,22 +1,25 @@
 #include <stdlib.h>
 
-// ufront (web audio, step 2.12): Emscripten's built-in OpenAL implements only the OpenAL 1.1 core over
-// Web Audio — no EFX (reverb), no ALC_SOFT_HRTF, no AL_METERS_PER_UNIT — and its libc has no <AL/alext.h>/
-// <AL/efx.h>. The web build is also single-threaded (no -pthread). So under Emscripten (NOPENAL_WEB) we
-// compile out the EFX/HRTF paths and pump the libxmp music decoder from Update() (the per-frame audio tick)
-// instead of a background thread. Native (openal-soft) keeps the full feature set + music thread unchanged.
-// The same pattern is intended to be reused for UT99's web audio driver.
-#ifdef __EMSCRIPTEN__
-#define NOPENAL_WEB 1
-#endif
+// ufront 2.61: every platform plays through openal-soft now — the web too (cmake/OpenALSoftWeb.cmake: mixed on
+// a pthread, played by an AudioWorklet), where 2.12 had Emscripten's built-in OpenAL 1.1 core and so compiled
+// out EFX reverb, HRTF and AL_METERS_PER_UNIT under NOPENAL_WEB. That guard is gone: one code path, the full
+// feature set on every target. Music is still pumped from Update() everywhere (no decoder thread, 2.12).
 
 #include "AL/al.h"
 #include "AL/alc.h"
-#ifndef NOPENAL_WEB
 #define AL_ALEXT_PROTOTYPES
 #include "AL/alext.h"
 #include "AL/efx.h"
 #include "AL/efx-presets.h"
+// openal-soft's output-mode extension (1.23+); spelled out for older alext.h headers a native build may find.
+#ifndef ALC_OUTPUT_MODE_SOFT
+#define ALC_OUTPUT_MODE_SOFT 0x19AC
+#endif
+#ifndef ALC_ANY_SOFT
+#define ALC_ANY_SOFT 0x19AD
+#endif
+#ifndef ALC_STEREO_HRTF_SOFT
+#define ALC_STEREO_HRTF_SOFT 0x19B2
 #endif
 #include "xmp.h"
 
@@ -64,7 +67,7 @@ UNOpenALAudioSubsystem::UNOpenALAudioSubsystem()
 	MusicVolume = 63;
 	AmbientFactor = 0.6f;
 	DopplerFactor = 0.01f;
-	UseHRTF = true;
+	UseHRTF = false;	// ufront 2.61: the player's choice (see Init)
 	UseReverb = true;
 	MusicInterpolation = XMP_INTERP_LINEAR;
 }
@@ -105,11 +108,16 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	if( MusicInterpolation > XMP_INTERP_SPLINE )
 		MusicInterpolation = XMP_INTERP_SPLINE;
 
+	// ufront 2.61 -- HRTF. This passed ALC_SOFT_HRTF, the extension's PRESENCE macro (value 1), as the attribute
+	// KEY where ALC_HRTF_SOFT (0x1992) belongs, so openal-soft ignored it and UseHRTF never did anything on any
+	// platform. And HRTF is a STEREO rendering: asked for alone, a 5.1/7.1 device renders surround and reports
+	// ALC_HRTF_UNSUPPORTED_FORMAT_SOFT (Firefox reports a 5.1 device's six channels to the page, measured in
+	// ufront 2.61 §3.1). So UseHRTF also asks for the stereo-HRTF output mode, and is off by default: it is the
+	// player's choice (the launcher's "Headphone audio"), because no browser can tell headphones from speakers.
 	const ALint AttrList[] = {
 		ALC_FREQUENCY, OutputRate,
-#ifndef NOPENAL_WEB
-		ALC_SOFT_HRTF, UseHRTF,
-#endif
+		ALC_HRTF_SOFT, UseHRTF ? ALC_TRUE : ALC_FALSE,
+		ALC_OUTPUT_MODE_SOFT, UseHRTF ? ALC_STEREO_HRTF_SOFT : ALC_ANY_SOFT,
 		0
 	};
 
@@ -124,11 +132,17 @@ UBOOL UNOpenALAudioSubsystem::Init()
 
 	alcMakeContextCurrent( Ctx );
 
+	{
+		// Read back what the library did: a request is not a result.
+		ALCint HRTFActive = 0;
+		alcGetIntegerv( Device, ALC_HRTF_SOFT, 1, &HRTFActive );
+		debugf( TEXT("NOpenALDrv: HRTF %s (UseHRTF=%s), reverb %s"), HRTFActive ? TEXT("ACTIVE") : TEXT("inactive"),
+			UseHRTF ? TEXT("True") : TEXT("False"), UseReverb ? TEXT("on") : TEXT("off (UseReverb=False)") );
+	}
+
 	alDistanceModel( AL_LINEAR_DISTANCE_CLAMPED );
 	alDopplerFactor( Max( 0.f, DopplerFactor ) );
-#ifndef NOPENAL_WEB
 	alListenerf( AL_METERS_PER_UNIT, DISTANCE_SCALE );
-#endif
 	alListenerf( AL_GAIN, MasterVolume / 255.f );
 
 	alGenSources( MAX_SOURCES, Sources );
@@ -147,7 +161,6 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	}
 	NumFreeMusicBuffers = NUM_MUSIC_BUFFERS;
 
-#ifndef NOPENAL_WEB
 	if( UseReverb )
 	{
 		alGenEffects( 1, &ReverbEffect );
@@ -156,7 +169,6 @@ UBOOL UNOpenALAudioSubsystem::Init()
 		alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
 		ReverbOn = false;
 	}
-#endif
 
 	for( INT i = 0; i < MAX_SOURCES; ++i )
 		Voices[i].Buffer = INVALID_BUFFER;
@@ -189,13 +201,11 @@ void UNOpenALAudioSubsystem::Destroy()
 		MusicCtx = NULL;
 	}
 
-#ifndef NOPENAL_WEB
 	if (UseReverb)
 	{
 		alDeleteAuxiliaryEffectSlots(1, &ReverbSlot);
 		alDeleteEffects(1, &ReverbEffect);
 	}
-#endif
 
 	if( Ctx )
 	{
@@ -237,13 +247,11 @@ void UNOpenALAudioSubsystem::ShutdownAfterError()
 		MusicCtx = NULL;
 		Music = NULL;
 	}
-#ifndef NOPENAL_WEB
 	if (UseReverb)
 	{
 		alDeleteAuxiliaryEffectSlots(1, &ReverbSlot);
 		alDeleteEffects(1, &ReverbEffect);
 	}
-#endif
 	if( Ctx )
 	{
 		alcMakeContextCurrent( NULL );
@@ -502,10 +510,8 @@ void UNOpenALAudioSubsystem::UpdateVoice( INT Num, const ENVoiceOp Op )
 		}
 	}
 
-#ifndef NOPENAL_WEB
 	if( UseReverb && Op == NVOP_Play )
 		alSource3i( Source, AL_AUXILIARY_SEND_FILTER, (ALint)ReverbSlot, 0, AL_FILTER_NULL );
-#endif
 
 	// Play or stop if needed.
 	switch( Op )
@@ -707,10 +713,8 @@ void UNOpenALAudioSubsystem::Update( FPointRegion Region, FCoords& Listener )
 	alListenerfv( AL_ORIENTATION, ALOrientation );
 	ListenerCoords = Listener;
 
-#ifndef NOPENAL_WEB
 	if( UseReverb )
 		UpdateReverb( Region );
-#endif
 
 	// Start new ambient sounds if needed.
 	if( Viewport->Actor && Viewport->Actor->XLevel )
@@ -944,7 +948,6 @@ void UNOpenALAudioSubsystem::ClearMusicBuffers()
 void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 {
 	guard(UNOpenALAudioSubsystem::UpdateReverb)
-#ifndef NOPENAL_WEB
 
 	const UBOOL bNewReverb = ( Viewport->Actor && Viewport->Actor->Region.Zone && Viewport->Actor->Region.Zone->bReverbZone );
 
@@ -972,9 +975,15 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 			alEffectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );
 			// TODO: figure out how to convert Galaxy Audio reverb to this
 			alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
+			// ufront 2.61: reverb used to be unreachable on the web; say once that it really engages.
+			static UBOOL LoggedReverb = 0;
+			if( !LoggedReverb )
+			{
+				debugf( TEXT("NOpenALDrv: EAX reverb applied for zone %s (MasterGain %d)"), ReverbZone->GetName(), ReverbZone->MasterGain );
+				LoggedReverb = 1;
+			}
 		}
 	}
-#endif
 
 	unguard;
 }
@@ -982,7 +991,6 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 void UNOpenALAudioSubsystem::InitReverbEffect()
 {
 	guard(UNOpenALAudioSubsystem::InitReverbEffect)
-#ifndef NOPENAL_WEB
 
 	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
 	alEffecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB );
@@ -1009,7 +1017,6 @@ void UNOpenALAudioSubsystem::InitReverbEffect()
 	alEffectf( ReverbEffect, AL_EAXREVERB_LFREFERENCE, Reverb.flLFReference );
 	alEffectf( ReverbEffect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, Reverb.flRoomRolloffFactor );
 	alEffecti( ReverbEffect, AL_EAXREVERB_DECAY_HFLIMIT, Reverb.iDecayHFLimit );
-#endif
 
 	unguard;
 }

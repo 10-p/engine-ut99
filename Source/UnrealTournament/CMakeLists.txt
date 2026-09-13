@@ -172,9 +172,13 @@ if(EMSCRIPTEN)
     # explicit blit per frame. That warning assumed the implicit path was working and the blit was pure
     # overhead. It is not working, so the trade is a per-frame blit against showing 1 frame in 80.
     -sOFFSCREEN_FRAMEBUFFER
-    # main() itself is one of these; this engine spawns no others on the web, so a small pool avoids
-    # paying for workers nothing will use.
-    -sPTHREAD_POOL_SIZE=2
+    # main() itself is one of these. ufront 2.61: openal-soft adds TWO — the web backend's mixer thread and
+    # the event thread every context starts — so 2 -> 4. A thread created with the pool empty still starts,
+    # but only once the main thread has spun up a worker, which the audio ring would absorb as an underrun.
+    -sPTHREAD_POOL_SIZE=4
+    # ufront 2.61: openal-soft reports every AL error by throwing and catching it, so catching must be ON
+    # (the first AL error would otherwise abort). Only its objects are -fexceptions; see Source/CMakeLists.txt.
+    -sNO_DISABLE_EXCEPTION_CATCHING
     # The thin webrtc_* shim (defines the ABI's C-imported symbols, forwarding to host-injected
     # Module.UE.net.*). Heavy glue is NOT baked. Dead-stripped until the WebRTC net driver lands (2.7d).
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"

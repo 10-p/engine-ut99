@@ -146,10 +146,13 @@ if(EMSCRIPTEN)
   # clang (Emscripten) rejects passing a non-POD FString through variadic debugf/appErrorf as an ERROR;
   # GCC tolerates it. Downgrade to a warning (mostly script-export/debug paths). Mirrors engine-unreal1.
   add_compile_options(-Wno-error=non-pod-varargs -Wno-non-pod-varargs)
-  # Exceptions: rely on Emscripten's default (exception CATCHING disabled). -fexceptions overflows V8's
-  # call stack via invoke_ trampolines through UE1's deep package loader; -fwasm-exceptions is incompatible
+  # Exceptions: the ENGINE's objects rely on Emscripten's default (-fignore-exceptions). -fexceptions overflows
+  # V8's call stack via invoke_ trampolines through UE1's deep package loader; -fwasm-exceptions is incompatible
   # with ASYNCIFY (the main-loop yield). Normal boot never throws; recoverable load failures are patched to
   # resolve to NULL one site at a time (step 2.7c, mirroring engine-unreal1/engine-ut2004); errors abort.
+  # ufront 2.61: openal-soft is the one exception to that. It reports every AL error by throwing, so ITS objects
+  # are -fexceptions (cmake/OpenALSoftWeb.cmake) and the link enables catching (UnrealTournament/CMakeLists.txt);
+  # nothing of the engine's gains an invoke_.
 endif()
 
 
@@ -603,6 +606,13 @@ endif()
 # tracker music, pumped from Update() (single music path, no background thread). Ported from engine-unreal1,
 # adapted to UT99 v400's UAudioSubsystem. Selected by the launcher on Emscripten (-> NOpenALAudioSubsystem).
 if(BUILD_NOPENALDRV)
+  if(EMSCRIPTEN)
+    # ufront 2.61: openal-soft instead of Emscripten's built-in OpenAL (5.1/HRTF/EFX reverb on the web).
+    # EAX OFF: NOpenALDrv never calls the EAX API — its "EAX" reverb is EFX's AL_EFFECT_EAXREVERB, which
+    # openal-soft always has. Flip it if a driver ever needs EAXSet/EAXGet (engine-ut2004's ALAudio does).
+    include(OpenALSoftWeb)
+    ufront_openal_soft_web(EAX OFF)
+  endif()
   add_subdirectory(NOpenALDrv)
   list(APPEND INSTALL_TARGETS NOpenALDrv)
 endif()
