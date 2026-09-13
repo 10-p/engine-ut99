@@ -41,6 +41,7 @@ option(BUILD_NOPENGLDRV "Build NOpenGLDrv" OFF)
 option(BUILD_PVRDRV "Build PVRDrv (Dreamcast only)" OFF)
 option(BUILD_NULLSOUNDDRV "Build SoundDrv (Null driver)" ON)
 option(BUILD_NOPENALDRV "Build NOpenALDrv (OpenAL SFX + libxmp .umx music; web + native Linux)" OFF)
+option(UT_BUNDLED_OPENAL "Native Linux: build openal-soft (the ufront fork) and ship libopenal.so.1 beside the binary, instead of linking whatever libopenal the system has (ufront 2.70)" ON)
 option(BUILD_AICADRV "Build AICADrv (Dreamcast AICA sound driver)" OFF)
 option(BUILD_DCUTIL "Build DCUtil" ON)
 option(BUILD_STATIC "Link everything into a single binary" OFF)
@@ -151,7 +152,7 @@ if(EMSCRIPTEN)
   # with ASYNCIFY (the main-loop yield). Normal boot never throws; recoverable load failures are patched to
   # resolve to NULL one site at a time (step 2.7c, mirroring engine-unreal1/engine-ut2004); errors abort.
   # ufront 2.61: openal-soft is the one exception to that. It reports every AL error by throwing, so ITS objects
-  # are -fexceptions (cmake/OpenALSoftWeb.cmake) and the link enables catching (UnrealTournament/CMakeLists.txt);
+  # are -fexceptions (cmake/OpenALSoft.cmake) and the link enables catching (UnrealTournament/CMakeLists.txt);
   # nothing of the engine's gains an invoke_.
 endif()
 
@@ -610,8 +611,13 @@ if(BUILD_NOPENALDRV)
     # ufront 2.61: openal-soft instead of Emscripten's built-in OpenAL (5.1/HRTF/EFX reverb on the web).
     # EAX OFF: NOpenALDrv never calls the EAX API — its "EAX" reverb is EFX's AL_EFFECT_EAXREVERB, which
     # openal-soft always has. Flip it if a driver ever needs EAXSet/EAXGet (engine-ut2004's ALAudio does).
-    include(OpenALSoftWeb)
-    ufront_openal_soft_web(EAX OFF)
+    include(OpenALSoft)
+    ufront_openal_soft(PLATFORM WEB EAX OFF)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UT_BUNDLED_OPENAL)
+    # ufront 2.70: native Linux carries the same fork, SHARED, beside the binary (cmake/OpenALSoft.cmake) —
+    # the system libopenal is whatever the distro built, and the Galaxy reverb effect lives in the fork.
+    include(OpenALSoft)
+    ufront_openal_soft(PLATFORM NATIVE EAX OFF)
   endif()
   add_subdirectory(NOpenALDrv)
   list(APPEND INSTALL_TARGETS NOpenALDrv)

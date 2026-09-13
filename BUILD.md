@@ -26,6 +26,30 @@ cmake --preset native && cmake --build --preset native -j"$(nproc)"        # the
 # (2.33)  cmake --preset windows   && cmake --build --preset windows   -j"$(nproc)"
 ```
 
+### `meta.json` records what was fetched (ufront 2.70)
+
+`toolchain` names every repository FetchContent pulled, as `<repo>@<branch|tag>` — never a commit: the
+project-owned repositories (`10-p/*`) are consumed at their branch tip so a rebuild takes the latest of
+each, and an external upstream (`libxmp/libxmp@libxmp-4.7.1`) stays on its release tag. The values come from
+the same cache variables the `FetchContent_Declare` read (`Source/cmake/ArtifactDeps.cmake`), so the
+descriptor cannot drift from the fetch; a local checkout override (`FETCHCONTENT_SOURCE_DIR_<NAME>`,
+`LIBXMP_SOURCE_DIR`, `GL4ES_SOURCE_DIR`) shows up as `local:<path>`. ⚠ A branch ref is re-fetched on every
+**configure** (`cmake --preset …`), never by a plain `cmake --build`: an old build directory rebuilt without
+re-configuring still holds the dependency it fetched last time.
+
+### openal-soft on native Linux (ufront 2.70)
+
+The native binary no longer links the distro's `libopenal`: `Source/cmake/OpenALSoft.cmake` (the 2.61 web
+module, generalised — `ufront_openal_soft(PLATFORM WEB|NATIVE …)`) FetchContent's the same fork the web uses
+(`10-p/openal-soft-web` `ufront/web`) and builds it SHARED for the `native` preset. The launcher links it
+(`DT_NEEDED libopenal.so.1`), carries `$ORIGIN` in its rpath and copies `libopenal.so.1` beside itself, so
+**a run tree that takes the binary must take `libopenal.so.1` with it** (the loader stops before `main`
+otherwise). Backends are whatever this host's headers allowed at configure time — PulseAudio, ALSA, OSS on
+this box, each dlopen'd at run time — and the configure log says which
+(`Building OpenAL with support for the following backends`). `-DUT_BUNDLED_OPENAL=OFF` restores the system
+library. Why: the system library is whatever the distro built, and the Galaxy reverb effect (2.70) lives in
+the fork, so the native binary has to carry the fork to play what the web plays.
+
 ### Running the native oracle
 The client runs from a `System/` dir (cwd), reading assets via relative `../Maps`, `../Textures`, … (the
 `[Core.System] Paths`). A run tree is assembled by symlinking `$UT99_ASSETS_DIR/{Maps,Textures,Sounds,

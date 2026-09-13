@@ -3,7 +3,7 @@ project(NOpenALDrv C CXX)
 set(SRC_FILES "NOpenALDrv.cpp")
 
 # ufront 2.12 (web + native audio): SFX via OpenAL — openal-soft everywhere since 2.61 (on the web built by
-# cmake/OpenALSoftWeb.cmake, full EFX/reverb/HRTF like native; before that Emscripten's built-in OpenAL 1.1
+# cmake/OpenALSoft.cmake, full EFX/reverb/HRTF like native; before that Emscripten's built-in OpenAL 1.1
 # core with EFX/HRTF compiled out). libxmp (the tracker decoder for Unreal's .umx music)
 # is not reliably shipped by either toolchain, so fetch + build it as a static lib on BOTH targets — it is
 # portable C and cross-compiles cleanly under emcc and gcc. Depackers/ProWizard are disabled (Unreal music
@@ -47,8 +47,12 @@ endif()
 set(LIBXMP_LIBRARY xmp_static)
 
 if(EMSCRIPTEN)
-  # ufront 2.61: openal-soft, built by the parent (cmake/OpenALSoftWeb.cmake) — was Emscripten's built-in
+  # ufront 2.61: openal-soft, built by the parent (cmake/OpenALSoft.cmake WEB) — was Emscripten's built-in
   # -lopenal. Linking the target also gives this driver openal-soft's <AL/alext.h>/<AL/efx.h>.
+  set(OPENAL_LIBRARY OpenAL)
+elseif(TARGET OpenAL)
+  # ufront 2.70: native Linux — the parent built the same fork SHARED (cmake/OpenALSoft.cmake NATIVE); the
+  # launcher copies libopenal.so.1 beside the binary and links with $ORIGIN, so this DT_NEEDED resolves there.
   set(OPENAL_LIBRARY OpenAL)
 elseif(MINGW AND CMAKE_CROSSCOMPILING)
   # ufront 2.34 — cross-building for Windows: no system OpenAL, so fetch OpenAL Soft's official prebuilt
