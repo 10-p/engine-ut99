@@ -61,6 +61,9 @@ class DLL_EXPORT UNOpenALAudioSubsystem : public UAudioSubsystem
 	FLOAT DopplerFactor;
 	UBOOL UseReverb;
 	UBOOL UseHRTF;
+	UBOOL UseEAX;			// ufront 2.70: which reverb when UseReverb — EFX's EAX reverb (True) or the classic Galaxy one (False)
+	enum EReverbKind { REVERB_EAX=0, REVERB_GALAXY=1 };
+	INT ReverbKind;			// resolved at Init: Galaxy only if the library has AL_UFRONT_galaxy_reverb
 
 	// Constructors.
 	void StaticConstructor();

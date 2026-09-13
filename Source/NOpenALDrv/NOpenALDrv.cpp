@@ -11,6 +11,16 @@
 #include "AL/alext.h"
 #include "AL/efx.h"
 #include "AL/efx-presets.h"
+// ufront 2.70: the classic Galaxy reverb is an effect only our openal-soft fork has (AL_UFRONT_galaxy_reverb,
+// 10-p/openal-soft-web). A stock <AL/alext.h> (the Windows build's prebuilt OpenAL Soft) lacks the enums, so
+// they are spelled here too; the run-time extension check decides whether they can be used.
+#ifndef AL_UFRONT_galaxy_reverb
+#define AL_EFFECT_GALAXY_REVERB_UFRONT           0xB000
+#define AL_GALAXY_REVERB_VOLUME                  0x0001
+#define AL_GALAXY_REVERB_HFDAMP                  0x0002
+#define AL_GALAXY_REVERB_DELAY_TIMES             0x0003
+#define AL_GALAXY_REVERB_DELAY_GAINS             0x0004
+#endif
 // openal-soft's output-mode extension (1.23+); spelled out for older alext.h headers a native build may find.
 #ifndef ALC_OUTPUT_MODE_SOFT
 #define ALC_OUTPUT_MODE_SOFT 0x19AC
@@ -55,6 +65,7 @@ void UNOpenALAudioSubsystem::StaticConstructor()
 	new(GetClass(), TEXT("DopplerFactor"),      RF_Public)UFloatProperty ( CPP_PROPERTY( DopplerFactor      ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("UseReverb"),          RF_Public)UBoolProperty  ( CPP_PROPERTY( UseReverb          ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("UseHRTF"),            RF_Public)UBoolProperty  ( CPP_PROPERTY( UseHRTF            ), TEXT("Audio"), CPF_Config );
+	new(GetClass(), TEXT("UseEAX"),             RF_Public)UBoolProperty  ( CPP_PROPERTY( UseEAX             ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("MusicInterpolation"), RF_Public)UByteProperty  ( CPP_PROPERTY( MusicInterpolation ), TEXT("Audio"), CPF_Config );
 	unguardSlow;
 }
@@ -69,6 +80,8 @@ UNOpenALAudioSubsystem::UNOpenALAudioSubsystem()
 	DopplerFactor = 0.01f;
 	UseHRTF = false;	// ufront 2.61: the player's choice (see Init)
 	UseReverb = true;
+	UseEAX = true;		// ufront 2.70: with UseReverb, which reverb — True = EFX's EAX reverb (2.61), False = the classic Galaxy one
+	ReverbKind = REVERB_EAX;
 	MusicInterpolation = XMP_INTERP_LINEAR;
 }
 
@@ -132,12 +145,26 @@ UBOOL UNOpenALAudioSubsystem::Init()
 
 	alcMakeContextCurrent( Ctx );
 
+	// ufront 2.70: two reverbs. UseReverb && UseEAX -> EFX's EAX reverb (the 2.61 path). UseReverb && !UseEAX ->
+	// the classic Galaxy reverb of Unreal/UT99, recovered from GALAXY.LIB and carried by our openal-soft fork as
+	// AL_EFFECT_GALAXY_REVERB_UFRONT. A library without that extension (the Windows build's stock OpenAL Soft)
+	// keeps EAX and says so once. Decided here, with the context current, so the line below can report it.
+	ReverbKind = REVERB_EAX;
+	if( UseReverb && !UseEAX )
+	{
+		if( alIsExtensionPresent( "AL_UFRONT_galaxy_reverb" ) )
+			ReverbKind = REVERB_GALAXY;
+		else
+			debugf( TEXT("NOpenALDrv: UseEAX=False, but this OpenAL has no Galaxy reverb (AL_UFRONT_galaxy_reverb) - EAX reverb stays") );
+	}
+
 	{
 		// Read back what the library did: a request is not a result.
 		ALCint HRTFActive = 0;
 		alcGetIntegerv( Device, ALC_HRTF_SOFT, 1, &HRTFActive );
 		debugf( TEXT("NOpenALDrv: HRTF %s (UseHRTF=%s), reverb %s"), HRTFActive ? TEXT("ACTIVE") : TEXT("inactive"),
-			UseHRTF ? TEXT("True") : TEXT("False"), UseReverb ? TEXT("on") : TEXT("off (UseReverb=False)") );
+			UseHRTF ? TEXT("True") : TEXT("False"),
+			!UseReverb ? TEXT("off (UseReverb=False)") : ReverbKind == REVERB_GALAXY ? TEXT("on (Galaxy, UseEAX=False)") : TEXT("on (EAX)") );
 	}
 
 	alDistanceModel( AL_LINEAR_DISTANCE_CLAMPED );
@@ -972,14 +999,30 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 			ReverbZone = NewReverbZone;
 			// Unbind effect, change parameters, then bind again.
 			alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
-			alEffectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );
-			// TODO: figure out how to convert Galaxy Audio reverb to this
+			if( ReverbKind == REVERB_GALAXY )
+			{
+				// ufront 2.70: the zone -> Galaxy mapping exactly as UnGalaxy.cpp UpdateReverb handed it to
+				// glxSetSampleReverb (ut99-v400/Galaxy/Src/UnGalaxy.cpp): every ZoneInfo reverb property is used.
+				FLOAT Times[6], Gains[6];
+				for( INT i=0; i<6; i++ )
+				{
+					Times[i] = Clamp( ReverbZone->Delay[i]/500.0f, 0.001f, 0.340f );
+					Gains[i] = Clamp( ReverbZone->Gain[i]/255.0f, 0.001f, 0.999f );
+				}
+				alEffectf ( ReverbEffect, AL_GALAXY_REVERB_VOLUME, ReverbZone->MasterGain/255.0f );
+				alEffectf ( ReverbEffect, AL_GALAXY_REVERB_HFDAMP, (FLOAT)Clamp( (INT)ReverbZone->CutoffHz, 0, 44100 ) );
+				alEffectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_TIMES, Times );
+				alEffectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_GAINS, Gains );
+			}
+			else
+				alEffectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );	// the EAX preset takes only the master gain
 			alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
 			// ufront 2.61: reverb used to be unreachable on the web; say once that it really engages.
 			static UBOOL LoggedReverb = 0;
 			if( !LoggedReverb )
 			{
-				debugf( TEXT("NOpenALDrv: EAX reverb applied for zone %s (MasterGain %d)"), ReverbZone->GetName(), ReverbZone->MasterGain );
+				debugf( TEXT("NOpenALDrv: %s reverb applied for zone %s (MasterGain %d, CutoffHz %d)"),
+					ReverbKind == REVERB_GALAXY ? TEXT("Galaxy") : TEXT("EAX"), ReverbZone->GetName(), ReverbZone->MasterGain, ReverbZone->CutoffHz );
 				LoggedReverb = 1;
 			}
 		}
@@ -993,6 +1036,13 @@ void UNOpenALAudioSubsystem::InitReverbEffect()
 	guard(UNOpenALAudioSubsystem::InitReverbEffect)
 
 	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
+	// ufront 2.70: ReverbKind was decided in Init (with the context current); the Galaxy effect takes its
+	// parameters per zone in UpdateReverb, the EAX one its preset here.
+	if( ReverbKind == REVERB_GALAXY )
+	{
+		alEffecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_GALAXY_REVERB_UFRONT );
+		return;
+	}
 	alEffecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB );
 	alEffectf( ReverbEffect, AL_EAXREVERB_DENSITY, Reverb.flDensity );
 	alEffectf( ReverbEffect, AL_EAXREVERB_DIFFUSION, Reverb.flDiffusion );
