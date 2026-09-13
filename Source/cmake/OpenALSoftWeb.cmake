@@ -30,7 +30,7 @@ function(ufront_openal_soft_web)
     set(ARG_EAX OFF)
   endif()
   include(FetchContent)
-  set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft.git"
+  set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft-web.git"
       CACHE STRING "openal-soft git remote; its ufront/web branch carries the Web Audio backend")
   set(OPENALSOFT_GIT_TAG "ufront/web" CACHE STRING "openal-soft git ref")
   FetchContent_Declare(
