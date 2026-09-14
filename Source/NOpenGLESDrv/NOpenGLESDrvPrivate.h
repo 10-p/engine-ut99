@@ -220,8 +220,18 @@ private:
 		IdxDataPtr = IdxData;
 	}
 
+	// ufront 2.72: flush BEFORE a polygon that may not fit. The batch buffers are fixed (MAX_VERTS entries) and
+	// every Attrib*/EndPoly write is unchecked; FlushTriangles' checks fire only after the overrun has already
+	// written past the heap block. Reached in the wild once 2.71 rendered at the display's true resolution: a
+	// character up close is subdivided by RenderSubsurface in proportion to Frame->FX (the screen width in
+	// pixels), and one mesh then exceeds 32768 indices in a single batch ("Assertion failed: IdxDataPtr <=
+	// IdxDataEnd", six players' sessions on the first night). The bound is generous: UE1 polys carry at most 16
+	// vertices; AttribSizes sum to 19 floats.
+	enum { MAX_POLY_VERTS = 64, MAX_POLY_FLOATS = MAX_POLY_VERTS * 20, MAX_POLY_INDICES = ( MAX_POLY_VERTS - 2 ) * 3 };
 	inline void BeginPoly()
 	{
+		if( IdxDataPtr + MAX_POLY_INDICES > IdxDataEnd || VtxDataPtr + MAX_POLY_FLOATS > VtxDataEnd )
+			FlushTriangles();
 		VtxPolyVerts = 0;
 		IdxBase = IdxCount;
 	}
