@@ -647,7 +647,11 @@ void UNOpenGLESRenderDevice::UpdateUniforms()
 	if( UniformsChanged[UF_Brightness] )
 	{
 		FlushTriangles();
-		glUniform1f( ShaderInfo->Uniforms[UF_Brightness], CurrentBrightness );
+		// ufront 2.72: a modulated poly multiplies the framebuffer by 2*texel, so its neutral grey must stay exactly
+		// 0.5 — the brightness scale (0.5 + B in this shader) lifted every modulated sprite above neutral away from
+		// B=0.5 and stacked per overlapping quad: the sprite's square around lingering smoke (found on Unreal 1, whose
+		// copy of this driver scales by 0.5 + 1.5*B). Send the neutral value while PF_Modulated is the current blend.
+		glUniform1f( ShaderInfo->Uniforms[UF_Brightness], ( CurrentPolyFlags & PF_Modulated ) ? 0.5f : CurrentBrightness );
 		UniformsChanged[UF_Brightness] = false;
 	}
 
@@ -918,6 +922,8 @@ void UNOpenGLESRenderDevice::SetBlend( DWORD PolyFlags, UBOOL InverseOrder )
 			UBOOL Show = !( PolyFlags & PF_Invisible );
 			glColorMask( Show, Show, Show, Show );
 		}
+		if( Xor & PF_Modulated )
+			UniformsChanged[UF_Brightness] = true; // ufront 2.72: brightness is neutral for modulated polys (UpdateUniforms)
 		if( Xor & PF_Occlude )
 			glDepthMask( (PolyFlags & PF_Occlude) != 0 );
 		if( Xor & PF_Masked )
