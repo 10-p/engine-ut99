@@ -246,6 +246,15 @@ if(EMSCRIPTEN)
     SUFFIX ".js"
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/SDLLaunch)
 
+  # ufront 2.72 — 24-bit depth for the emulated default framebuffer: -sOFFSCREEN_FRAMEBUFFER's framebuffer is
+  # allocated with GL_DEPTH_COMPONENT16 by Emscripten regardless of the context attributes (z-fighting in bands
+  # on NOpenGLESDrv). offscreen-depth24.sh rewrites the emitted loader to D24S8 and asserts the rewrite count,
+  # so a toolchain change fails the build rather than shipping 16-bit depth again. POST_BUILD: it re-runs on
+  # every relink, and packages/build's publisher forces the relink (it deletes SDLLaunch.{js,wasm} first).
+  add_custom_command(TARGET ${PROJECT_NAME} POST_BUILD
+    COMMAND sh "${CMAKE_CURRENT_SOURCE_DIR}/offscreen-depth24.sh" "$<TARGET_FILE_DIR:${PROJECT_NAME}>/SDLLaunch.js"
+    COMMENT "offscreen-depth24: D24S8 for the emulated default framebuffer")
+
   # Emit the artifact descriptor meta.json (docs/05 §4). abiVersion is read from the vendored frozen ABI
   # header (single source); provenance/toolchain are best-effort. packages/build validates it (schema +
   # abiVersion === glue ABI_VERSION + checksums + loaderStyle) before assembling serve-web.
