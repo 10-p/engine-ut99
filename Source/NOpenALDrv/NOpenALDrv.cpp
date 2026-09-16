@@ -7,10 +7,42 @@
 
 #include "AL/al.h"
 #include "AL/alc.h"
-#define AL_ALEXT_PROTOTYPES
 #include "AL/alext.h"
+// ufront 2.76: EFX IS RESOLVED AT RUN TIME AND NEVER LINKED. `AL_ALEXT_PROTOTYPES` used to be defined here,
+// which turns every EFX call into an ordinary linked symbol — seven of them (alGenEffects, alEffecti/f/fv,
+// alGenAuxiliaryEffectSlots, alDeleteAuxiliaryEffectSlots, alAuxiliaryEffectSloti). Against an OpenAL that
+// has no EFX that is a LINK error, not a fallback, and this driver is meant to run on whatever OpenAL a
+// platform has (the FunKey and other native builds). The pointers live in `Efx` below.
+#if defined(__has_include)
+#  if __has_include("AL/efx.h")
+#    define NOPENAL_HAVE_EFX_HEADERS 1
+#  endif
+#else
+#  define NOPENAL_HAVE_EFX_HEADERS 1   // a compiler with no __has_include: assume the usual SDK layout
+#endif
+#if NOPENAL_HAVE_EFX_HEADERS
 #include "AL/efx.h"
 #include "AL/efx-presets.h"
+#else
+// A core-only SDK (no <AL/efx.h>): spell out the handful of types and enums this driver uses, so it still
+// COMPILES. The EAX reverb preset table is efx-presets.h's and is not reproduced — without those headers the
+// EAX path compiles out and only the Galaxy effect (whose enums are ours, below) or no reverb remain.
+#define NOPENAL_NO_EAX 1
+typedef void (AL_APIENTRY *LPALGENEFFECTS)( ALsizei, ALuint* );
+typedef void (AL_APIENTRY *LPALDELETEEFFECTS)( ALsizei, const ALuint* );
+typedef void (AL_APIENTRY *LPALEFFECTI)( ALuint, ALenum, ALint );
+typedef void (AL_APIENTRY *LPALEFFECTF)( ALuint, ALenum, ALfloat );
+typedef void (AL_APIENTRY *LPALEFFECTFV)( ALuint, ALenum, const ALfloat* );
+typedef void (AL_APIENTRY *LPALGENAUXILIARYEFFECTSLOTS)( ALsizei, ALuint* );
+typedef void (AL_APIENTRY *LPALDELETEAUXILIARYEFFECTSLOTS)( ALsizei, const ALuint* );
+typedef void (AL_APIENTRY *LPALAUXILIARYEFFECTSLOTI)( ALuint, ALenum, ALint );
+#define AL_EFFECT_TYPE                           0x8001
+#define AL_EFFECT_NULL                           0x0000
+#define AL_EFFECTSLOT_EFFECT                     0x0001
+#define AL_FILTER_NULL                           0x0000
+#define AL_AUXILIARY_SEND_FILTER                 0x20006
+#define AL_METERS_PER_UNIT                       0x20004
+#endif
 // ufront 2.70: the classic Galaxy reverb is an effect only our openal-soft fork has (AL_UFRONT_galaxy_reverb,
 // 10-p/openal-soft-web). A stock <AL/alext.h> (the Windows build's prebuilt OpenAL Soft) lacks the enums, so
 // they are spelled here too; the run-time extension check decides whether they can be used.
@@ -42,6 +74,46 @@
 
 IMPLEMENT_PACKAGE(NOpenALDrv);
 IMPLEMENT_CLASS(UNOpenALAudioSubsystem);
+
+// ufront 2.76 — EFX's entry points, resolved once in Init and NEVER referenced at link time (see the include
+// block above). `Present` is the whole test the rest of the driver makes: the device advertises ALC_EXT_EFX
+// AND every pointer resolved. A library that has neither (a core OpenAL 1.1) plays everything except reverb.
+//
+// File-static on purpose: it is per-process state, and the audio subsystem is a NATIVE UE1 class whose layout
+// script depends on — this adds no member to it.
+static struct FNOpenALEfx
+{
+	LPALGENEFFECTS                 GenEffects;
+	LPALDELETEEFFECTS              DeleteEffects;
+	LPALEFFECTI                    Effecti;
+	LPALEFFECTF                    Effectf;
+	LPALEFFECTFV                   Effectfv;
+	LPALGENAUXILIARYEFFECTSLOTS    GenAuxiliaryEffectSlots;
+	LPALDELETEAUXILIARYEFFECTSLOTS DeleteAuxiliaryEffectSlots;
+	LPALAUXILIARYEFFECTSLOTI       AuxiliaryEffectSloti;
+	UBOOL                          Present;
+} Efx;
+
+// Resolve them. Call with the context CURRENT: alGetProcAddress is context-dependent.
+static UBOOL ResolveEfx( ALCdevice* InDevice )
+{
+	appMemzero( &Efx, sizeof(Efx) );
+	if( !alcIsExtensionPresent( InDevice, "ALC_EXT_EFX" ) )
+		return 0;
+	Efx.GenEffects                 = (LPALGENEFFECTS)                 alGetProcAddress( "alGenEffects" );
+	Efx.DeleteEffects              = (LPALDELETEEFFECTS)              alGetProcAddress( "alDeleteEffects" );
+	Efx.Effecti                    = (LPALEFFECTI)                    alGetProcAddress( "alEffecti" );
+	Efx.Effectf                    = (LPALEFFECTF)                    alGetProcAddress( "alEffectf" );
+	Efx.Effectfv                   = (LPALEFFECTFV)                   alGetProcAddress( "alEffectfv" );
+	Efx.GenAuxiliaryEffectSlots    = (LPALGENAUXILIARYEFFECTSLOTS)    alGetProcAddress( "alGenAuxiliaryEffectSlots" );
+	Efx.DeleteAuxiliaryEffectSlots = (LPALDELETEAUXILIARYEFFECTSLOTS) alGetProcAddress( "alDeleteAuxiliaryEffectSlots" );
+	Efx.AuxiliaryEffectSloti       = (LPALAUXILIARYEFFECTSLOTI)       alGetProcAddress( "alAuxiliaryEffectSloti" );
+	// All or nothing: a partial table would fault on the first missing one, at a random later moment.
+	Efx.Present = Efx.GenEffects && Efx.DeleteEffects && Efx.Effecti && Efx.Effectf && Efx.Effectfv
+		&& Efx.GenAuxiliaryEffectSlots && Efx.DeleteAuxiliaryEffectSlots && Efx.AuxiliaryEffectSloti;
+	return Efx.Present;
+}
+
 
 /*-----------------------------------------------------------------------------
 	UNOpenALAudioSubsystem implementation.
@@ -149,14 +221,28 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	// the classic Galaxy reverb of Unreal/UT99, recovered from GALAXY.LIB and carried by our openal-soft fork as
 	// AL_EFFECT_GALAXY_REVERB_UFRONT. A library without that extension (the Windows build's stock OpenAL Soft)
 	// keeps EAX and says so once. Decided here, with the context current, so the line below can report it.
+	// ufront 2.76: a third tier — an OpenAL with no EFX at all plays everything except reverb.
+	ResolveEfx( Device );
 	ReverbKind = REVERB_EAX;
-	if( UseReverb && !UseEAX )
+	if( UseReverb && !Efx.Present )
+	{
+		ReverbKind = REVERB_NONE;
+		debugf( TEXT("NOpenALDrv: this OpenAL has no EFX (ALC_EXT_EFX) - reverb is off; everything else plays") );
+	}
+	else if( UseReverb && !UseEAX )
 	{
 		if( alIsExtensionPresent( "AL_UFRONT_galaxy_reverb" ) )
 			ReverbKind = REVERB_GALAXY;
 		else
 			debugf( TEXT("NOpenALDrv: UseEAX=False, but this OpenAL has no Galaxy reverb (AL_UFRONT_galaxy_reverb) - EAX reverb stays") );
 	}
+#if NOPENAL_NO_EAX
+	if( ReverbKind == REVERB_EAX && UseReverb )
+	{
+		ReverbKind = REVERB_NONE;
+		debugf( TEXT("NOpenALDrv: built without the EFX headers - only the Galaxy reverb is available, reverb is off") );
+	}
+#endif
 
 	{
 		// Read back what the library did: a request is not a result.
@@ -164,12 +250,14 @@ UBOOL UNOpenALAudioSubsystem::Init()
 		alcGetIntegerv( Device, ALC_HRTF_SOFT, 1, &HRTFActive );
 		debugf( TEXT("NOpenALDrv: HRTF %s (UseHRTF=%s), reverb %s"), HRTFActive ? TEXT("ACTIVE") : TEXT("inactive"),
 			UseHRTF ? TEXT("True") : TEXT("False"),
-			!UseReverb ? TEXT("off (UseReverb=False)") : ReverbKind == REVERB_GALAXY ? TEXT("on (Galaxy, UseEAX=False)") : TEXT("on (EAX)") );
+			!UseReverb ? TEXT("off (UseReverb=False)") : ReverbKind == REVERB_NONE ? TEXT("off (no EFX in this OpenAL)")
+				: ReverbKind == REVERB_GALAXY ? TEXT("on (Galaxy, UseEAX=False)") : TEXT("on (EAX)") );
 	}
 
 	alDistanceModel( AL_LINEAR_DISTANCE_CLAMPED );
 	alDopplerFactor( Max( 0.f, DopplerFactor ) );
-	alListenerf( AL_METERS_PER_UNIT, DISTANCE_SCALE );
+	if( Efx.Present )
+		alListenerf( AL_METERS_PER_UNIT, DISTANCE_SCALE );   // an EFX listener property: AL_INVALID_ENUM without it
 	alListenerf( AL_GAIN, MasterVolume / 255.f );
 
 	alGenSources( MAX_SOURCES, Sources );
@@ -188,14 +276,14 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	}
 	NumFreeMusicBuffers = NUM_MUSIC_BUFFERS;
 
-	if( UseReverb )
+	if( UseReverb && ReverbKind != REVERB_NONE )
 	{
-		alGenEffects( 1, &ReverbEffect );
+		Efx.GenEffects( 1, &ReverbEffect );
 		InitReverbEffect();
-		alGenAuxiliaryEffectSlots( 1, &ReverbSlot );
-		alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
-		ReverbOn = false;
+		Efx.GenAuxiliaryEffectSlots( 1, &ReverbSlot );
+		Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
 	}
+	ReverbOn = false;
 
 	for( INT i = 0; i < MAX_SOURCES; ++i )
 		Voices[i].Buffer = INVALID_BUFFER;
@@ -228,10 +316,10 @@ void UNOpenALAudioSubsystem::Destroy()
 		MusicCtx = NULL;
 	}
 
-	if (UseReverb)
+	if( UseReverb && ReverbKind != REVERB_NONE && Efx.Present )
 	{
-		alDeleteAuxiliaryEffectSlots(1, &ReverbSlot);
-		alDeleteEffects(1, &ReverbEffect);
+		Efx.DeleteAuxiliaryEffectSlots(1, &ReverbSlot);
+		Efx.DeleteEffects(1, &ReverbEffect);
 	}
 
 	if( Ctx )
@@ -274,10 +362,10 @@ void UNOpenALAudioSubsystem::ShutdownAfterError()
 		MusicCtx = NULL;
 		Music = NULL;
 	}
-	if (UseReverb)
+	if( UseReverb && ReverbKind != REVERB_NONE && Efx.Present )
 	{
-		alDeleteAuxiliaryEffectSlots(1, &ReverbSlot);
-		alDeleteEffects(1, &ReverbEffect);
+		Efx.DeleteAuxiliaryEffectSlots(1, &ReverbSlot);
+		Efx.DeleteEffects(1, &ReverbEffect);
 	}
 	if( Ctx )
 	{
@@ -537,7 +625,7 @@ void UNOpenALAudioSubsystem::UpdateVoice( INT Num, const ENVoiceOp Op )
 		}
 	}
 
-	if( UseReverb && Op == NVOP_Play )
+	if( UseReverb && ReverbKind != REVERB_NONE && Op == NVOP_Play )
 		alSource3i( Source, AL_AUXILIARY_SEND_FILTER, (ALint)ReverbSlot, 0, AL_FILTER_NULL );
 
 	// Play or stop if needed.
@@ -976,6 +1064,9 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 {
 	guard(UNOpenALAudioSubsystem::UpdateReverb)
 
+	if( ReverbKind == REVERB_NONE )
+		return;   // ufront 2.76: no EFX in this library — there is no slot to point at a zone
+
 	const UBOOL bNewReverb = ( Viewport->Actor && Viewport->Actor->Region.Zone && Viewport->Actor->Region.Zone->bReverbZone );
 
 	if( !bNewReverb && ReverbOn )
@@ -984,7 +1075,7 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 		ReverbOn = false;
 		ReverbZone = NULL;
 		// TODO: is there a better way to toggle this?
-		alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
+		Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
 		return;
 	}
 
@@ -998,7 +1089,7 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 			// Reverb zone changed.
 			ReverbZone = NewReverbZone;
 			// Unbind effect, change parameters, then bind again.
-			alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
+			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
 			if( ReverbKind == REVERB_GALAXY )
 			{
 				// ufront 2.70: the zone -> Galaxy mapping exactly as UnGalaxy.cpp UpdateReverb handed it to
@@ -1009,14 +1100,14 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 					Times[i] = Clamp( ReverbZone->Delay[i]/500.0f, 0.001f, 0.340f );
 					Gains[i] = Clamp( ReverbZone->Gain[i]/255.0f, 0.001f, 0.999f );
 				}
-				alEffectf ( ReverbEffect, AL_GALAXY_REVERB_VOLUME, ReverbZone->MasterGain/255.0f );
-				alEffectf ( ReverbEffect, AL_GALAXY_REVERB_HFDAMP, (FLOAT)Clamp( (INT)ReverbZone->CutoffHz, 0, 44100 ) );
-				alEffectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_TIMES, Times );
-				alEffectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_GAINS, Gains );
+				Efx.Effectf( ReverbEffect, AL_GALAXY_REVERB_VOLUME, ReverbZone->MasterGain/255.0f );
+				Efx.Effectf( ReverbEffect, AL_GALAXY_REVERB_HFDAMP, (FLOAT)Clamp( (INT)ReverbZone->CutoffHz, 0, 44100 ) );
+				Efx.Effectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_TIMES, Times );
+				Efx.Effectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_GAINS, Gains );
 			}
 			else
-				alEffectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );	// the EAX preset takes only the master gain
-			alAuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
+				Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );	// the EAX preset takes only the master gain
+			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
 			// ufront 2.61: reverb used to be unreachable on the web; say once that it really engages.
 			static UBOOL LoggedReverb = 0;
 			if( !LoggedReverb )
@@ -1035,38 +1126,43 @@ void UNOpenALAudioSubsystem::InitReverbEffect()
 {
 	guard(UNOpenALAudioSubsystem::InitReverbEffect)
 
-	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
+	if( ReverbKind == REVERB_NONE )
+		return;   // ufront 2.76: no EFX — no effect object was created
+
 	// ufront 2.70: ReverbKind was decided in Init (with the context current); the Galaxy effect takes its
 	// parameters per zone in UpdateReverb, the EAX one its preset here.
 	if( ReverbKind == REVERB_GALAXY )
 	{
-		alEffecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_GALAXY_REVERB_UFRONT );
+		Efx.Effecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_GALAXY_REVERB_UFRONT );
 		return;
 	}
-	alEffecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB );
-	alEffectf( ReverbEffect, AL_EAXREVERB_DENSITY, Reverb.flDensity );
-	alEffectf( ReverbEffect, AL_EAXREVERB_DIFFUSION, Reverb.flDiffusion );
-	alEffectf( ReverbEffect, AL_EAXREVERB_GAIN, Reverb.flGain );
-	alEffectf( ReverbEffect, AL_EAXREVERB_GAINHF, Reverb.flGainHF );
-	alEffectf( ReverbEffect, AL_EAXREVERB_GAINLF, Reverb.flGainLF );
-	alEffectf( ReverbEffect, AL_EAXREVERB_DECAY_TIME, Reverb.flDecayTime );
-	alEffectf( ReverbEffect, AL_EAXREVERB_DECAY_HFRATIO, Reverb.flDecayHFRatio );
-	alEffectf( ReverbEffect, AL_EAXREVERB_DECAY_LFRATIO, Reverb.flDecayLFRatio );
-	alEffectf( ReverbEffect, AL_EAXREVERB_REFLECTIONS_GAIN, Reverb.flReflectionsGain);
-	alEffectf( ReverbEffect, AL_EAXREVERB_REFLECTIONS_DELAY, Reverb.flReflectionsDelay );
-	alEffectfv( ReverbEffect, AL_EAXREVERB_REFLECTIONS_PAN, Reverb.flReflectionsPan );
-	alEffectf( ReverbEffect, AL_EAXREVERB_LATE_REVERB_GAIN, Reverb.flLateReverbGain );
-	alEffectf( ReverbEffect, AL_EAXREVERB_LATE_REVERB_DELAY, Reverb.flLateReverbDelay );
-	alEffectfv( ReverbEffect, AL_EAXREVERB_LATE_REVERB_PAN, Reverb.flLateReverbPan );
-	alEffectf( ReverbEffect, AL_EAXREVERB_ECHO_TIME, Reverb.flEchoTime );
-	alEffectf( ReverbEffect, AL_EAXREVERB_ECHO_DEPTH, Reverb.flEchoDepth );
-	alEffectf( ReverbEffect, AL_EAXREVERB_MODULATION_TIME, Reverb.flModulationTime );
-	alEffectf( ReverbEffect, AL_EAXREVERB_MODULATION_DEPTH, Reverb.flModulationDepth );
-	alEffectf( ReverbEffect, AL_EAXREVERB_AIR_ABSORPTION_GAINHF, Reverb.flAirAbsorptionGainHF );
-	alEffectf( ReverbEffect, AL_EAXREVERB_HFREFERENCE, Reverb.flHFReference );
-	alEffectf( ReverbEffect, AL_EAXREVERB_LFREFERENCE, Reverb.flLFReference );
-	alEffectf( ReverbEffect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, Reverb.flRoomRolloffFactor );
-	alEffecti( ReverbEffect, AL_EAXREVERB_DECAY_HFLIMIT, Reverb.iDecayHFLimit );
+#if !NOPENAL_NO_EAX
+	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
+	Efx.Effecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_DENSITY, Reverb.flDensity );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_DIFFUSION, Reverb.flDiffusion );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAIN, Reverb.flGain );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAINHF, Reverb.flGainHF );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAINLF, Reverb.flGainLF );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_DECAY_TIME, Reverb.flDecayTime );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_DECAY_HFRATIO, Reverb.flDecayHFRatio );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_DECAY_LFRATIO, Reverb.flDecayLFRatio );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_REFLECTIONS_GAIN, Reverb.flReflectionsGain);
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_REFLECTIONS_DELAY, Reverb.flReflectionsDelay );
+	Efx.Effectfv( ReverbEffect, AL_EAXREVERB_REFLECTIONS_PAN, Reverb.flReflectionsPan );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_LATE_REVERB_GAIN, Reverb.flLateReverbGain );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_LATE_REVERB_DELAY, Reverb.flLateReverbDelay );
+	Efx.Effectfv( ReverbEffect, AL_EAXREVERB_LATE_REVERB_PAN, Reverb.flLateReverbPan );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_ECHO_TIME, Reverb.flEchoTime );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_ECHO_DEPTH, Reverb.flEchoDepth );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_MODULATION_TIME, Reverb.flModulationTime );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_MODULATION_DEPTH, Reverb.flModulationDepth );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_AIR_ABSORPTION_GAINHF, Reverb.flAirAbsorptionGainHF );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_HFREFERENCE, Reverb.flHFReference );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_LFREFERENCE, Reverb.flLFReference );
+	Efx.Effectf( ReverbEffect, AL_EAXREVERB_ROOM_ROLLOFF_FACTOR, Reverb.flRoomRolloffFactor );
+	Efx.Effecti( ReverbEffect, AL_EAXREVERB_DECAY_HFLIMIT, Reverb.iDecayHFLimit );
+#endif
 
 	unguard;
 }
