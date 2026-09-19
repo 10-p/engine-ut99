@@ -2501,7 +2501,10 @@ public:
 	FArchive& operator<<( UObject*& Obj )
 	{
 		guard(FArchiveSaveTagExports<<Obj);
-		if( Obj && Obj->IsIn(Parent) && !(Obj->GetFlags() & (RF_Transient|RF_TagExp)) )//&& !Obj->IsPendingKill() )
+		// v436-compat port: a pending-kill object is reported and not exported.
+		if( Obj && Obj->IsPendingKill() )
+			debugf( NAME_Warning, TEXT("trying to archive deleted object: %s"), Obj->GetName() );
+		if( Obj && !Obj->IsPendingKill() && Obj->IsIn(Parent) && !(Obj->GetFlags() & (RF_Transient|RF_TagExp)) )
 		{
 			// Set flags.
 			Obj->SetFlags(RF_TagExp);
