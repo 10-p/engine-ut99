@@ -283,7 +283,8 @@ void FCollisionHash::RemoveActor( AActor* Actor )
 				FCollisionLink** Link = &GetHashLink( X, Y, Z, iLocation );
 				while( *Link )
 				{
-					if( (*Link)->Actor != Actor )
+					// v436-compat port: a link with no actor is unlinked along with the actor's own.
+					if( (*Link)->Actor != Actor && (*Link)->Actor != NULL )
 					{
 						Link = &(*Link)->Next;
 					}
@@ -342,9 +343,10 @@ FCheckResult* FCollisionHash::ActorPointCheck
 		INT iLocation;
 		for( FCollisionLink* Link = GetHashLink( X, Y, Z, iLocation ); Link; Link=Link->Next )
 		{
-			// Skip if we've already checked this actor.
+			// Skip if we've already checked this actor (v436-compat port: or the link has none).
 			if
-			(	Link->Actor->CollisionTag != CollisionTag
+			(	Link->Actor
+			&&	Link->Actor->CollisionTag != CollisionTag
 			&&	Link->iLocation           == iLocation )
 			{
 				// Collision test.
@@ -392,9 +394,10 @@ FCheckResult* FCollisionHash::ActorRadiusCheck
 		INT iLocation;
 		for( FCollisionLink* Link = GetHashLink( X, Y, Z, iLocation ); Link; Link=Link->Next )
 		{
-			// Skip if we've already checked this actor.
+			// Skip if we've already checked this actor (v436-compat port: or the link has none).
 			if
-			(	Link->Actor->CollisionTag != CollisionTag 
+			(	Link->Actor
+			&&	Link->Actor->CollisionTag != CollisionTag 
 			&&	Link->iLocation           == iLocation )
 			{
 				// Collision test.
@@ -444,9 +447,10 @@ FCheckResult* FCollisionHash::ActorEncroachmentCheck
 		INT iLocation;
 		for( FCollisionLink* Link = GetHashLink( X, Y, Z, iLocation ); Link; Link=Link->Next )
 		{
-			// Skip if we've already checked this actor.
+			// Skip if we've already checked this actor (v436-compat port: or the link has none).
 			if
-			(	Link->Actor->CollisionTag != CollisionTag
+			(	Link->Actor
+			&&	Link->Actor->CollisionTag != CollisionTag
 			&&	Link->iLocation           == iLocation )
 			{
 				Link->Actor->CollisionTag = CollisionTag;
@@ -523,9 +527,10 @@ FCheckResult* FCollisionHash::ActorLineCheck
 				INT iLocation;
 				for( FCollisionLink* Link = GetHashLink( X, Y, Z, iLocation ); Link; Link=Link->Next )
 				{
-					// Skip if we've already checked this actor.
+					// Skip if we've already checked this actor (v436-compat port: or the link has none).
 					if
-					(	Link->Actor->CollisionTag != CollisionTag
+					(	Link->Actor
+					&&	Link->Actor->CollisionTag != CollisionTag
 					&&	Link->iLocation           == iLocation )
 					{
 						// Check collision.
