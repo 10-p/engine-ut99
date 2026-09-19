@@ -196,7 +196,8 @@ void UDownload::DownloadDone()
 		FConfigCacheIni Config;
 		TCHAR Ini[256];
 		appSprintf( Ini, TEXT("%s") PATH_SEPARATOR TEXT("cache.ini"), *GSys->CachePath );
-		Config.SetString( TEXT("Cache"), Info->Guid.String(), (*Info->URL) ? *Info->URL : Info->Parent->GetName(), Ini );
+		const TCHAR* Name = *Info->URL;
+		Config.SetString( TEXT("Cache"), Info->Guid.String(), *Name ? Name : Info->Parent->GetName(), Ini );
 
 		TCHAR Msg[256];
 		appSprintf( Msg, TEXT("Received '%s'"), Info->Parent->GetName() );
