@@ -318,6 +318,25 @@ ENGINE_API void UfrontFpsLogTick( UEngine* Engine );
 ENGINE_API UBOOL UfrontFpsLogExec( const TCHAR* Cmd, FOutputDevice& Ar );
 
 //
+// v436-compat port: leave a server cleanly. 436 closes the client's control channel and
+// flushes the connection, so the server sees the close immediately instead of timing out.
+//
+static void CloseServerConnection( ULevelBase* Level )
+{
+	guard(CloseServerConnection);
+	if
+	(	Level
+	&&	Level->NetDriver
+	&&	Level->NetDriver->ServerConnection
+	&&	Level->NetDriver->ServerConnection->Channels[0] )
+	{
+		Level->NetDriver->ServerConnection->Channels[0]->Close();
+		Level->NetDriver->ServerConnection->FlushNet();
+	}
+	unguard;
+}
+
+//
 // This always going to be the last exec handler in the chain. It
 // handles passing the command to all other global handlers.
 //
@@ -365,7 +384,11 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		FString Error;
 		if( Client && Client->Viewports.Num() )
+		{
+			CloseServerConnection( GLevel );
+			CloseServerConnection( GPendingLevel );
 			SetClientTravel( Client->Viewports(0), TEXT("?failed"), 0, TRAVEL_Absolute );
+		}
 		else
 		if( !Browse( FURL(&LastURL,TEXT("?failed"),TRAVEL_Absolute), NULL, Error ) && Error!=TEXT("") )
 			Ar.Logf( TEXT("Disconnect failed: %s"), *Error );
@@ -457,6 +480,7 @@ void UGameEngine::CancelPending()
 	guard(UGameEngine::CancelPending);
 	if( GPendingLevel )
 	{
+		CloseServerConnection( GPendingLevel );
 		delete GPendingLevel;
 		GPendingLevel = NULL;
 	}
