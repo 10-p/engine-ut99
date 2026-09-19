@@ -362,9 +362,12 @@ void APawn::execStopWaiting( FFrame& Stack, RESULT_DECL )
 	unguardSlow;
 }
 
-// v436-compat port: CheckValidSkinPackage(string SkinPack, string MeshName) — added to v436
-// Pawn (static native), used during skin selection. Stubbed to accept any skin; skin/mesh
-// validation is not enforced offline. Bound eagerly at class load. See EngineClasses.h.
+// v436-compat port: CheckValidSkinPackage(string SkinPack, string MeshName) -- added to v436
+// Pawn (static native). Pawn.SetSkinElement calls it on a listen or dedicated server and falls
+// back to the default skin when it returns false. This follows 436 (Engine.dll 0xb7f70) step for
+// step, including its quirks: the ServerPackages text it exports is never upper-cased (the Caps()
+// result is discarded) and is searched for INSIDE the skin package name, so that test only fails
+// a skin when the exported text is empty.
 void APawn::execCheckValidSkinPackage( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(APawn::execCheckValidSkinPackage);
@@ -373,7 +376,58 @@ void APawn::execCheckValidSkinPackage( FFrame& Stack, RESULT_DECL )
 	P_GET_STR(MeshName);
 	P_FINISH;
 
-	*(DWORD*)Result = 1;
+	UBOOL bProscribed = 0;
+	SkinPack = SkinPack.Caps();
+	UClass* EngineClass = FindObject<UClass>( ANY_PACKAGE, TEXT("engine.gameengine") );
+	UProperty* PackagesProperty = EngineClass ? FindField<UProperty>( EngineClass, TEXT("serverpackages") ) : NULL;
+	if( !PackagesProperty )
+	{
+		bProscribed = 1;
+	}
+	else
+	{
+		// 436 exports into a 2048-character buffer with no bound; a larger one here only avoids an
+		// overrun on a very long ServerPackages list.
+		TCHAR PackagesText[4096];
+		appMemzero( PackagesText, sizeof(PackagesText) );
+		if( EngineClass->Defaults.Num() )
+			PackagesProperty->ExportText( 0, PackagesText, &EngineClass->Defaults(0), &EngineClass->Defaults(0), PPF_Localized );
+		FString ServerPackagesText = PackagesText;
+		if( SkinPack.InStr(*ServerPackagesText)==0 )
+		{
+			bProscribed = 1;
+		}
+		else if
+		(	appStricmp( TEXT("UNREALSHARE"), *SkinPack )==0
+		||	appStricmp( TEXT("UNREALI"),     *SkinPack )==0
+		||	appStricmp( TEXT("BOTPACK"),     *SkinPack )==0 )
+		{
+			// Textures from the game's own packages are not skins.
+			bProscribed = 1;
+		}
+		else
+		{
+			// Another mesh's stock skin pack may not be used; the mesh's own always may.
+			FString MeshSkins = (MeshName + TEXT("SKINS")).Caps();
+			if( SkinPack.InStr(*MeshSkins)==-1 )
+			{
+				static const TCHAR* StockSkins[] =
+				{
+					TEXT("BOSSSKINS"),		TEXT("SOLDIERSKINS"),	TEXT("SGIRLSKINS"),		TEXT("COMMANDOSKINS"),
+					TEXT("FCOMMANDOSKINS"),	TEXT("TNALIMESHSKINS"),	TEXT("TSKMSKINS"),		TEXT("TCOWMESHSKINS"),
+				};
+				for( INT i=0; i<ARRAY_COUNT(StockSkins); i++ )
+				{
+					if( SkinPack.InStr(StockSkins[i])!=-1 )
+					{
+						bProscribed = 1;
+						break;
+					}
+				}
+			}
+		}
+	}
+	*(DWORD*)Result = !bProscribed;
 
 	unguardexecSlow;
 }
