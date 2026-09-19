@@ -672,7 +672,8 @@ UBOOL UViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		Str.Logf( TEXT("   Version: %s %s\r\n"), appFromAnsi(__DATE__), appFromAnsi(__TIME__) );
 		Str.Logf( TEXT("   Player class: %s\r\n"), Actor->GetClass()->GetName() );
 		Str.Logf( TEXT("   URL: %s\r\n"), *Actor->GetLevel()->URL.String() );
-		Str.Logf( TEXT("   Location: %i %i %i\r\n"), (INT)Actor->Location.X, (INT)Actor->Location.Y, (INT)Actor->Location.Z );
+		// v436-compat port: rounded, not truncated (436 UViewport::Exec REPORT).
+		Str.Logf( TEXT("   Location: %i %i %i\r\n"), appRound(Actor->Location.X), appRound(Actor->Location.Y), appRound(Actor->Location.Z) );
 		if( Actor->Level->Game==NULL )
 		{
 			Str.Logf( TEXT("   Network client\r\n") );
