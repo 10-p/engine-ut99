@@ -1069,7 +1069,8 @@ void FLightManager::spatial_SlowWave( FTextureInfo& Map, FLightInfo* Info, BYTE*
 {
 	guardSlow(FLightManager::spatial_SlowWave);
 	SPATIAL_BEGIN1
-		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab(((int)SqrtApprox(Vertex.SizeSquared()) - LevelInfo->TimeSeconds*35.0) * 1024.0);
+		// v436-compat port: the wave phase is rounded as a whole (436 moved the int conversion outwards).
+		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab(appRound(SqrtApprox(Vertex.SizeSquared()) - LevelInfo->TimeSeconds*35.0) * 1024.0);
 		*Dest		= appFloor(*Src * Scale * Diffuse * LightSqrt[SqrtOfs]);
 	SPATIAL_END
 	unguardSlow;
@@ -1080,7 +1081,8 @@ void FLightManager::spatial_FastWave( FTextureInfo& Map, FLightInfo* Info, BYTE*
 {
 	guardSlow(FLightManager::spatial_FastWave);
 	SPATIAL_BEGIN1
-		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab((((int)SqrtApprox(Vertex.SizeSquared())>>2) - LevelInfo->TimeSeconds*35.0) * 2048.0);
+		// v436-compat port: the distance and the table index are rounded, not truncated.
+		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab(appRound(((appRound(SqrtApprox(Vertex.SizeSquared()))>>2) - LevelInfo->TimeSeconds*35.0) * 2048.0));
 		*Dest		= appFloor(*Src * Scale * Diffuse * LightSqrt[SqrtOfs]);
 	SPATIAL_END
 	unguardSlow;
@@ -1147,9 +1149,10 @@ void FLightManager::spatial_Shock( FTextureInfo& Map, FLightInfo* Info, BYTE* Sr
 	guardSlow(FLightManager::spatial_Shock);
 	SPATIAL_BEGIN1
 		int Dist = INT (8.0 * SqrtApprox(Vertex.SizeSquared()));
-		FLOAT Brightness  = 0.9 + 0.1 * GMath.SinTab(((Dist<<1) - (LevelInfo->TimeSeconds * 4000.0))*16.0);
-		Brightness       *= 0.9 + 0.1 * GMath.CosTab(((Dist   ) + (LevelInfo->TimeSeconds * 4000.0))*16.0);
-		Brightness       *= 0.9 + 0.1 * GMath.SinTab(((Dist>>1) - (LevelInfo->TimeSeconds * 4000.0))*16.0);
+		// v436-compat port: the three table indices are rounded, not truncated (Dist still is).
+		FLOAT Brightness  = 0.9 + 0.1 * GMath.SinTab(appRound(((Dist<<1) - (LevelInfo->TimeSeconds * 4000.0))*16.0));
+		Brightness       *= 0.9 + 0.1 * GMath.CosTab(appRound(((Dist   ) + (LevelInfo->TimeSeconds * 4000.0))*16.0));
+		Brightness       *= 0.9 + 0.1 * GMath.SinTab(appRound(((Dist>>1) - (LevelInfo->TimeSeconds * 4000.0))*16.0));
 		*Dest = appFloor(*Src * Diffuse * LightSqrt[SqrtOfs] * Brightness);
 	SPATIAL_END
 	unguardSlow;
