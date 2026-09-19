@@ -686,6 +686,8 @@ class ULinkerLoad : public ULinker, public FArchive
 			}
 			if( !Import.XObject && !SafeReplace )
 			{
+				// v436-compat port: 436 logs every import it cannot resolve.
+				debugf( TEXT("Failed import: %s %s (file %s)"), *Import.ClassName, *GetImportFullName(i), *Import.SourceLinker->Filename );
 				if( LoadFlags & LOAD_Forgiving )
 				{
 					if( Cast<UPackage>(LinkerRoot) )
