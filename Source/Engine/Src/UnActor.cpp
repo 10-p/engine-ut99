@@ -457,31 +457,33 @@ INT* APlayerReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirem
 INT* AGameReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AGameReplicationInfo::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	// v436-compat port: 436 sends the Actor list and the static game/server strings only on the
+	// initial update, and no longer replicates Region.
+	if ( bNetInitial )
+		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
 		{
-			DOREP(GameReplicationInfo,GameName);
-			DOREP(GameReplicationInfo,GameClass);
-			DOREP(GameReplicationInfo,bTeamGame);
-			DOREP(GameReplicationInfo,ServerName);
-			DOREP(GameReplicationInfo,ShortName);
-			DOREP(GameReplicationInfo,AdminName);
-			DOREP(GameReplicationInfo,AdminEmail);
-			DOREP(GameReplicationInfo,Region);
-			DOREP(GameReplicationInfo,MOTDLine1);
-			DOREP(GameReplicationInfo,MOTDLine2);
-			DOREP(GameReplicationInfo,MOTDLine3);
-			DOREP(GameReplicationInfo,MOTDLine4);
 			DOREP(GameReplicationInfo,RemainingMinute);
-			DOREP(GameReplicationInfo,NumPlayers);
 			DOREP(GameReplicationInfo,bStopCountDown);
 			DOREP(GameReplicationInfo,GameEndedComments);
+			DOREP(GameReplicationInfo,NumPlayers);
 			if ( bNetInitial )
 			{
+				DOREP(GameReplicationInfo,GameName);
+				DOREP(GameReplicationInfo,GameClass);
+				DOREP(GameReplicationInfo,bTeamGame);
 				DOREP(GameReplicationInfo,RemainingTime);
 				DOREP(GameReplicationInfo,ElapsedTime);
+				DOREP(GameReplicationInfo,ServerName);
+				DOREP(GameReplicationInfo,ShortName);
+				DOREP(GameReplicationInfo,AdminName);
+				DOREP(GameReplicationInfo,AdminEmail);
+				DOREP(GameReplicationInfo,MOTDLine1);
+				DOREP(GameReplicationInfo,MOTDLine2);
+				DOREP(GameReplicationInfo,MOTDLine3);
+				DOREP(GameReplicationInfo,MOTDLine4);
 			}
 		}
 	}
