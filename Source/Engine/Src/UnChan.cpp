@@ -1192,10 +1192,9 @@ UFileChannel::UFileChannel()
 void UFileChannel::Init( UNetConnection* InConnection, INT InChannelIndex, INT InOpenedLocally )
 {
 	guard(UFileChannel::UFileChannel);
+	// v436-compat port: 436 does nothing else here. The v400 FileAr/Transfered/PackageIndex reset is
+	// gone: a channel is allocated zero-filled, so PackageIndex now starts at 0, not INDEX_NONE.
 	Super::Init( InConnection, InChannelIndex, InOpenedLocally );
-	FileAr			= NULL;
-	Transfered		= 0;
-	PackageIndex	= INDEX_NONE;
 	unguard;
 }
 void UFileChannel::ReceivedBunch( FInBunch& Bunch )
@@ -1204,81 +1203,63 @@ void UFileChannel::ReceivedBunch( FInBunch& Bunch )
 	check(!Closing);
 	if( OpenedLocally )
 	{
-		// Receiving a file sent from the other side.
-		FPackageInfo& Info = Connection->PackageMap->List( PackageIndex );
-		checkSlow(Bunch.GetNumBytes());
-
-		// Receiving spooled file data.
-		if( Transfered==0 )
+		// Receiving a file sent from the other side: hand it to the download manager.
+		Download->ReceiveData( Bunch.GetData(), Bunch.GetNumBytes() );
+		return;
+	}
+	else if( Connection->Driver->AllowDownloads )
+	{
+		if( SendFileAr )
 		{
-			// Open temporary file initially.
-			debugf( NAME_DevNet, TEXT("Receiving package '%s'"), Info.Parent->GetName() );
-			GFileManager->MakeDirectory( *GSys->CachePath, 0 );
-			appCreateTempFilename( *GSys->CachePath, Filename );
-			FileAr = GFileManager->CreateFileWriter( Filename );
-		}
-
-		// Receive.
-		if( !FileAr )
-		{
-			// Opening file failed.
-			appSprintf( Error, LocalizeError(TEXT("NetOpen")) );
-			Close();
+			// The other side asked to skip the file it is receiving.
+			FString Cmd;
+			Bunch << Cmd;
+			if( !Bunch.IsError() && appStricmp(*Cmd,TEXT("SKIP"))==0 )
+			{
+				debugf( TEXT("User skipped download of '%s'"), SrcFilename );
+				Connection->PackageMap->List.Remove( PackageIndex );
+				return;
+			}
 		}
 		else
 		{
-			FileAr->Serialize( Bunch.GetData(), Bunch.GetNumBytes() );
-			if( FileAr->IsError() )
+			// Request to send a file.
+			FGuid Guid;
+			Bunch << Guid;
+			if( !Bunch.IsError() )
 			{
-				// Write failed.
-				appSprintf( Error, LocalizeError("NetWrite"), Filename );
-				Close();
-			}
-			else
-			{
-				// Successful.
-				Transfered += Bunch.GetNumBytes();
-				TCHAR Msg1[256], Msg2[256];
-				appSprintf( Msg1, LocalizeProgress("ReceiveFile"), PrettyName );
-				appSprintf( Msg2, LocalizeProgress("ReceiveSize"), Info.FileSize/1024, 100.f*Transfered/Info.FileSize );
-				Connection->Driver->Notify->NotifyProgress( Msg1, Msg2, 4.0 );
-			}
-		}
-	}
-	else
-	{
-		// Request to send a file.
-		FGuid Guid;
-		Bunch << Guid;
-		if( !Bunch.IsError() )
-		{
-			for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
-			{
-				FPackageInfo& Info = Connection->PackageMap->List(i);
-				if( Info.Guid==Guid && Info.URL!=TEXT("") )
+				for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
 				{
-					appStrncpy( Filename, *Info.URL, ARRAY_COUNT(Filename) );
-					if( Connection->Driver->Notify->NotifySendingFile( Connection, Guid ) )
+					FPackageInfo& Info = Connection->PackageMap->List(i);
+					if( Info.Guid==Guid && appStricmp(*Info.URL,TEXT(""))!=0 )
 					{
-						check(Info.Linker);
-						FileAr = GFileManager->CreateFileReader( *Info.URL );
-						if( FileAr )
+						// v436-compat port: refuse anything over MaxDownloadSize.
+						if( Connection->Driver->MaxDownloadSize>0
+						&&	GFileManager->FileSize(*Info.URL)>Connection->Driver->MaxDownloadSize )
+							break;
+						appStrncpy( SrcFilename, *Info.URL, ARRAY_COUNT(SrcFilename) );
+						if( Connection->Driver->Notify->NotifySendingFile( Connection, Guid ) )
 						{
-							// Accepted! Now initiate file sending.
-							debugf( NAME_DevNet, LocalizeProgress("NetSend"), Filename );
-							PackageIndex = i;
-							return;
+							check(Info.Linker);
+							SendFileAr = GFileManager->CreateFileReader( SrcFilename );
+							if( SendFileAr )
+							{
+								// Accepted! Now initiate file sending.
+								debugf( NAME_DevNet, LocalizeProgress("NetSend"), SrcFilename );
+								PackageIndex = i;
+								return;
+							}
 						}
 					}
 				}
 			}
 		}
-
-		// Illegal request; refuse it by closing the channel.
-		debugf( NAME_DevNet, LocalizeError("NetInvalid") );
-		FOutBunch Bunch( this, 1 );
-		SendBunch( &Bunch, 0 );
 	}
+
+	// Illegal request; refuse it by closing the channel.
+	debugf( NAME_DevNet, LocalizeError("NetInvalid") );
+	FOutBunch RefuseBunch( this, 1 );
+	SendBunch( &RefuseBunch, 0 );
 	unguard;
 }
 void UFileChannel::Tick()
@@ -1286,20 +1267,19 @@ void UFileChannel::Tick()
 	guard(UFileChannel::Tick);
 	UChannel::Tick();
 	Connection->TimeSensitive = 1;
+	// v436-compat port: 436 only saturates the link with file data under -lanplay; v400 always passed
+	// Saturate=1, so a file send now respects the connection's rate unless -lanplay is given.
+	static UBOOL LanPlay = ParseParam(appCmdLine(),TEXT("lanplay"));
 	INT Size;
-	while( FileAr && !OpenedLocally && IsNetReady(1) && (Size=MaxSendBytes())!=0 )
+	while( !OpenedLocally && SendFileAr && IsNetReady(LanPlay) && (Size=MaxSendBytes())!=0 )
 	{
 		// Sending.
-		INT Remaining = Connection->PackageMap->List(PackageIndex).FileSize-Transfered;
+		INT Remaining = Connection->PackageMap->List(PackageIndex).FileSize-SentData;
 		FOutBunch Bunch( this, Size>=Remaining );
 		Size = Min( Size, Remaining );
 		BYTE* Buffer = (BYTE*)appAlloca( Size );
-		FileAr->Serialize( Buffer, Size );
-		if( FileAr->IsError() )
-		{
-			//!!
-		}
-		Transfered += Size;
+		SendFileAr->Serialize( Buffer, Size );
+		SentData += Size;
 		Bunch.Serialize( Buffer, Size );
 		Bunch.bReliable = 1;
 		check(!Bunch.IsError());
@@ -1308,8 +1288,8 @@ void UFileChannel::Tick()
 		if( Bunch.bClose )
 		{
 			// Finished.
-			delete FileAr;
-			FileAr = NULL;
+			delete SendFileAr;
+			SendFileAr = NULL;
 		}
 	}
 	unguard;
@@ -1322,50 +1302,21 @@ void UFileChannel::Destroy()
 		return;
 	check(Connection->Channels[ChIndex]==this);
 
-	// Close the file.
-	if( FileAr )
+	// Close the file being sent.
+	if( SendFileAr )
 	{
-		delete FileAr;
-		FileAr = NULL;
+		delete SendFileAr;
+		SendFileAr = NULL;
 	}
 
-	// Notify that the receive succeeded or failed.
-	if( OpenedLocally )
+	// v436-compat port: the receive side is finished by the download manager, which owns the cache
+	// write, the progress messages and NotifyReceivedFile (v400 did all of that here).
+	if( OpenedLocally && Download )
 	{
-		check(Connection->PackageMap->List.IsValidIndex(PackageIndex));
-		FPackageInfo& Info = Connection->PackageMap->List( PackageIndex );
-		TCHAR Dest[256];
-		appSprintf( Dest, TEXT("%s") PATH_SEPARATOR TEXT("%s.uxx"), *GSys->CachePath, Info.Guid.String() );
-		if( !*Error && Transfered==0 )
-			appSprintf( Error, LocalizeError("NetRefused"), Info.Parent->GetName() );
-		if( !*Error && GFileManager->FileSize(Filename)!=Info.FileSize )
-			appSprintf( Error, LocalizeError("NetSize") );
-		if( !*Error && !GFileManager->Move( Dest, Filename ) )
-			appSprintf( Error, LocalizeError("NetMove") );
-		if( *Error )
-		{
-			// Failure.
-			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
-			if( FileAr )
-				GFileManager->Delete( Filename );
-		}
-		else
-		{
-			// Success.
-			TCHAR Msg[256];
-			appSprintf( Msg, TEXT("Received '%s'"), PrettyName );
-			// Log it too, one line per package received (NotifyProgress reaches only the screen).
-			debugf( TEXT("%s"), Msg );
-			Connection->Driver->Notify->NotifyProgress( TEXT("Success"), Msg, 4.0 );
-			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
-		}
+		Download->DownloadDone();
+		delete Download;
 	}
-	else if( FileAr )
-	{
-		//warning: If !OpenedLocally, PackageIndex may be INDEX_NONE if requested invalid file.
-		delete FileAr;
-		FileAr = NULL;
-	}
+
 	Super::Destroy();
 	unguard;
 }
@@ -1376,9 +1327,9 @@ FString UFileChannel::Describe()
 	return FString::Printf
 	(
 		TEXT("File='%s', %s=%i/%i "),
-		Filename,
+		OpenedLocally ? (Download ? Download->TempFilename : TEXT("")) : SrcFilename,
 		OpenedLocally ? TEXT("Received") : TEXT("Sent"),
-		Transfered,
+		OpenedLocally ? (Download ? Download->Transfered : 0) : SentData,
 		Info.FileSize
 	) + UChannel::Describe();
 	unguard;

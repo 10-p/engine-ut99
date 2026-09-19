@@ -155,13 +155,18 @@ class ENGINE_API UFileChannel : public UChannel
 {
 	DECLARE_CLASS(UFileChannel,UChannel,CLASS_Transient);
 
-	// Variables.
-	TCHAR		Filename[256];	 // Filename being transfered.
-	TCHAR		PrettyName[256]; // Pretty name of file.
-	TCHAR		Error[256];		 // Error.
-	FArchive*	FileAr;			 // File being transfered.
-	INT			Transfered;		 // Bytes transfered.
-	INT			PackageIndex;	 // Index of package in Map.
+	// v436-compat port: the v432/436 shape. Receiving is now the download manager's job, so the
+	// receive-side state (temp filename, error, bytes) lives on UDownload and the channel only keeps
+	// what it needs to SEND a file.
+
+	// Receive Variables.
+	UChannelDownload*	Download;		 // UDownload when receiving.
+
+	// Send Variables.
+	FArchive*			SendFileAr;		 // File being sent.
+	TCHAR				SrcFilename[256];// Filename being sent.
+	INT					PackageIndex;	 // Index of package in map.
+	INT					SentData;		 // Number of bytes sent.
 
 	// Constructor.
 	void StaticConstructor()
