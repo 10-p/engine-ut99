@@ -327,7 +327,8 @@ void UScriptedTexture::execDrawText( FFrame& Stack, RESULT_DECL )
 		return;
 	}
 
-	DrawString(this, Font, (INT) X, (INT) Y, *InText);
+	// v436-compat port: 436 rounds the text position (fistp), not truncates.
+	DrawString(this, Font, appRound(X), appRound(Y), *InText);
 	
 	unguardexec;
 }
