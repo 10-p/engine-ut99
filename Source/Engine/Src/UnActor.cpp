@@ -384,7 +384,10 @@ INT* AMover::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AZoneInfo::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	// v436-compat port: 436 sends a zone the Actor list only on the initial update and lists the
+	// few Actor properties a zone changes (roles, ambient sound) itself.
+	if( bNetInitial )
+		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -398,6 +401,18 @@ INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, 
 			DOREP(ZoneInfo,TexVPanSpeed);
 			DOREP(ZoneInfo,bReverbZone);
 			DOREP(ZoneInfo,FogColor);
+			DOREP(Actor,Role);
+			DOREP(Actor,RemoteRole);
+			if( !bNetOwner || !bClientAnim )
+			{
+				DOREP(Actor,AmbientSound);
+				if( AmbientSound!=NULL )
+				{
+					DOREP(Actor,SoundRadius);
+					DOREP(Actor,SoundVolume);
+					DOREP(Actor,SoundPitch);
+				}
+			}
 		}
 	}
 	return Ptr;
