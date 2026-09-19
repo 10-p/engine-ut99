@@ -2717,6 +2717,8 @@ public:
     BITFIELD bSpecialCost:1;
     BITFIELD bOneWayPath:1;
     BITFIELD bNeverUseStrafing:1;
+    BITFIELD bAutoBuilt:1;	// v436-compat port: the 436 NavigationPoint bools after bNeverUseStrafing
+    BITFIELD bTwoWay:1;		// (same word, so no layout change); bTwoWay is set by FixUpLevel.
     DECLARE_FUNCTION(execdescribeSpec);
     BITFIELD eventAccept(class AActor* Incoming, class AActor* Source)
     {
