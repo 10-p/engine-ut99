@@ -411,7 +411,8 @@ void UScriptedTexture::execDrawColoredText( FFrame& Stack, RESULT_DECL )
 	}
 
 	BYTE PaletteEntry = Palette->BestMatch(Color, 0);
-	DrawString(this, Font, (INT) X, (INT) Y, *InText, 1, PaletteEntry);
+	// v436-compat port: 436 rounds the text position (fistp), not truncates.
+	DrawString(this, Font, appRound(X), appRound(Y), *InText, 1, PaletteEntry);
 	unguardexec;
 }
 IMPLEMENT_FUNCTION( UScriptedTexture, 474, execDrawColoredText );
