@@ -1211,45 +1211,45 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 
 		// Init the game.
 		//
-		// Only the actors LOADED with the map receive the BeginPlay passes below. Actors spawned during
-		// InitGame (mutators, etc.) are appended past LoadActorCount by SpawnActor, which -- because
-		// bBegunPlay is already true here -- has ALREADY sent them PreBeginPlay/BeginPlay/PostBeginPlay/
-		// SetInitialState. Re-running the passes over them double-fires those events; e.g. Infiltration's
-		// InfilWeapons mutator calls RegisterDamageMutator in PostBeginPlay, and a second call makes its
-		// NextDamageMutator point to itself, so MutatorTakeDamage recurses forever on the next damage
-		// (seen as an "infinite script recursion" crash on friendly fire). Bounding the passes to the
-		// pre-InitGame count matches real UT / SurrealEngine (loadActorCount).
-		INT LoadActorCount = GLevel->Actors.Num();
+		// v436-compat port: the passes below skip actors whose script is already initialized
+		// (bScriptInitialized, set by Actor.SetInitialState -- 436 Actor.uc: "set to prevent
+		// re-initializing of actors spawned during level startup"). Actors spawned during InitGame
+		// or during a pass (mutators, etc.) went through SpawnActor, which -- bBegunPlay being true
+		// here -- already sent them PreBeginPlay..SetInitialState; re-sending those events is what
+		// made Infiltration's InfilWeapons register itself twice as a damage mutator (a
+		// NextDamageMutator loop, "infinite script recursion" on friendly fire). This replaces the
+		// earlier fix that bounded the passes to the pre-InitGame actor count: 436 loops over the
+		// live Actors.Num() and tests the flag (436 UGameEngine::LoadMap).
 		if( Info->Game )
 			Info->Game->eventInitGame( Options, Error );
 
 		// Send PreBeginPlay.
-		for( i=0; i<LoadActorCount; i++ )
-			if( GLevel->Actors(i) )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
+			if( GLevel->Actors(i) && !GLevel->Actors(i)->bScriptInitialized )
 				GLevel->Actors(i)->eventPreBeginPlay();
 
 		// Set BeginPlay.
-		for( i=0; i<LoadActorCount; i++ )
-			if( GLevel->Actors(i) )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
+			if( GLevel->Actors(i) && !GLevel->Actors(i)->bScriptInitialized )
 				GLevel->Actors(i)->eventBeginPlay();
 
 		// Set zones.
-		for( i=0; i<LoadActorCount; i++ )
-			if( GLevel->Actors(i) )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
+			if( GLevel->Actors(i) && !GLevel->Actors(i)->bScriptInitialized )
 				GLevel->SetActorZone( GLevel->Actors(i), 1, 1 );
 
 		// Post begin play.
-		for( i=0; i<LoadActorCount; i++ )
-			if( GLevel->Actors(i) )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
+			if( GLevel->Actors(i) && !GLevel->Actors(i)->bScriptInitialized )
 				GLevel->Actors(i)->eventPostBeginPlay();
 
 		// Begin scripting.
-		for( i=0; i<LoadActorCount; i++ )
-			if( GLevel->Actors(i) )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
+			if( GLevel->Actors(i) && !GLevel->Actors(i)->bScriptInitialized )
 				GLevel->Actors(i)->eventSetInitialState();
 
 		// Find bases
-		for( i=0; i<LoadActorCount; i++ )
+		for( i=0; i<GLevel->Actors.Num(); i++ )
 		{
 			if( GLevel->Actors(i) ) 
 			{
