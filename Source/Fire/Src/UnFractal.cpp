@@ -3977,6 +3977,33 @@ void UFractalTexture::PostLoad()
 	VMask = VSize - 1;
 }
 
+//
+// v436-compat port: with the client's NoFractalAnim set, a fractal texture is primed once to a
+// settled still frame (at least 48 steps, with the switch lifted so ConstantTimeTick runs) and
+// then taken off realtime; otherwise it primes as any texture does (436 Fire.dll).
+//
+void UFractalTexture::Prime()
+{
+	guard(UFractalTexture::Prime);
+	if( PrimeCurrent==0 )
+	{
+		if( __Client && __Client->NoFractalAnim )
+		{
+			__Client->NoFractalAnim = 0;
+			PrimeCount = Max<BYTE>( PrimeCount, 48 );
+			while( PrimeCurrent < PrimeCount )
+			{
+				PrimeCurrent++;
+				ConstantTimeTick();
+			}
+			__Client->NoFractalAnim = 1;
+			bRealtime = 0;
+		}
+		else UTexture::Prime();
+	}
+	unguard;
+}
+
 IMPLEMENT_CLASS(UFractalTexture);
 
 
