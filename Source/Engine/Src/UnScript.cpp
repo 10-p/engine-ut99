@@ -449,6 +449,26 @@ IMPLEMENT_FUNCTION( AActor, EPOLL_FinishInterpolation, execPollFinishInterpolati
 // Animation functions //
 /////////////////////////
 
+//
+// v436-compat port: the actor's view of an animation sequence (v436 AActor::GetAnim, a new
+// virtual). A skeletal mesh keeps no sequences of its own: they live in the actor's linked
+// animation (SkelAnim, set by LinkSkelAnim or by USkeletalMesh::GetFrame on first draw) or, until
+// one is linked, in the mesh's DefaultAnimation. Every other mesh answers as in v400. The retail
+// DLL does not NULL-check Mesh or DefaultAnimation here; callers test Mesh first.
+//
+FMeshAnimSeq* AActor::GetAnim( FName SequenceName )
+{
+	guard(AActor::GetAnim);
+	if( Mesh->IsA(USkeletalMesh::StaticClass()) )
+	{
+		if( SkelAnim )
+			return SkelAnim->GetAnimSeq( SequenceName );
+		return ((USkeletalMesh*)Mesh)->DefaultAnimation->GetAnimSeq( SequenceName );
+	}
+	return Mesh->GetAnimSeq( SequenceName );
+	unguard;
+}
+
 void AActor::execPlayAnim( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(AActor::execPlayAnim);
@@ -461,7 +481,7 @@ void AActor::execPlayAnim( FFrame& Stack, RESULT_DECL )
 	// Set one-shot animation.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( SequenceName );
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
 		if( Seq )
 		{
 			if( AnimSequence == NAME_None )
@@ -542,7 +562,7 @@ void AActor::execLoopAnim( FFrame& Stack, RESULT_DECL )
 	// Set looping animation.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( SequenceName );
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
 		if( Seq )
 		{
 			if ( (AnimSequence == SequenceName) && bAnimLoop && IsAnimating() )
@@ -624,7 +644,7 @@ void AActor::execTweenAnim( FFrame& Stack, RESULT_DECL )
 	// Tweening an animation from wherever it is, to the start of a specified sequence.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( SequenceName );
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
 		if( Seq )
 		{
 			AnimSequence  = SequenceName;
@@ -680,7 +700,7 @@ void AActor::execGetAnimGroup( FFrame& Stack, RESULT_DECL )
 	*(FName*)Result = NAME_None;
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( SequenceName );
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
 		if( Seq )
 		{
 			*(FName*)Result = Seq->Group;
@@ -701,7 +721,7 @@ void AActor::execHasAnim( FFrame& Stack, RESULT_DECL )
 	// Check for a certain anim sequence.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( SequenceName );
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
 		if( Seq )
 		{
 			*(DWORD*)Result = 1;
@@ -954,17 +974,19 @@ void AActor::execGetSoundDuration( FFrame& Stack, RESULT_DECL )
 	unguardexec;
 }
 
-// v436-compat port: stubs for named natives added to Actor after v400. UT99 base content does
-// not exercise skeletal animation or the download cache in offline play, so these are
-// behavior-safe no-ops (GetCacheEntry/MoveCacheEntry report "nothing"). See EngineClasses.h.
+// v436-compat port: LinkSkelAnim links an animation object to the actor (v436: SkelAnim = Anim).
+// USkeletalMesh::GetFrame and AActor::GetAnim then take the skeletal sequences from it.
 void AActor::execLinkSkelAnim( FFrame& Stack, RESULT_DECL )
 {
 	guard(AActor::execLinkSkelAnim);
 	P_GET_OBJECT(UAnimation,Anim);
 	P_FINISH;
-	// No skeletal-mesh pipeline in this engine; ignore.
+	SkelAnim = Anim;
 	unguardexec;
 }
+
+// v436-compat port: stubs for named natives added to Actor after v400. The download cache is
+// not used in offline play, so these are behavior-safe no-ops (report "nothing"). See EngineClasses.h.
 
 void AActor::execGetCacheEntry( FFrame& Stack, RESULT_DECL )
 {

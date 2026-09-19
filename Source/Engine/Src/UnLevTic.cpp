@@ -95,7 +95,7 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 			// Handle all animation sequence notifys.
 			if( bAnimNotify && Mesh )
 			{
-				const FMeshAnimSeq* Seq = Mesh->GetAnimSeq( AnimSequence );
+				const FMeshAnimSeq* Seq = GetAnim( AnimSequence ); // v436-compat: via GetAnim.
 				if( Seq )
 				{
 					FLOAT BestElapsedFrames = 100000.0;
