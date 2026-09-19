@@ -29,10 +29,22 @@ struct FActorPriority
 		Actor       = InActor;
 		Channel     = InConnection->ActorChannels.FindRef(Actor);
 		FLOAT Time  = Channel ? (InConnection->Driver->Time - Channel->LastUpdateTime) : InConnection->Driver->SpawnPrioritySeconds;
-		FLOAT Dot   = ViewDir | (Actor->Location - ViewPos).SafeNormal();
-		Priority    = appRound(65536.0 * (3.0+Dot) * Actor->GetNetPriority( (Channel && Channel->Recent.Num()) ? (AActor*)&Channel->Recent(0) : NULL, Time, InConnection->BestLag ));
+		// v436-compat port: 436 no longer rates every actor by where it is in the view. Always-
+		// relevant actors and resting dumb proxies are neutral, the viewer's own weapon counts as
+		// dead ahead, anything behind the viewer as dead behind; optional actors sink much further.
+		FLOAT Dot   = 0.f;
+		if( Actor->bAlwaysRelevant )
+			Dot = 0.f;
+		else if( InConnection->Actor && Actor==InConnection->Actor->Weapon )
+			Dot = 1.f;
+		else if( Actor->RemoteRole>ROLE_DumbProxy || Actor->Physics==PHYS_None )
+		{
+			FVector Dir = Actor->Location - ViewPos;
+			Dot = (Dir | ViewDir) < 0.f ? -1.f : (Dir.SafeNormal() | ViewDir);
+		}
+		Priority    = appRound((Dot+3.f) * Actor->GetNetPriority( (Channel && Channel->Recent.Num()) ? (AActor*)&Channel->Recent(0) : NULL, Time, InConnection->BestLag ) * 65536.f);
 		if( InActor->bNetOptional )
-			Priority -= 100000;
+			Priority -= 3000000;
 		unguard;
 	}
 	friend INT Compare( const FActorPriority* A, const FActorPriority* B )
