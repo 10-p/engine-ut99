@@ -8,9 +8,6 @@
 
 #include "RenderPrivate.h"
 
-// Parameters.
-#define SPRITE_PROJECTION_FORWARD 32.f /* Move sprite projection planes forward */
-
 /*------------------------------------------------------------------------------
 	Dynamics setup and rendering.
 ------------------------------------------------------------------------------*/
@@ -278,8 +275,9 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 			return 0;
 
 		// Setup projection plane.
-		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - SPRITE_PROJECTION_FORWARD;
-		if( Z<-2*SPRITE_PROJECTION_FORWARD && !Frame->Viewport->IsOrtho() )
+		// v436-compat port: the projection plane moves forward by the actor's SpriteProjForward (was 32).
+		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - Actor->SpriteProjForward;
+		if( Z<-2*Actor->SpriteProjForward && !Frame->Viewport->IsOrtho() )
 			return 0;
 
 		// See if this is occluded.
@@ -340,8 +338,9 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 			return 0;
 
 		// Setup projection plane.
-		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - SPRITE_PROJECTION_FORWARD;
-		if( Z<-2*SPRITE_PROJECTION_FORWARD && !Frame->Viewport->IsOrtho() )
+		// v436-compat port: the projection plane moves forward by the actor's SpriteProjForward (was 32).
+		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - Actor->SpriteProjForward;
+		if( Z<-2*Actor->SpriteProjForward && !Frame->Viewport->IsOrtho() )
 			return 0;
 
 		FScreenBounds ScreenBounds;
