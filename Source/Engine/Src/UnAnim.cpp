@@ -2,23 +2,19 @@
 	UnAnim.cpp: Unreal animation object (v436-compat port).
 	Copyright 1997-1999 Epic Games, Inc. All Rights Reserved.
 
-	v436-compat port: registers the native class 'Engine.Animation' that v436 engine.u
-	references but the stock v400 engine lacks. See UnMesh.h for the rationale. Kept minimal
-	on purpose — UT99 base content carries no skeletal-animation data, so this only needs to
-	exist so the linker resolves the import. If a package ever does contain an Animation
-	export, Serialize below leaves the object's tagged properties (none) to the base and does
-	not attempt to decode the skeletal blob.
+	v436-compat port: the native Animation and SkeletalMesh classes that v436 engine.u
+	references but the stock v400 engine lacks (see UnMesh.h). Serialization is byte-accurate;
+	USkeletalMesh::GetFrame skins and animates as the retail v436 Engine.dll does.
 =============================================================================*/
 
 #include "EnginePrivate.h"
 
-// -skelanimlog / -skelnoblend (defined near ComputeSkinnedPose, used from Serialize/GetFrame above it).
+// -skelanimlog / -skelnoblend (defined near GetFrame, used from Serialize above it).
 static UBOOL SkelAnimLogging();
 
 IMPLEMENT_CLASS(UAnimation);
 
-// v436-compat port: minimal SkeletalMesh native class so OldSkool/ONP and other v436 mods that
-// import Engine.SkeletalMesh can load. Full skeletal rendering is a non-goal (see UnMesh.h).
+// v436-compat port: SkeletalMesh native class (OldSkool/ONP, Infiltration and other v436 mods).
 IMPLEMENT_CLASS(USkeletalMesh);
 
 //
@@ -108,283 +104,12 @@ FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 	unguardobj;
 }
 
-//
-// v436-compat: draw a skeletal mesh in its reference (bind) pose.
-//
-// v400 predates skeletal skinning, so the renderer routes a USkeletalMesh (IsA ULodMesh) through
-// DrawLodMesh, which calls this GetFrame to fill the transformed-vertex buffer and then draws
-// triangles from the inherited ULodMesh Wedges/Faces. The default ULodMesh::GetFrame reads the
-// vertex-mesh Verts array — empty for a skeletal mesh (FrameVerts>0 but Verts.Num()==0) — and reads
-// out of bounds, which is the segfault seen when a skeletal actor first draws.
-//
-// For every skeletal mesh these mods ship, ModelVerts == FrameVerts == Points.Num() and
-// SpecialVerts == 0, and the ULodMesh Wedges index into [0,ModelVerts). Points holds the skin
-// vertices in mesh space, so emitting Points transformed by Coords (mesh Scale/rotation/world are
-// baked into Coords exactly as the vertex-mesh path does) draws the mesh in its bind pose. LOD is
-// already disabled for skeletal meshes (empty CollapsePointThus -> DoLOD false in DrawLodMesh), so
-// LODRequest arrives == ModelVerts and no vertex-collapse indexing occurs. Animation playback is a
-// non-goal, so the pose is static (bones/weights/animation are loaded but not applied).
-//
-// Forward declarations of the CCoords-style helpers (defined below) so GetFrame can use them.
-static FVector SkelUnTransformVector( const FSkelCoords& C, const FVector& s );
+/*-----------------------------------------------------------------------------
+	USkeletalMesh::GetFrame (v436-compat port of the retail v436 Engine.dll function).
+-----------------------------------------------------------------------------*/
 
-void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
-{
-	guard(USkeletalMesh::GetFrame);
-	// Compose the incoming (camera/world->view) Coords with the actor's world transform + the mesh
-	// scale/orientation, exactly as ULodMesh::GetFrame does, so mesh-local Points map to view space
-	// at the actor's position. Without this the local Points were fed to the raw camera transform and
-	// every skeletal actor drew clustered at the same spot.
-	FLOAT DrawScale = Owner->bParticles ? 1.0f : Owner->DrawScale;
-	// Skeletal meshes are mirrored in the data. Un-mirror with a NEGATIVE-Y scale reflection: this
-	// reverses the winding to show the exterior, keeps the soldier right-handed (left/right animations
-	// correct), AND faces him along his movement direction. (Negate-X instead gave right-handed but
-	// backward-facing "moonwalking"; negate-Y == a 180-deg yaw composed with that reflection.)
-	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin
-		* FScale( FVector(Scale.X, -Scale.Y, Scale.Z) * DrawScale, 0.0f, SHEER_None );
-
-	// Skin Points into the current animation pose if one applies; else use the static bind pose.
-	TArray<FVector> Skinned;
-	UBOOL bSkinned = ( Points.Num() && ComputeSkinnedPose( Owner, Skinned ) && Skinned.Num()==Points.Num() );
-	const FVector* Src = bSkinned ? &Skinned(0) : ( Points.Num() ? &Points(0) : NULL );
-	if( SkelAnimLogging() )
-		debugf( NAME_Log, TEXT("[skeldraw] %s mesh=%s skinned=%i seq=%s af=%f anim=%s bones=%i"),
-			Owner->GetName(), GetName(), bSkinned?1:0, *Owner->AnimSequence, Owner->AnimFrame,
-			DefaultAnimation ? DefaultAnimation->GetName() : TEXT("none"), RefSkeleton.Num() );
-
-	// Resolve the weapon attachment bone (set by ComputeSkinnedPose) into a view-space frame that
-	// DrawLodMesh publishes as SpecialCoords, so the third-person weapon attaches to the hand.
-	bWeaponAttach = 0;
-	if( bWeaponBoneM )
-	{
-		// Compose the weapon-bone frame with the mesh's WeaponAdjust (the grip offset+orientation of
-		// the weapon relative to the bone). WeaponAdjust is native FCoords; mirror it into the bone's
-		// mirrored space (M*C*M: negate Origin.X; XAxis negate Y,Z; YAxis/ZAxis negate X), compose, then
-		// un-mirror + transform to view space.
-		FVector wao(  -WeaponAdjust.Origin.X,  WeaponAdjust.Origin.Y,  WeaponAdjust.Origin.Z );
-		FVector waX(   WeaponAdjust.XAxis.X,  -WeaponAdjust.XAxis.Y,  -WeaponAdjust.XAxis.Z );
-		FVector waY(  -WeaponAdjust.YAxis.X,   WeaponAdjust.YAxis.Y,   WeaponAdjust.YAxis.Z );
-		FVector waZ(  -WeaponAdjust.ZAxis.X,   WeaponAdjust.ZAxis.Y,   WeaponAdjust.ZAxis.Z );
-		FVector wfO = WeaponBoneM.O + SkelUnTransformVector( WeaponBoneM, wao );		// weapon origin, mirrored ml
-		FVector wfX = SkelUnTransformVector( WeaponBoneM, waX );						// weapon axes, mirrored ml
-		FVector wfY = SkelUnTransformVector( WeaponBoneM, waY );
-		FVector wfZ = SkelUnTransformVector( WeaponBoneM, waZ );
-		FVector O  = wfO;         O.X  = -O.X;			// un-mirror to native
-		FVector eX = wfO + wfX;   eX.X = -eX.X;
-		FVector eY = wfO + wfY;   eY.X = -eY.X;
-		FVector eZ = wfO + wfZ;   eZ.X = -eZ.X;
-		FVector Ov = (O - Origin).TransformPointBy( Coords );
-		WeaponAttachOrigin = Ov;
-		WeaponAttachX = ( (eX - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
-		WeaponAttachY = ( (eY - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
-		WeaponAttachZ = ( (eZ - Origin).TransformPointBy(Coords) - Ov ).SafeNormal();
-		// The weapon seats at the right spot but rotated 180 deg (upside down, barrel toward the
-		// pawn). Rotate the frame 180 deg about its side (Y) axis -- pivot stays at the grip origin --
-		// which flips the forward (X) and up (Z) axes.
-		WeaponAttachX = WeaponAttachX * -1.0f;
-		WeaponAttachZ = WeaponAttachZ * -1.0f;
-		bWeaponAttach = 1;
-	}
-
-	INT Requested = LODRequest + SpecialVerts;			// DrawLodMesh allocated this many samples.
-	INT Count     = Min( Requested, Points.Num() );
-	BYTE* Out     = (BYTE*)ResultVerts;
-	for( INT i=0; i<Count; i++ )
-	{
-		*(FVector*)Out = (Src[i] - Origin).TransformPointBy( Coords );
-		Out += Size;
-	}
-	// Defensive: never leave requested samples uninitialized (only hit if a mesh had SpecialVerts>0
-	// or fewer Points than ModelVerts, which none of the tested content does). Collapse to origin.
-	FVector Safe = Origin.TransformPointBy( Coords );
-	for( INT i=Count; i<Requested; i++ ) { *(FVector*)Out = Safe; Out += Size; }
-	LODRequest = Max( 0, Count - SpecialVerts );
-	unguard;
-}
-
-//
-// v436-compat: build the reference (bind) pose bone world transforms from RefSkeleton, once.
-// Convention ported from UEViewer (Gildor's umodel): compose local (Position,Orientation) up the
-// hierarchy; the root bone's orientation is conjugated. worldRot = parentRot * localRot;
-// worldPos = parentPos + parentRot.Rotate(localPos).
-// ---- Exact port of UEViewer's CAxis/CCoords math (rigid frames as origin + 3 axis rows) --------
-static void SkelToAxis( const FSkelQuat& q, FSkelCoords& C )
-{
-	FLOAT x2=q.X*2, y2=q.Y*2, z2=q.Z*2;
-	FLOAT xx=q.X*x2, xy=q.X*y2, xz=q.X*z2;
-	FLOAT yy=q.Y*y2, yz=q.Y*z2, zz=q.Z*z2;
-	FLOAT wx=q.W*x2, wy=q.W*y2, wz=q.W*z2;
-	C.AX = FVector( 1.0f-(yy+zz), xy-wz,        xz+wy );
-	C.AY = FVector( xy+wz,        1.0f-(xx+zz), yz-wx );
-	C.AZ = FVector( xz-wy,        yz+wx,        1.0f-(xx+yy) );
-}
-static FVector SkelTransformVector( const FSkelCoords& C, const FVector& s )   // R*s
-{
-	return FVector( s|C.AX, s|C.AY, s|C.AZ );
-}
-static FVector SkelUnTransformVector( const FSkelCoords& C, const FVector& s ) // R^T*s
-{
-	return C.AX*s.X + C.AY*s.Y + C.AZ*s.Z;
-}
-static FVector SkelUnTransformPoint( const FSkelCoords& C, const FVector& s )  // local point -> world
-{
-	return C.O + SkelUnTransformVector( C, s );
-}
-static void SkelUnTransformCoords( const FSkelCoords& P, const FSkelCoords& L, FSkelCoords& Out ) // P applied to L
-{
-	FSkelCoords T;
-	T.O  = SkelUnTransformPoint( P, L.O );
-	T.AX = SkelUnTransformVector( P, L.AX );
-	T.AY = SkelUnTransformVector( P, L.AY );
-	T.AZ = SkelUnTransformVector( P, L.AZ );
-	Out = T;
-}
-static void SkelInvertCoords( const FSkelCoords& S, FSkelCoords& D )
-{
-	FSkelCoords T;
-	T.O  = SkelTransformVector( S, S.O ) * -1.0f;
-	T.AX = FVector( S.AX.X, S.AY.X, S.AZ.X );
-	T.AY = FVector( S.AX.Y, S.AY.Y, S.AZ.Y );
-	T.AZ = FVector( S.AX.Z, S.AY.Z, S.AZ.Z );
-	D = T;
-}
-
-//
-void USkeletalMesh::ComputeBindPose()
-{
-	guard(USkeletalMesh::ComputeBindPose);
-	if( bBindComputed )
-		return;
-	INT NB = RefSkeleton.Num();
-	TArray<FSkelCoords> Ref; Ref.Add(NB);
-	BindRefInv.Empty(); BindRefInv.Add(NB);
-	for( INT b=0; b<NB; b++ )
-	{
-		FSkelQuat bo = RefSkeleton(b).BonePos.Orientation;
-		FVector   bp = RefSkeleton(b).BonePos.Position;
-		// UEViewer's mirrored bone space (negate Position.X, Orientation.X/W); un-mirrored on output.
-		bo.X = -bo.X; bo.W = -bo.W; bp.X = -bp.X;
-		if( b==0 ) bo = bo.Conj();				// only the root orientation is conjugated
-		FSkelCoords L; L.O = bp; SkelToAxis( bo, L );
-		if( b==0 )
-			Ref(b) = L;
-		else
-		{
-			INT p = RefSkeleton(b).ParentIndex;
-			if( p<0 || p>=NB ) p = 0;
-			SkelUnTransformCoords( Ref(p), L, Ref(b) );	// world = parent applied to local
-		}
-		SkelInvertCoords( Ref(b), BindRefInv(b) );		// cache inverse (ref->bone-local) for skinning
-	}
-	bBindComputed = 1;
-	unguard;
-}
-
-// Largest key index X with KeyTime[X] <= t (linear scan; tracks are short, <=~121 keys). Matches
-// UEViewer's FindTimeKey.
-static INT SkelFindTimeKey( const TArray<FLOAT>& KeyTime, FLOAT t )
-{
-	INT n = KeyTime.Num(), X = 0;
-	for( INT i=0; i<n; i++ )
-	{
-		if( KeyTime(i) <= t ) X = i;
-		else break;
-	}
-	return X;
-}
-
-// Sample an analog track for the owner's current position in the sequence.
-//
-// UE1 tracks are KEY-REDUCED at IRREGULAR times: a bone may have (e.g.) 4 rotation keys at KeyTime
-// 0.0, 0.333, 3.533, 4.0 seconds out of a 4.03s sequence. The keys carry an explicit KeyTime (in
-// seconds, 0..TrackTime). Sampling them as evenly spaced (the old behavior, also what UEViewer's
-// UMeshAnimation::Upgrade does after emptying KeyTime) time-warps each reduced bone differently, so
-// bones desync and each "plays slow then snaps" at its own phase -- the per-cycle jerkiness seen at
-// slomo. Sample by KeyTime instead (bracket the current time, interpolate by the real time fraction),
-// which is what the stock engine does. Logic mirrors UEViewer's CAnimTrack::GetBonePosition +
-// GetKeyParams, in seconds (t = AnimFrame01 * TrackTime, loop endpoint = TrackTime).
-//
-// Only when a track has no timing data (KeyTime empty) do we fall back to even spacing. KeyPos and
-// KeyQuat are each either static (1 key) or share KeyTime's count; Min() guards keep indexing safe.
-static void SkelSampleTrack( const FSkelAnalogTrack& T, FLOAT Frame, INT NumFrames, FLOAT TrackTime, UBOOL Loop, FVector& OutPos, FSkelQuat& OutRot )
-{
-	INT NP = T.KeyPos.Num(), NR = T.KeyQuat.Num(), NT = T.KeyTime.Num();
-	if( NumFrames < 1 ) NumFrames = 1;
-	FLOAT AnimFrame01 = Clamp( Frame / NumFrames, 0.f, 1.f );
-
-	if( NT>1 && TrackTime>0.0001f )
-	{
-		// Time-based sampling (correct for reduced/irregular tracks).
-		FLOAT t = AnimFrame01 * TrackTime;
-		INT X = SkelFindTimeKey( T.KeyTime, t );
-		INT Y = X + 1;
-		FLOAT F;
-		if( Y >= NT )
-		{
-			if( !Loop ) { Y = X; F = 0.0f; }							// clamp: hold last key
-			else { FLOAT d = TrackTime - T.KeyTime(X); Y = 0; F = d>0.0001f ? (t - T.KeyTime(X))/d : 0.0f; }	// blend last->first
-		}
-		else
-		{
-			FLOAT d = T.KeyTime(Y) - T.KeyTime(X);
-			F = d>0.0001f ? (t - T.KeyTime(X))/d : 0.0f;
-		}
-		if( NP==1 ) OutPos = T.KeyPos(0);
-		else if( NP>1 ) { INT px=Min(X,NP-1), py=Min(Y,NP-1); OutPos = T.KeyPos(px) + (T.KeyPos(py)-T.KeyPos(px))*F; }
-		if( NR==1 ) OutRot = T.KeyQuat(0);
-		else if( NR>1 ) OutRot = SkelSlerp( T.KeyQuat(Min(X,NR-1)), T.KeyQuat(Min(Y,NR-1)), F );
-		return;
-	}
-
-	// Fallback: no per-key timing -> evenly spaced across the sequence (loop wraps last->first key).
-	FLOAT FrameC = AnimFrame01 * NumFrames;
-	if( NP==1 ) OutPos = T.KeyPos(0);
-	else if( NP>1 )
-	{
-		FLOAT pos = FrameC / NumFrames * NP;
-		INT x = appFloor(pos); FLOAT f = pos - x;
-		if( x<0 ) { x=0; f=0; } if( x>=NP ) { x=NP-1; f=0; }
-		INT y = x+1; if( y>=NP ) y = Loop ? 0 : x;
-		OutPos = T.KeyPos(x) + (T.KeyPos(y) - T.KeyPos(x)) * f;
-	}
-	if( NR==1 ) OutRot = T.KeyQuat(0);
-	else if( NR>1 )
-	{
-		FLOAT pos = FrameC / NumFrames * NR;
-		INT x = appFloor(pos); FLOAT f = pos - x;
-		if( x<0 ) { x=0; f=0; } if( x>=NR ) { x=NR-1; f=0; }
-		INT y = x+1; if( y>=NR ) y = Loop ? 0 : x;
-		OutRot = SkelSlerp( T.KeyQuat(x), T.KeyQuat(y), f );
-	}
-}
-
-//
-// v436-compat animation blending: per-actor tween state, held in the engine's GCache exactly as
-// ULodMesh::GetFrame holds its vertex-tween state. The payload following this header is
-// CachedBones x FSkelBonePose -- the LOCAL pose currently being displayed, which is both what the
-// next frame blends FROM and the reason an interrupted blend resumes instead of snapping.
-//
-// CachedMesh/CachedBones guard against reading a payload written for a different mesh (the cache is
-// keyed on the actor AND the mesh, so this is belt and braces, and it also sizes the payload).
-//
-struct FSkelTweenHeader
-{
-	UMesh*	CachedMesh;
-	INT		CachedBones;
-	FName	CachedSeq;
-	FLOAT	CachedFrame;
-	FLOAT	TweenIndicator;
-};
-
-// Angle between two unit quaternions, in degrees. Instrumentation only. There is no appAcos in this
-// engine's math family, and atan2(sin,cos) is better conditioned near 0 anyway: |dot| is cos(a/2).
-static FLOAT SkelQuatAngleDeg( const FSkelQuat& a, const FSkelQuat& b )
-{
-	FLOAT d = Clamp( Abs( a.X*b.X + a.Y*b.Y + a.Z*b.Z + a.W*b.W ), 0.f, 1.f );
-	return (FLOAT)( 2.0 * appAtan2( appSqrt(1.0-(DOUBLE)d*(DOUBLE)d), (DOUBLE)d ) * 180.0 / PI );
-}
-
-// -skelanimlog on the command line turns on the per-frame bone-delta trace below. Resolved once.
+// -skelanimlog on the command line turns on the [skeldraw]/[skelanim] traces below and [skelload]
+// in Serialize. Resolved once. A diagnostic of this port, not part of v436.
 static UBOOL SkelAnimLogging()
 {
 	static INT Enabled = -1;
@@ -393,10 +118,8 @@ static UBOOL SkelAnimLogging()
 	return Enabled != 0;
 }
 
-// -skelnoblend restores the pre-blend behaviour (a tweening AnimFrame clamps to 0, so the pose snaps
-// to the new sequence's first frame). It exists so the blending test can prove its own instrument:
-// a measurement that only ever reports "smooth" is worth nothing until it has been shown to report
-// "snap" for the code that actually snapped. Not a user-facing option.
+// -skelnoblend disables the tween (a tweening pose snaps to the new sequence). It exists so a
+// blending measurement can prove it can see a snap. A diagnostic of this port, not part of v436.
 static UBOOL SkelBlendDisabled()
 {
 	static INT Disabled = -1;
@@ -405,246 +128,362 @@ static UBOOL SkelBlendDisabled()
 	return Disabled != 0;
 }
 
-//
-// v436-compat: skin Points from the reference pose into the current animation pose for Owner.
-// Returns 0 (falls back to bind pose) when there is no linked animation or no matching sequence.
-//
-UBOOL USkeletalMesh::ComputeSkinnedPose( AActor* Owner, TArray<FVector>& Out )
+// Angle between two unit quaternions, in degrees ([skelanim] trace only).
+static FLOAT SkelQuatAngleDeg( const FSkelQuat& A, const FSkelQuat& B )
 {
-	guard(USkeletalMesh::ComputeSkinnedPose);
-	bWeaponBoneM = 0;
-	UAnimation* Anim = DefaultAnimation;
-	INT NB = RefSkeleton.Num();
-	if( !Anim || NB==0 || Points.Num()==0 || BoneWeightIdx.Num()==0 )
-		return 0;
+	FLOAT D = Clamp( Abs( A.X*B.X + A.Y*B.Y + A.Z*B.Z + A.W*B.W ), 0.f, 1.f );
+	return (FLOAT)( 2.0 * appAtan2( appSqrt(1.0-(DOUBLE)D*(DOUBLE)D), (DOUBLE)D ) * 180.0 / PI );
+}
 
-	// Honor bAnimByOwner: attachment meshes (holstered pistol on the hip, sheathed knife on the
-	// thigh -- INFc_PlayerAttachment) are separate skeletal actors that inherit the pawn's animation.
-	// Take AnimSequence/AnimFrame from Owner->Owner in that case, exactly as ULodMesh::GetFrame does;
-	// otherwise the gear stays in bind pose while the pawn animates and floats around the belt.
+//
+// Per-actor skeletal state, kept in the global cache under MakeCacheID(CID_SkeletalData, Owner)
+// exactly as v436 keeps it: this header, then per bone the track link, the last local position
+// and the last local orientation. It is what a tween blends FROM and what links the mesh's bones
+// to the current animation's tracks.
+//
+struct FSkelDataHeader
+{
+	UMesh*		Mesh;			// Mesh the payload was built for.
+	UAnimation*	LinkedAnim;		// Animation Links was built for.
+	FLOAT		TweenFrame;		// AnimFrame at the previous tween step.
+	FName		TweenSeq;		// Sequence being tweened into.
+	INT			Unused;			// v436 never reads or writes this slot.
+	UBOOL		bHavePose;		// Pos/Rot hold a sampled pose.
+	INT*		Links;			// Per bone: track index in LinkedAnim, or -1.
+	FVector*	Pos;			// Per bone: last local position.
+	FSkelQuat*	Rot;			// Per bone: last local orientation.
+};
+
+//
+// Skin the mesh into its owner's animation pose.
+//
+// The owner's animation is its SkelAnim, which is set to the mesh's DefaultAnimation the first
+// time the actor draws without one. Each bone is sampled from its track at the owner's AnimFrame
+// (a key-time search, slerp and lerp), or holds its reference pose if the animation has no
+// track for it. While the owner tweens (AnimFrame < 0), the pose cached from the last frame
+// eases toward the first key of the new sequence instead. Bones are then composed down the
+// hierarchy. Each vertex is the weighted sum of its influences' bone-local points (LocalPoints)
+// carried by their bones. The weapon bone yields ClassicWeaponCoords, which DrawLodMesh uses for
+// the third-person weapon.
+//
+void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
+{
+	guard(USkeletalMesh::GetFrame);
+
+	// Attachments (bAnimByOwner) take their animation from their owner.
 	AActor* AnimOwner = ( Owner->bAnimByOwner && Owner->Owner ) ? Owner->Owner : Owner;
 
-	// Find the sequence matching the (anim) actor's current AnimSequence.
-	INT SeqIdx = INDEX_NONE;
-	for( INT i=0; i<Anim->AnimSeqs.Num(); i++ )
-		if( Anim->AnimSeqs(i).Name == AnimOwner->AnimSequence ) { SeqIdx = i; break; }
-	if( SeqIdx==INDEX_NONE || SeqIdx>=Anim->Moves.Num() )
-		return 0;
-	FSkelMotionChunk& Move = Anim->Moves(SeqIdx);
-	INT NumFrames = Max( 1, Anim->AnimSeqs(SeqIdx).NumFrames );
-
-	// ---- Sequence blending (tweening) --------------------------------------------------------
-	//
-	// A NEGATIVE AnimFrame is UE1's "tweening" state. PlayAnim/LoopAnim/TweenAnim (UnScript.cpp) set
-	// AnimSequence to the NEW sequence immediately and AnimFrame to -1/NumFrames, then UnLevTic.cpp
-	// advances it up to 0 at TweenRate. So while tweening, AnimSequence already names the sequence we
-	// are heading INTO, its first frame is the target pose, and AnimFrame measures the remaining gap.
-	//
-	// This used to sample at Clamp(AnimFrame,0,1), which clamps a tweening (negative) AnimFrame flat
-	// to 0 -- the pose jumped to the new sequence's frame 0 the instant PlayAnim was called. Walking
-	// -> jumping snapped; a fast crouch/stand toggle teleported between poses.
-	//
-	// The fix is ULodMesh::GetFrame's tween, moved from vertices to bones: keep the CURRENT pose in a
-	// per-actor cache and, each frame, close a fraction Alpha of the REMAINING gap toward the target
-	// (Cached += (Target-Cached)*Alpha). Because every step starts from where the model actually is
-	// rather than from a remembered start pose, interrupting a blend simply retargets it and the model
-	// resumes from its current pose -- it never jumps. Alpha = 1 - now/before makes the accumulated
-	// blend exactly linear in AnimFrame while staying expressible as that incremental step.
-	//
-	// Bones are blended in LOCAL space (position lerp + quaternion slerp) and composed up the
-	// hierarchy afterwards, so each bone stays rigid through the blend -- which blending composed
-	// world frames, or the vertex path's blending of skinned points, would not guarantee.
-	//
-	UBOOL bTween = ( AnimOwner->AnimFrame < 0.0f ) && !SkelBlendDisabled();
-	FLOAT Frame  = bTween ? 0.0f : Clamp( AnimOwner->AnimFrame, 0.f, 1.f ) * NumFrames;
-
-	// Sample the sequence at Frame: the pose we are heading TOWARD (and the pose itself when not
-	// tweening). Bones with no matching track keep their reference-skeleton local pose.
-	TArray<FSkelBonePose> Target; Target.Add(NB);
-	for( INT b=0; b<NB; b++ )
+	// Find or create this actor's skeletal cache entry.
+	INT NumBones = RefSkeleton.Num();
+	FCacheItem* Item = NULL;
+	QWORD CacheID = MakeCacheID( CID_SkeletalData, Owner );
+	FSkelDataHeader* Cache = (FSkelDataHeader*)GCache.Get( CacheID, Item, 8 );
+	if( Cache && Cache->Mesh != this )
 	{
-		Target(b).Pos = RefSkeleton(b).BonePos.Position;
-		Target(b).Rot = RefSkeleton(b).BonePos.Orientation;
-		// Map mesh bone -> animation track by bone name.
-		INT ab = INDEX_NONE;
-		for( INT j=0; j<Anim->RefBones.Num(); j++ )
-			if( Anim->RefBones(j).Name == RefSkeleton(b).Name ) { ab = j; break; }
-		if( ab!=INDEX_NONE && ab<Move.AnimTracks.Num() )
-			SkelSampleTrack( Move.AnimTracks(ab), Frame, NumFrames, Move.TrackTime, AnimOwner->bAnimLoop, Target(b).Pos, Target(b).Rot );
-	}
-
-	// Resolve the pose actually drawn, blending through the per-actor cache.
-	TArray<FSkelBonePose> Pose; Pose.Add(NB);
-	FLOAT MaxBoneDelta = -1.0f;		// instrumentation only; see SkelQuatAngleDeg.
-	{
-		// Keyed on (actor, mesh): distinct from ULodMesh::GetFrame's vertex tween cache, which keys on
-		// (actor, NULL), so the two can never read each other's payload.
-		FCacheItem* Item    = NULL;
-		QWORD       CacheID = MakeCacheID( CID_TweenAnim, Owner, this );
-		BYTE*       Mem     = GCache.Get( CacheID, Item );
-		FSkelTweenHeader* Hdr = (FSkelTweenHeader*)Mem;
-		UBOOL WasCached = ( Mem!=NULL && Hdr->CachedMesh==this && Hdr->CachedBones==NB );
-		if( Mem && !WasCached )
-		{
-			// Stale entry (the actor's mesh or its bone count changed): drop it and start clean.
-			Item->Unlock();
-			GCache.Flush( CacheID );
-			Mem = NULL;
-		}
-		if( !Mem )
-		{
-			Mem = GCache.Create( CacheID, Item, sizeof(FSkelTweenHeader) + NB*sizeof(FSkelBonePose) );
-			Hdr = (FSkelTweenHeader*)Mem;
-			Hdr->CachedMesh     = this;
-			Hdr->CachedBones    = NB;
-			Hdr->CachedSeq      = NAME_None;
-			Hdr->CachedFrame    = 0.0f;
-			Hdr->TweenIndicator = 1.0f;
-		}
-		FSkelBonePose* Cached = (FSkelBonePose*)( Mem + sizeof(FSkelTweenHeader) );
-
-		if( !bTween || !WasCached )
-		{
-			// Normal playback -- or this actor's first draw, where there is no previous pose to blend
-			// from and the sampled pose is the only honest answer. Record it either way: this is what a
-			// later tween blends FROM, and keeping it current is the whole reason an interruption
-			// resumes smoothly instead of snapping.
-			for( INT b=0; b<NB; b++ )
-			{
-				if( WasCached )
-					MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cached[b].Rot, Target(b).Rot ) );
-				Cached[b] = Target(b);
-			}
-			Hdr->CachedSeq      = AnimOwner->AnimSequence;
-			Hdr->CachedFrame    = AnimOwner->AnimFrame;
-			Hdr->TweenIndicator = 1.0f;		// the cache IS the target pose: nothing left to blend.
-			// ⚠ That invariant is also what makes the OTHER way into this branch correct. A first draw
-			// that happens mid-tween stores a NEGATIVE CachedFrame, so the next frame computes a real
-			// Alpha rather than tripping the divisor guard below — but TweenIndicator is 1, the 0.97
-			// cutoff fires, and the pose holds. Which is right: the cache already holds the target
-			// (Frame is 0 while tweening), so there was never anything to blend from.
-		}
-		else
-		{
-			// Alpha = the fraction of the remaining gap to close this frame. During a tween both frames
-			// are negative and rising toward 0, so a tween in progress yields Alpha in [0,1]. Anything
-			// else means a NEW tween just began -- including the normal-playback exit above, which
-			// leaves CachedFrame >= 0 and so trips the divisor guard on the tween's very first frame.
-			FLOAT Alpha = ( Hdr->CachedFrame < 0.0f ) ? ( 1.0f - AnimOwner->AnimFrame / Hdr->CachedFrame ) : -1.0f;
-			if( Hdr->CachedSeq != AnimOwner->AnimSequence || Alpha < 0.0f || Alpha > 1.0f )
-			{
-				// A tween just started. Adopt it and blend NOTHING this frame (Alpha=0) so the pose
-				// stays exactly where it is; the following frames ease away from there.
-				//
-				// Deviation from ULodMesh::GetFrame, deliberately: it clears TweenIndicator only on a
-				// sequence CHANGE. Re-tweening into the sequence already playing (PlayAnim on the
-				// current sequence -- crouch, stand, crouch again) therefore inherited the finished
-				// tween's indicator of ~1, which forces Alpha to 0 below for the entire tween: the pose
-				// freezes and then jumps when normal playback resumes. Clearing it on every restart is
-				// what makes a fast toggle blend instead of teleport.
-				Hdr->CachedSeq      = AnimOwner->AnimSequence;
-				Hdr->TweenIndicator = 0.0f;
-				Alpha               = 0.0f;
-			}
-
-			// Progress tracker, same exponential form: 1-TweenIndicator is the fraction of the original
-			// gap still to cover. Past 0.97 the remainder is not worth another pass over the bones.
-			Hdr->TweenIndicator += ( 1.0f - Hdr->TweenIndicator ) * Alpha;
-			if( Hdr->TweenIndicator > 0.97f )
-				Alpha = 0.0f;
-
-			MaxBoneDelta = 0.0f;
-			if( Alpha > 0.0f )
-				for( INT b=0; b<NB; b++ )
-				{
-					FSkelQuat Blended = SkelSlerp( Cached[b].Rot, Target(b).Rot, Alpha );
-					MaxBoneDelta   = Max( MaxBoneDelta, SkelQuatAngleDeg( Cached[b].Rot, Blended ) );
-					Cached[b].Pos += ( Target(b).Pos - Cached[b].Pos ) * Alpha;
-					Cached[b].Rot  = Blended;
-				}
-
-			// Drawing the same actor twice in one frame must not advance the blend twice: with
-			// CachedFrame == AnimFrame the next call computes Alpha = 0 and holds.
-			Hdr->CachedFrame = AnimOwner->AnimFrame;
-		}
-
-		for( INT b=0; b<NB; b++ )
-			Pose(b) = Cached[b];
 		Item->Unlock();
+		GCache.Flush( CacheID );
+		Cache = NULL;
+	}
+	if( !Cache )
+	{
+		Cache = (FSkelDataHeader*)GCache.Create( CacheID, Item, sizeof(FSkelDataHeader) + NumBones*(sizeof(INT)+sizeof(FVector)+sizeof(FSkelQuat)), 8 );
+		Cache->Mesh       = this;
+		Cache->Links      = (INT*)(Cache + 1);
+		Cache->Pos        = (FVector*)(Cache->Links + NumBones);
+		Cache->Rot        = (FSkelQuat*)(Cache->Pos + NumBones);
+		Cache->bHavePose  = 0;
+		Cache->TweenFrame = 0.0f;
+		Cache->LinkedAnim = NULL;
+		Cache->TweenSeq   = NAME_None;	// v436 leaves this uninitialized.
+		Cache->Unused     = 0;
 	}
 
-	// Instrumentation for the blending E2E (-skelanimlog): smoothness is not OCR-able, but a snap is,
-	// by definition, the whole pose change delivered in ONE frame. Report the largest per-frame bone
-	// rotation step so a spec can assert that a sequence switch produces a bounded ramp rather than a
-	// single spike. Off unless asked for -- this is one line per skeletal actor per drawn frame.
-	if( MaxBoneDelta >= 0.0f && SkelAnimLogging() )
-		debugf( NAME_Log, TEXT("[skelanim] %s seq=%s af=%f tween=%i maxdeg=%f"),
-			Owner->GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame, bTween?1:0, MaxBoneDelta );
+	INT   LodVerts  = Min( LODRequest, FrameVerts );
+	FLOAT DrawScale = AnimOwner->bParticles ? 1.0f : Owner->DrawScale;
 
-	ComputeBindPose();
+	// Mesh-to-view transform. The skeletal data is mirrored: the negated Y scale un-mirrors it.
+	Coords = Coords * (Owner->Location + Owner->PrePivot) * Owner->Rotation * RotOrigin
+		* FScale( FVector(Scale.X, -Scale.Y, Scale.Z) * DrawScale, 0.0f, SHEER_None );
 
-	// Animated bone world coords + per-bone skinning transform (anim∘bindInverse).
-	TArray<FSkelCoords> AC; AC.Add(NB);		// animated world coords
-	TArray<FSkelCoords> Xf; Xf.Add(NB);		// skinning transform (ref pose -> anim pose)
-	for( INT b=0; b<NB; b++ )
+	// The owner's animation, linked to the mesh's default the first time it is needed.
+	if( !AnimOwner->SkelAnim && DefaultAnimation )
+		AnimOwner->SkelAnim = DefaultAnimation;
+	UAnimation*       Anim     = AnimOwner->SkelAnim;
+	FMeshAnimSeq*     Seq      = NULL;
+	FSkelMotionChunk* Move     = NULL;
+	FLOAT             AnimTime = 0.0f;
+	if( Anim )
 	{
-		FVector   lp = Pose(b).Pos;
-		FSkelQuat lr = Pose(b).Rot;
-		// Mirror into the same space as the bind pose (see ComputeBindPose).
-		lr.X = -lr.X; lr.W = -lr.W; lp.X = -lp.X;
-		if( b==0 ) lr = lr.Conj();
-		FSkelCoords L; L.O = lp; SkelToAxis( lr, L );
-		if( b==0 )
-			AC(b) = L;
-		else
+		Seq  = Anim->GetAnimSeq( AnimOwner->AnimSequence );
+		Move = Anim->GetMovement( AnimOwner->AnimSequence );
+		if( Seq )
+			AnimTime = Clamp( AnimOwner->AnimFrame, 0.0f, 1.0f ) * Move->TrackTime;
+	}
+	UBOOL bTween = ( AnimOwner->AnimFrame < 0.0f && Cache->bHavePose ) && !SkelBlendDisabled();
+
+	// Link the mesh's bones to the animation's tracks, by name, whenever the animation changes.
+	TArray<FCoords> BoneCoords;
+	BoneCoords.AddZeroed( NumBones );	// v436 leaves these uninitialized (read only if no track path runs).
+	if( Anim && Move && Anim != Cache->LinkedAnim )
+	{
+		guard(SkLinkup);
+		for( INT b=0; b<NumBones; b++ )
 		{
-			INT p = RefSkeleton(b).ParentIndex;
-			if( p<0 || p>=NB ) p = 0;
-			SkelUnTransformCoords( AC(p), L, AC(b) );
+			Cache->Links[b] = -1;
+			for( INT t=0; t<Move->AnimTracks.Num() && t<Anim->RefBones.Num(); t++ )
+			{
+				if( Anim->RefBones(t).Name == RefSkeleton(b).Name )
+				{
+					Cache->Links[b] = t;
+					break;
+				}
+			}
+			if( Cache->Links[b] == -1 )
+				debugf( TEXT("Warning: missing bone/animation link for %s  index %i"), *RefSkeleton(b).Name, RefSkeleton(b).Name.GetIndex() );
 		}
-		SkelUnTransformCoords( AC(b), BindRefInv(b), Xf(b) );	// Transform = anim.UnTransformCoords(refInv)
+		Cache->LinkedAnim = Anim;
+		unguard;
 	}
 
-	// Stash the animated weapon-bone frame (still in mirrored space) for GetFrame to turn into the
-	// view-space SpecialCoords used to attach the third-person weapon to the hand.
-	bWeaponBoneM = 0;
-	if( WeaponBoneIndex>=0 && WeaponBoneIndex<NB )
+	FLOAT MaxBoneDelta = -1.0f;	// [skelanim] trace only.
+	if( Anim && !Seq && bTween )
 	{
-		WeaponBoneM = AC(WeaponBoneIndex);
-		bWeaponBoneM = 1;
+		// Tweening into a sequence this animation lacks: hold the last pose.
+		for( INT b=0; b<NumBones; b++ )
+			BoneCoords(b) = Cache->Rot[b].ToCoords( Cache->Pos[b] );
+		Cache->TweenFrame = AnimOwner->AnimFrame;
+	}
+	else if( Anim && Seq && !bTween )
+	{
+		// Play the sequence: sample every linked bone's track at AnimTime.
+		if( Move->AnimTracks.Num() )
+		{
+			for( INT b=0; b<NumBones; b++ )
+			{
+				FSkelQuat Q;
+				FVector   P;
+				INT       t = Cache->Links[b];
+				if( t < 0 )
+				{
+					// No track for this bone: reference pose.
+					Q = RefSkeleton(b).BonePos.Orientation;
+					P = RefSkeleton(b).BonePos.Position;
+				}
+				else
+				{
+					FSkelAnalogTrack& Track = Move->AnimTracks(t);
+					INT NumKeys = Track.KeyTime.Num();
+
+					// Key X is the last one at or before AnimTime; Y follows it, wrapping to key 0.
+					INT   X     = -1;
+					UBOOL bWrap = 0;
+					for( INT k=1; k<NumKeys; k++ )
+					{
+						if( AnimTime < Track.KeyTime(k) )
+						{
+							X = k-1;
+							break;
+						}
+					}
+					if( X == -1 && AnimTime < Move->TrackTime )
+						X = NumKeys-1;
+					INT Y;
+					if( X >= NumKeys-1 )
+					{
+						bWrap = 1;
+						Y     = 0;
+					}
+					else Y = X+1;
+					if( NumKeys == 1 )
+						X = Y = 0;
+
+					// v436 reads key -1 when AnimTime reaches TrackTime with no key beyond it, or
+					// when a track has no key times. Use key 0 there instead of reading out of range.
+					if( X < 0 )
+						X = 0;
+					FLOAT KeyX  = NumKeys ? Track.KeyTime(X) : 0.0f;
+					FLOAT Delta = bWrap ? Move->TrackTime - KeyX : Abs( (NumKeys ? Track.KeyTime(Y) : 0.0f) - KeyX );
+					FLOAT Alpha = ( Delta > 0.000001f ) ? ( AnimTime - KeyX ) / Delta : 0.0f;
+
+					// Orientation: slerp X->Y (over the shorter arc when wrapping), then normalize.
+					// Key indices are clamped to each key array; on well-formed data (one key, or one
+					// per key time) that changes nothing, and it avoids reading past a short array.
+					INT NumQuats = Track.KeyQuat.Num();
+					if( NumQuats )
+					{
+						FSkelQuat A = Track.KeyQuat( Min(X,NumQuats-1) );
+						FSkelQuat B = Track.KeyQuat( Min(Y,NumQuats-1) );
+						if( bWrap )
+							SkelAlignQuatWith( B, A );
+						Q = SkelSlerpQuat( A, B, Alpha );
+						Q.Normalize();
+					}
+					else Q = RefSkeleton(b).BonePos.Orientation;
+
+					// Position: lerp X->Y when the track moves, else its single key.
+					INT NumPos = Track.KeyPos.Num();
+					if( NumPos > 1 )
+					{
+						const FVector& PX = Track.KeyPos( Min(X,NumPos-1) );
+						const FVector& PY = Track.KeyPos( Min(Y,NumPos-1) );
+						P = PX + (PY - PX) * Alpha;
+					}
+					else if( NumPos == 1 )
+						P = Track.KeyPos(0);
+					else
+						P = RefSkeleton(b).BonePos.Position;
+				}
+				if( Cache->bHavePose && SkelAnimLogging() )
+					MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cache->Rot[b], Q ) );
+				Cache->Rot[b] = Q;
+				Cache->Pos[b] = P;
+				BoneCoords(b) = Q.ToCoords( P );
+			}
+			Cache->bHavePose = 1;
+		}
+	}
+	else if( Anim && Seq && bTween )
+	{
+		// Tween: close the fraction Alpha of the remaining gap between the cached pose and the
+		// first key of the new sequence. A new tween (other sequence, or Alpha out of range)
+		// starts with Alpha 0.
+		FLOAT Alpha = 1.0f - AnimOwner->AnimFrame / Cache->TweenFrame;
+		if( Cache->TweenSeq != AnimOwner->AnimSequence || !(Alpha >= 0.0f) || Alpha > 1.0f )
+		{
+			Cache->TweenFrame = -1.0f / Seq->NumFrames;
+			Alpha             = 0.0f;
+			Cache->TweenSeq   = AnimOwner->AnimSequence;
+		}
+		MaxBoneDelta = 0.0f;
+		for( INT b=0; b<NumBones; b++ )
+		{
+			INT t = Cache->Links[b];
+			if( t >= 0 )
+			{
+				FSkelAnalogTrack& Track = Move->AnimTracks(t);
+				if( Track.KeyQuat.Num() )
+				{
+					FSkelQuat Target = Track.KeyQuat(0);
+					SkelAlignQuatWith( Target, Cache->Rot[b] );
+					FSkelQuat Q = SkelSlerpQuat( Cache->Rot[b], Target, Alpha );
+					Q.Normalize();
+					if( SkelAnimLogging() )
+						MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cache->Rot[b], Q ) );
+					Cache->Rot[b] = Q;
+				}
+				if( Track.KeyPos.Num() )
+					Cache->Pos[b] = Cache->Pos[b] + (Track.KeyPos(0) - Cache->Pos[b]) * Alpha;
+			}
+			BoneCoords(b) = Cache->Rot[b].ToCoords( Cache->Pos[b] );
+		}
+		Cache->TweenFrame = AnimOwner->AnimFrame;
+	}
+	else
+	{
+		// No animation, or not tweening into a sequence it lacks: reference pose.
+		for( INT b=0; b<NumBones; b++ )
+			BoneCoords(b) = RefSkeleton(b).BonePos.Orientation.ToCoords( RefSkeleton(b).BonePos.Position );
 	}
 
-	// Linear-blend skin: transform each ref-pose point by its bones' skinning transforms, weighted.
-	Out.Empty(); Out.AddZeroed( Points.Num() );
-	TArray<FLOAT> WSum; WSum.AddZeroed( Points.Num() );
-	INT NBW = Min( BoneWeightIdx.Num(), NB );
-	for( INT b=0; b<NBW; b++ )
+	// Compose each bone with its parent (parents precede children in RefSkeleton).
+	for( INT b=1; b<BoneCoords.Num(); b++ )
 	{
-		const FSkelBoneInfIndex& BI = BoneWeightIdx(b);
-		for( INT j=0; j<BI.Number; j++ )
+		INT Parent = RefSkeleton(b).ParentIndex;
+		check(Parent != b);
+		BoneCoords(b) = SkelApplyPivot( BoneCoords(b), BoneCoords(Parent) );
+	}
+
+	if( SkelAnimLogging() )
+	{
+		debugf( NAME_Log, TEXT("[skeldraw] %s mesh=%s seq=%s af=%f anim=%s bones=%i tween=%i"),
+			Owner->GetName(), GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame,
+			Anim ? Anim->GetName() : TEXT("none"), NumBones, bTween ? 1 : 0 );
+		if( MaxBoneDelta >= 0.0f )
+			debugf( NAME_Log, TEXT("[skelanim] %s seq=%s af=%f tween=%i maxdeg=%f"),
+				Owner->GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame, bTween ? 1 : 0, MaxBoneDelta );
+	}
+
+	// Debugging: bone pivots (view space) and per-vertex influence counts.
+	if( DisplayBones )
+	{
+		DebugPivots.Empty();
+		DebugPivots.Add( BoneCoords.Num() );
+		DebugParents.Empty();
+		DebugParents.Add( BoneCoords.Num() );
+		for( INT b=0; b<BoneCoords.Num(); b++ )
 		{
-			INT wi = BI.WeightIndex + j;
-			if( wi<0 || wi>=BoneWeights.Num() ) continue;
-			const FSkelBoneInfluence& Inf = BoneWeights(wi);
-			INT pi = Inf.PointIndex;
-			if( pi<0 || pi>=Points.Num() ) continue;
-			FLOAT w = Inf.BoneWeight / 65535.0f;
-			FVector Pm = Points(pi); Pm.X = -Pm.X;		// into mirrored bone space
-			FVector ap = SkelUnTransformPoint( Xf(b), Pm );
-			Out(pi) += ap * w;
-			WSum(pi) += w;
+			DebugParents(b) = RefSkeleton(b).ParentIndex;
+			DebugPivots(b)  = (BoneCoords(b).Origin - Origin).TransformPointBy( Coords );
 		}
 	}
-	for( INT i=0; i<Out.Num(); i++ )
+	if( DisplayInfluences && DebugVerts.Num()==0 )
 	{
-		if( WSum(i) > 0.001f )
+		DebugVerts.Add( FrameVerts );
+		TArray<INT> Counts;
+		Counts.AddZeroed( FrameVerts );
+		for( INT b=0; b<BoneWeightIdx.Num(); b++ )
 		{
-			Out(i) /= WSum(i);
-			Out(i).X = -Out(i).X;						// un-mirror back to native space
+			INT First = BoneWeightIdx(b).WeightIndex;
+			for( INT i=First; i<First+BoneWeightIdx(b).Number; i++ )
+				if( BoneWeights(i).PointIndex < FrameVerts && BoneWeights(i).BoneWeight != 0 )
+					Counts( BoneWeights(i).PointIndex )++;
 		}
-		else Out(i) = Points(i);
+		for( INT v=0; v<FrameVerts; v++ )
+			DebugVerts(v) = Min( Counts(v), 255 );
 	}
-	return 1;
+
+	// Skin: each vertex is the weighted sum of its influences' local points carried by their bones.
+	TArray<FVector> Verts;
+	Verts.AddZeroed( LodVerts );
+	INT NumSkinBones = Min( BoneWeightIdx.Num(), BoneCoords.Num() );
+	for( INT b=0; b<NumSkinBones; b++ )
+	{
+		const FCoords& C = BoneCoords(b);
+		INT First = BoneWeightIdx(b).WeightIndex;
+		for( INT i=First; i<First+BoneWeightIdx(b).Number; i++ )
+		{
+			INT PointIndex = BoneWeights(i).PointIndex;
+			if( PointIndex < LodVerts )
+			{
+				FLOAT Weight = BoneWeights(i).BoneWeight * (1.0f/65535.0f);
+				Verts(PointIndex) += (C.Origin + LocalPoints(i).TransformVectorBy( C )) * Weight;
+			}
+		}
+	}
+
+	// Transform to view space into the caller's buffer.
+	FCoords VertCoords = Coords;
+	VertCoords.Origin += Origin;
+	BYTE* Out = (BYTE*)ResultVerts;
+	for( INT v=0; v<Verts.Num(); v++ )
+	{
+		*(FVector*)Out = Verts(v).TransformPointBy( VertCoords );
+		Out += Size;
+	}
+	LODRequest = LodVerts;
+
+	// Weapon: carry the weapon bone by WeaponAdjust, bring it to view space and express it in the
+	// classic special-face form (origin + X/Y/Z axes) that DrawLodMesh expects in SpecialCoords.
+	if( WeaponBoneIndex > -1 )
+	{
+		FCoords WC = SkelApplyPivot( WeaponAdjust, BoneCoords(WeaponBoneIndex) );
+		FCoords WV;
+		WV.Origin      = (WC.Origin - Origin).TransformPointBy( Coords );
+		FVector XEnd   = (WC.Origin + FVector(1,0,0).TransformVectorBy(WC) - Origin).TransformPointBy( Coords );
+		WV.XAxis       = (XEnd - WV.Origin).SafeNormal();
+		FVector ZEnd   = (WC.Origin + FVector(0,0,1).TransformVectorBy(WC) - Origin).TransformPointBy( Coords );
+		FVector YAxis  = (WV.XAxis ^ (ZEnd - WV.Origin)).SafeNormal();
+		WV.ZAxis       = WV.XAxis ^ YAxis;
+		WV.YAxis       = -YAxis;
+		FCoords CWC    = GMath.UnitCoords;
+		CWC.Origin     = CWC.Origin.TransformPointBy( WV );
+		CWC.XAxis      = CWC.XAxis.TransformVectorBy( WV );
+		CWC.YAxis      = CWC.YAxis.TransformVectorBy( WV );
+		CWC.ZAxis      = CWC.ZAxis.TransformVectorBy( WV );
+		ClassicWeaponCoords = CWC;
+	}
+
+	Item->Unlock();
 	unguard;
 }
 
