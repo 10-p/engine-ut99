@@ -30,6 +30,25 @@ class UTcpipConnection;
 // Variables.
 UBOOL GInitialized;
 
+// v436: the address of a peer whose connection was just destroyed, kept until Time (appSeconds) so that
+// the peer's trailing packets are dropped instead of opening a new connection. UTcpipConnection::Destroy
+// adds one for 5 seconds; UTcpNetDriver::TickDispatch expires and matches them.
+struct FRecentlyClosed
+{
+	DOUBLE  Time;
+	FString Address;
+	FRecentlyClosed()
+	:	Time( 0.0 )
+	{}
+	FRecentlyClosed( DOUBLE InTime, const FString& InAddress )
+	:	Time( InTime ), Address( InAddress )
+	{}
+	friend FArchive& operator<<( FArchive& Ar, FRecentlyClosed& R )
+	{
+		return Ar << R.Time << R.Address;
+	}
+};
+
 /*-----------------------------------------------------------------------------
 	UTcpipConnection.
 -----------------------------------------------------------------------------*/
@@ -88,6 +107,9 @@ class DLL_EXPORT_CLASS UTcpipConnection : public UNetConnection
 
 		unguard;
 	}
+
+	// UObject interface.
+	void Destroy();
 
 	// UNetConnection interface.
 	void LowLevelSend( void* Data, INT Count )
@@ -165,10 +187,20 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 	// Variables.
 	sockaddr_in	LocalAddr;
 	SOCKET		Socket;
+	TArray<FRecentlyClosed> RecentlyClosed;	// v436
 
 	// Constructor.
 	UTcpNetDriver()
 	{}
+
+	// UObject interface.
+	void Serialize( FArchive& Ar )
+	{
+		guard(UTcpNetDriver::Serialize);
+		Super::Serialize( Ar );
+		Ar << RecentlyClosed;
+		unguard;
+	}
 
 	// UNetDriver interface.
 	UBOOL InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, FString& Error )
@@ -246,7 +278,7 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 				if( IpMatches( ((UTcpipConnection*)ClientConnections(i))->RemoteAddr, FromAddr ) )
 					Connection = (UTcpipConnection*)ClientConnections(i);
 
-			if( !Connection && Notify->NotifyAcceptingConnection()==ACCEPTC_Accept )
+			if( !Connection && !RecentlyClosedPeer(FromAddr) && Notify->NotifyAcceptingConnection()==ACCEPTC_Accept )
 			{
 				Connection = new UTcpipConnection( Socket, this, FromAddr, USOCK_Open, 0, FURL() );
 				Connection->URL.Host = IpString(FromAddr.sin_addr);
@@ -293,8 +325,9 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 				if( IpMatches( ((UTcpipConnection*)ClientConnections(i))->RemoteAddr, FromAddr ) )
 					Connection = (UTcpipConnection*)ClientConnections(i);
 
-			// If we didn't find a client connection, maybe create a new one.
-			if( !Connection && Notify->NotifyAcceptingConnection()==ACCEPTC_Accept )
+			// If we didn't find a client connection, maybe create a new one
+			// (v436: unless the packet is a straggler from a connection that just closed).
+			if( !Connection && !RecentlyClosedPeer(FromAddr) && Notify->NotifyAcceptingConnection()==ACCEPTC_Accept )
 			{
 				Connection = new UTcpipConnection( Socket, this, FromAddr, USOCK_Open, 0, FURL() );
 				Connection->URL.Host = IpString(FromAddr.sin_addr);
@@ -401,8 +434,37 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 		unguard;
 	}
 	UTcpipConnection* GetServerConnection() {return (UTcpipConnection*)ServerConnection;}
+
+	// v436: expire old RecentlyClosed entries; return whether FromAddr belongs to one that is still live.
+	UBOOL RecentlyClosedPeer( sockaddr_in& FromAddr )
+	{
+		for( INT i=RecentlyClosed.Num()-1; i>=0; i-- )
+		{
+			if( appSeconds() > RecentlyClosed(i).Time )
+				RecentlyClosed.Remove( i );
+			else if( RecentlyClosed(i).Address == IpString(FromAddr.sin_addr,ntohs(FromAddr.sin_port)) )
+			{
+				debugf( NAME_DevNet, TEXT("Recovered from extra data received after socket close: %s"), *RecentlyClosed(i).Address );
+				return 1;
+			}
+		}
+		return 0;
+	}
 };
 IMPLEMENT_CLASS(UTcpNetDriver);
+
+//
+// v436: remember the peer, so that TickDispatch drops its packets for the next 5 seconds.
+//
+void UTcpipConnection::Destroy()
+{
+	guard(UTcpipConnection::Destroy);
+	UTcpNetDriver* TcpDriver = Cast<UTcpNetDriver>( Driver );
+	if( TcpDriver )
+		new(TcpDriver->RecentlyClosed)FRecentlyClosed( appSeconds() + 5.0f, LowLevelGetRemoteAddress() );
+	Super::Destroy();
+	unguard;
+}
 
 /*-----------------------------------------------------------------------------
 	The End.
