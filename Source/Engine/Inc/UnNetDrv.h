@@ -54,6 +54,10 @@ class ENGINE_API UNetDriver : public USubsystem
 	UProperty*					RoleProperty;
 	UProperty*					RemoteRoleProperty;
 	INT							SendCycles, RecvCycles;
+	// v436-compat port: the download system's two config properties (436 UNetDriver::StaticConstructor
+	// registers them last, after AllowDownloads, in the "Client" category).
+	INT							MaxDownloadSize;
+	TArray<FString>				DownloadManagers;
 
 	// Constructors.
 	UNetDriver();
