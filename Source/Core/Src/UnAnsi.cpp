@@ -146,6 +146,19 @@ CORE_API FLOAT appFrand()
 {
 	return rand() / (FLOAT)RAND_MAX;
 }
+// v436-compat port: 436 Core's appRandRange pair. The FLOAT one is Min + (Max-Min)*rand()/RAND_MAX;
+// the INT one returns Min + rand()%(Max-Min), i.e. [Min,Max), and Min for an empty range.
+CORE_API FLOAT appRandRange( FLOAT Min, FLOAT Max )
+{
+	return Min + (Max - Min) * appFrand();
+}
+CORE_API INT appRandRange( INT Min, INT Max )
+{
+	INT Range = Max - Min;
+	if( Range <= 0 )
+		return Min;
+	return Min + appRand() % Range;
+}
 
 #if !DEFINED_appFloor
 CORE_API INT appFloor( FLOAT Value )
