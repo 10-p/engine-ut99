@@ -1952,13 +1952,10 @@ void URender::OccludeBsp( FSceneNode* Frame )
 	TempDrawList		= new(GMem)FBspDrawList;
 	AllPolyDrawLists    = new(GMem,MEM_Zeroed,Model->Surfs.Num())FBspDrawList*;
 	Origin				= Frame->Coords.Origin;
-#if defined(LEGEND) //LEGEND
 	// initialize the PlayerPawn Render Control Interface (RCI)
+	// v436-compat port: v436 enables the RCI here (it was Legend's, compiled out under LEGEND).
 	APlayerPawn* Player = Viewport->Actor->IsA( APlayerPawn::StaticClass() ) ? Viewport->Actor : NULL;
 	iViewZone			= Player ? Player->GetViewZone( Frame->ZoneNumber, Model ) : Frame->ZoneNumber;
-#else
-	iViewZone			= Frame->ZoneNumber;
-#endif
 	ViewZoneMask		= iViewZone ? ~0 : 0;
 	NumActiveZones      = 1;
 	ActiveZones[0]      = iViewZone;
@@ -2139,13 +2136,12 @@ void URender::OccludeBsp( FSceneNode* Frame )
 				if( (PolyFlags & PF_Portal) && iViewZone==0 )
 					goto NextCoplanar;
 
-#if defined(LEGEND) //LEGEND
 				// check with PlayerPawn rendering-control interface (RCI) regarding visisble polys
+				// v436-compat port: enabled in v436 (Legend's, compiled out under LEGEND).
 				if( Player && !Player->IsSurfVisible( Node, Node->iZone[IsFront], Poly ) )
 				{
 					goto NextCoplanar;
 				}
-#endif
 
 				// Get zones.
 				iZone         = Node->iZone[IsFront  ] & ViewZoneMask;
