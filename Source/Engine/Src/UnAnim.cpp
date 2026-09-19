@@ -21,6 +21,42 @@ IMPLEMENT_CLASS(UAnimation);
 // import Engine.SkeletalMesh can load. Full skeletal rendering is a non-goal (see UnMesh.h).
 IMPLEMENT_CLASS(USkeletalMesh);
 
+//
+// v436-compat port: USkeletalMesh's constructor. As in v436, the weapon adjustment starts as the
+// identity; everything else starts zeroed. A loaded mesh then reads WeaponAdjust from its package.
+//
+USkeletalMesh::USkeletalMesh()
+{
+	guard(USkeletalMesh::USkeletalMesh);
+	WeaponAdjust = GMath.UnitCoords;
+	unguard;
+}
+
+//
+// v436-compat port: as ULodMesh::SetScale, but a skeletal mesh gauges LOD on 1/25.6 of its
+// bounding-sphere radius instead of 1/128 (retail v436 constant 0.0390625). Called by the editor.
+//
+void USkeletalMesh::SetScale( FVector NewScale )
+{
+	guard(USkeletalMesh::SetScale);
+	Scale = NewScale;
+	MeshScaleMax = (1.f/25.6f) * BoundingSphere.W * Max(Abs(Scale.X), Max(Abs(Scale.Y), Abs(Scale.Z)));
+	unguardobj;
+}
+
+//
+// v436-compat port: reverse the winding of every face (swap each face's first two wedges), as the
+// retail v436 USkeletalMesh::FlipFaces does. Editor-only; nothing in the engine calls it at run time.
+//
+void USkeletalMesh::FlipFaces()
+{
+	guard(USkeletalMesh::FlipFaces);
+	for( INT i=0; i<Faces.Num(); i++ )
+		Exchange( Faces(i).iWedge[0], Faces(i).iWedge[1] );
+	debugf( TEXT("Flipping all faces for model %s"), GetName() );
+	unguardobj;
+}
+
 void UAnimation::Serialize( FArchive& Ar )
 {
 	guard(UAnimation::Serialize);
