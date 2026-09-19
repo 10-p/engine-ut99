@@ -24,6 +24,8 @@ class UPendingLevel : public ULevelBase
 	UBOOL		LonePlayer;
 	INT			FilesNeeded;
 	FString		Error;
+	FString		FailCode;		// v436-compat port: server's FAILCODE, handed to the console by UGameEngine::Tick.
+	FString		FailURL;		// v436-compat port: the URL that failed (PASSWORD= options removed).
 
 	// Constructors.
 	UPendingLevel( UEngine* InEngine, const FURL& InURL );
