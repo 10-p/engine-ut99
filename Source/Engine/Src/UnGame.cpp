@@ -337,6 +337,23 @@ static void CloseServerConnection( ULevelBase* Level )
 }
 
 //
+// v436-compat port: "SET <Class> ..." naming an Actor class that is not a GameInfo.
+//
+static UBOOL IsClientSetBlocked( const TCHAR* Cmd )
+{
+	guard(IsClientSetBlocked);
+	TCHAR ClassName[256];
+	UClass* Class;
+	return
+	(	ParseCommand( &Cmd, TEXT("SET") )
+	&&	ParseToken( Cmd, ClassName, ARRAY_COUNT(ClassName), 1 )
+	&&	(Class=FindObject<UClass>( ANY_PACKAGE, ClassName ))!=NULL
+	&&	Class->IsChildOf( AActor::StaticClass() )
+	&&	!Class->IsChildOf( AGameInfo::StaticClass() ) );
+	unguard;
+}
+
+//
 // This always going to be the last exec handler in the chain. It
 // handles passing the command to all other global handlers.
 //
@@ -468,6 +485,12 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	else if( GLevel && GLevel->GetLevelInfo()->Game && GLevel->GetLevelInfo()->Game->ScriptConsoleExec(Cmd,Ar,NULL) )
 	{
 		return 1;
+	}
+	else if( GLevel && GLevel->GetLevelInfo()->NetMode==NM_Client && IsClientSetBlocked(Cmd) )
+	{
+		// v436-compat port: a network client may not SET properties of Actor classes (GameInfo
+		// excepted); 436 refuses the command here, before UEngine/UObject::StaticExec see it.
+		return 0;
 	}
 	else if( UEngine::Exec( Cmd, Ar ) )
 	{
