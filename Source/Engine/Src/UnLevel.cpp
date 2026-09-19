@@ -663,9 +663,10 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		}
 		else if( ParseCommand(&Text,TEXT("NETSPEED")) )
 		{
+			// v436-compat port: 436 ignores requests below 2000 (v400: below 500) and caps at MaxClientRate.
 			INT Rate = appAtoi(Text);
-			if( Rate>=500 )
-				Connection->CurrentNetSpeed = Clamp<INT>( Rate, 500, NetDriver->MaxClientRate );
+			if( Rate>=2000 )
+				Connection->CurrentNetSpeed = Min<INT>( Rate, NetDriver->MaxClientRate );
 			debugf( TEXT("Client netspeed is %i"), Connection->CurrentNetSpeed );
 		}
 		else if( ParseCommand(&Text,TEXT("HAVE")) )
