@@ -490,6 +490,18 @@ class ENGINE_API UFont : public UObject
 
 	// UObject interface.
 	void Serialize( FArchive& Ar );
+
+	// UFont interface.
+	// v436-compat port: the glyph a character is drawn and measured with (436 Engine.dll
+	// UFont::RemapChar): the character itself, or for a remapped font its CharRemap entry, and a
+	// space when it has none. 16-bit result, as a remapped glyph index can exceed an 8-bit TCHAR.
+	_WORD RemapChar( TCHAR Ch )
+	{
+		if( !IsRemapped )
+			return (TCHARU)Ch;
+		_WORD* P = CharRemap.Find( (TCHARU)Ch );
+		return P ? *P : 32;
+	}
 };
 
 /*----------------------------------------------------------------------------

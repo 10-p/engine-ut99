@@ -40,7 +40,7 @@ static inline INT DrawString
 
 	for( INT i=0; Text[i]; i++ )
 	{
-		INT Ch = (TCHARU)Text[i];
+		INT Ch = Font->RemapChar(Text[i]); // v436-compat port: remapped glyph.
 
 		INT NewPage = Ch / Font->CharactersPerPage;
 		if( NewPage<Font->Pages.Num() && Font->Pages(NewPage).Texture )
@@ -83,7 +83,7 @@ static inline void GetCharSize( UFont* Font, TCHAR InCh, INT& Width, INT& Height
 	guardSlow(GetCharSize);
 	Width = 0;
 	Height = 0;
-	INT Ch    = (TCHARU)InCh;
+	INT Ch    = Font->RemapChar(InCh); // v436-compat port: remapped glyph.
 	INT Page  = Ch / Font->CharactersPerPage;
 	INT Index = Ch - Page * Font->CharactersPerPage;
 	if( Page<Font->Pages.Num() && Index<Font->Pages(Page).Characters.Num() )
