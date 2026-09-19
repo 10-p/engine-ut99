@@ -114,25 +114,26 @@ UBOOL ENGINE_API GetFROTATOR
 	FLOAT	Temp=0.0;
 	int 	N = 0;
 
+	// v436-compat port: components are rounded, not truncated (436 GetFROTATOR).
 	// Old format.
-	if( Parse(Stream,TEXT("PITCH="),Temp) ) {Rotation.Pitch = (INT) (Temp * ScaleFactor); N++;}
-	if( Parse(Stream,TEXT("YAW="),  Temp) ) {Rotation.Yaw   = (INT) (Temp * ScaleFactor); N++;}
-	if( Parse(Stream,TEXT("ROLL="), Temp) ) {Rotation.Roll  = (INT) (Temp * ScaleFactor); N++;}
+	if( Parse(Stream,TEXT("PITCH="),Temp) ) {Rotation.Pitch = appRound(Temp * ScaleFactor); N++;}
+	if( Parse(Stream,TEXT("YAW="),  Temp) ) {Rotation.Yaw   = appRound(Temp * ScaleFactor); N++;}
+	if( Parse(Stream,TEXT("ROLL="), Temp) ) {Rotation.Roll  = appRound(Temp * ScaleFactor); N++;}
 
 	// New format.
 	if( N == 0 )
 	{
-		Rotation.Pitch = (INT) (appAtof(Stream) * ScaleFactor);
+		Rotation.Pitch = appRound(appAtof(Stream) * ScaleFactor);
 		Stream = appStrchr(Stream,',');
 		if( !Stream )
 			return 0;
 
-		Rotation.Yaw = (INT) (appAtof(++Stream) * ScaleFactor);
+		Rotation.Yaw = appRound(appAtof(++Stream) * ScaleFactor);
 		Stream = appStrchr(Stream,',');
 		if( !Stream )
 			return 0;
 
-		Rotation.Roll = (INT) (appAtof(++Stream) * ScaleFactor);
+		Rotation.Roll = appRound(appAtof(++Stream) * ScaleFactor);
 		return 1;
 	}
 	return 0;
