@@ -1170,13 +1170,19 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	unguard;
 
 	// Rearrange actors: static first, then others.
+	// v436-compat port: 436 puts the static always-relevant actors after the other static ones and
+	// records where they start, so ULevel::ServerTickClient never has to look at the rest.
 	guard(Rearrange);
 	TArray<AActor*> Actors;
 	Actors.AddItem(GLevel->Actors(0));
 	Actors.AddItem(GLevel->Actors(1));
 	INT i;
 	for( i=2; i<GLevel->Actors.Num(); i++ )
-		if( GLevel->Actors(i) && GLevel->Actors(i)->bStatic )
+		if( GLevel->Actors(i) && GLevel->Actors(i)->bStatic && !GLevel->Actors(i)->bAlwaysRelevant )
+			Actors.AddItem( GLevel->Actors(i) );
+	GLevel->iFirstNetRelevantActor=Actors.Num();
+	for( i=2; i<GLevel->Actors.Num(); i++ )
+		if( GLevel->Actors(i) && GLevel->Actors(i)->bStatic && GLevel->Actors(i)->bAlwaysRelevant )
 			Actors.AddItem( GLevel->Actors(i) );
 	GLevel->iFirstDynamicActor=Actors.Num();
 	for( i=2; i<GLevel->Actors.Num(); i++ )
