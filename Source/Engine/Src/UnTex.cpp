@@ -193,11 +193,8 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 	guard(UTexture::Tick);
 
 	// Prime the texture.
-	while( PrimeCurrent < PrimeCount )
-	{
-		PrimeCurrent++;
-		ConstantTimeTick();
-	}
+	// v436-compat port: through the virtual Prime() (436 calls it first thing in Tick).
+	Prime();
 
 	// Update.
 	if( MaxFrameRate == 0.0 )
@@ -230,6 +227,19 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 		}
 	}
 	unguardobj;
+}
+
+//
+// Prime the texture: run the algorithmic update PrimeCount times before its first use.
+// v436-compat port: split out of Tick as a virtual in 436 (Engine.dll UTexture::Prime).
+//
+void UTexture::Prime()
+{
+	while( PrimeCurrent < PrimeCount )
+	{
+		PrimeCurrent++;
+		ConstantTimeTick();
+	}
 }
 
 //
