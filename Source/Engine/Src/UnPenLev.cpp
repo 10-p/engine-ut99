@@ -94,37 +94,37 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		INT RemoteMinVer=0, RemoteVer=0;
 		Parse( Text, TEXT("MINVER="), RemoteMinVer );
 		Parse( Text, TEXT("VER="),    RemoteVer    );
+		// v436-compat port: 436 fails the pending level with a localized reason (UGameEngine::Tick
+		// shows it and cancels) instead of only setting a progress message.
 		if( ENGINE_VERSION < RemoteMinVer )
 		{
 			// Upgrade message.
-			Engine->SetProgress( TEXT(""), TEXT(""), -1.0 );
+			Error = LocalizeError("ClientOutdated");
 		}
 		else
 		{
 			// Downgrade message.
-			Engine->SetProgress( LocalizeError("ConnectionFailed"), LocalizeError("ServerOutdated"), 6.0 );//!!localize
+			Error = LocalizeError("ServerOutdated");
 		}
 	}
 	else if( ParseCommand(&Text,TEXT("FAILURE")) )
 	{
 		// Report problem to user.
-		Engine->SetProgress( TEXT("Rejected By Server"), Text, 10.0 );
+		// v436-compat port: fail the pending level (v400: SetProgress("Rejected By Server",Text,10)).
+		Error = LocalizeError("RejectedByServer");
 	}
 	else if( ParseCommand(&Text,TEXT("FAILCODE")) )
 	{
-		// Notify console.
-		if( Engine->Client &&
-			Engine->Client->Viewports(0) &&
-			Engine->Client->Viewports(0)->Console )
-		{
-			FURL NewURL(URL);
+		// v436-compat port: remember the code and URL; UGameEngine::Tick notifies the console when the
+		// pending level fails (v400 called Console->eventConnectFailure from here).
+		FURL NewURL(URL);
 
-			for( INT i=NewURL.Op.Num()-1; i>=0; i-- )
-				if( NewURL.Op(i).Left(9).Caps() ==TEXT("PASSWORD=") )
-					NewURL.Op.Remove( i );
+		for( INT i=NewURL.Op.Num()-1; i>=0; i-- )
+			if( NewURL.Op(i).Left(9).Caps() ==TEXT("PASSWORD=") )
+				NewURL.Op.Remove( i );
 
-			Engine->Client->Viewports(0)->Console->eventConnectFailure( Text, *NewURL.String() );
-		}
+		FailCode = Text;
+		FailURL  = NewURL.String();
 	}
 	else if( ParseCommand( &Text, TEXT("USES") ) )
 	{

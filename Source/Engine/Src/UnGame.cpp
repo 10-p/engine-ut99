@@ -1713,6 +1713,10 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 			guard(PendingFailed);
 			SetProgress( LocalizeError("ConnectionFailed"), *GPendingLevel->Error, 4.0 );
 			debugf( NAME_Log, LocalizeError("Pending"), *GPendingLevel->URL.String(), *GPendingLevel->Error );
+			// v436-compat port: the pending level now only records the server's FAILCODE; tell the
+			// console here (e.g. to prompt for a password), as 436's UGameEngine::Tick does.
+			if( GPendingLevel->FailCode!=TEXT("") && Client && Client->Viewports.Num() && Client->Viewports(0) && Client->Viewports(0)->Console )
+				Client->Viewports(0)->Console->eventConnectFailure( GPendingLevel->FailCode, GPendingLevel->FailURL );
 			delete GPendingLevel;
 			GPendingLevel = NULL;
 			unguard;
