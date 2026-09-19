@@ -686,7 +686,8 @@ void ULevel::TickNetServer( FLOAT DeltaSeconds )
 	unclock(NetTickCycles);
 
 	// Log message.
-	if( (INT)(TimeSeconds-DeltaSeconds)!=(INT)(TimeSeconds) )
+	// v436-compat port: 436 rounds both times (fistp), so the title updates on the half second.
+	if( appRound(TimeSeconds-DeltaSeconds)!=appRound(TimeSeconds) )
 		debugf( NAME_Title, LocalizeProgress("RunningNet"), *GetLevelInfo()->Title, *URL.Map, NetDriver->ClientConnections.Num() );
 
 	// Stats.
