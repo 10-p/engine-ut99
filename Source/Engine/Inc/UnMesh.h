@@ -669,11 +669,15 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	UBOOL		bBoundComputed;
 
 	// UObject interface.
-	USkeletalMesh(){}
+	USkeletalMesh();
 	void Serialize( FArchive& Ar );
 
 	// UPrimitive interface.
 	FBox GetRenderBoundingBox( const AActor* Owner, UBOOL Exact );
+
+	// UMesh interface (v436-compat port: USkeletalMesh's overrides in the retail v436 DLL).
+	void SetScale( FVector NewScale );
+	virtual void FlipFaces();
 
 	// v436-compat: render the reference (bind) pose. v400 has no skeletal skinning; without this
 	// override a skeletal mesh falls through to ULodMesh::GetFrame, which reads the empty vertex-mesh
