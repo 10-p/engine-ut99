@@ -826,7 +826,7 @@ void ULevel::Tick( ELevelTick TickType, FLOAT DeltaSeconds )
 	//Keep actor time profile FIXME TEMP!!!
 	Info->AvgAITime = 0.95 * GetLevelInfo()->AvgAITime + 0.05 * 1000 * GSecondsPerCycle * ActorTickCycles;
 	FLOAT ratio = GSecondsPerCycle * ActorTickCycles/DeltaSeconds;
-	INT offset = (INT)(10 * ratio);
+	INT offset = appRound(10 * ratio); // v436-compat port: rounded (436 ULevel::Tick).
 	if ( offset > 7 )
 		offset = 7;
 	else if ( offset < 0 )
