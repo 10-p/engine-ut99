@@ -123,7 +123,8 @@ void UConsole::PreRender( FSceneNode* Frame )
 	if( ConsolePos > 0.0 )
 	{
 		// Show console.
-		ConsoleLines = (INT) Min(ConsolePos * (FLOAT)Frame->Y, (FLOAT)Frame->Y);
+		// v436-compat port: console/border sizes are rounded, not truncated (436 UConsole::PreRender).
+		ConsoleLines = appRound(Min(ConsolePos * (FLOAT)Frame->Y, (FLOAT)Frame->Y));
 	}
 
 	if( BorderSize>=2 )
@@ -131,11 +132,11 @@ void UConsole::PreRender( FSceneNode* Frame )
 		// Encroach on screen area.
 		FLOAT Fraction = (FLOAT)(BorderSize-1) / (FLOAT)(MAX_BORDER-1);
 
-		BorderLines = (int)Min((FLOAT)Frame->Y * 0.25f * Fraction,(FLOAT)Frame->Y);
+		BorderLines = appRound(Min((FLOAT)Frame->Y * 0.25f * Fraction,(FLOAT)Frame->Y));
 		BorderLines = ::Max<INT>(0,BorderLines);
 		Frame->Y -= 2 * BorderLines;
 
-		BorderPixels = (int)Min((FLOAT)Frame->X * 0.25f * Fraction,(FLOAT)Frame->X) & ~3;
+		BorderPixels = appRound(Min((FLOAT)Frame->X * 0.25f * Fraction,(FLOAT)Frame->X)) & ~3;
 		Frame->X -= 2 * BorderPixels;
 	}
 
