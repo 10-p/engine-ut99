@@ -388,9 +388,13 @@ UBOOL ULevel::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		FString Temp;
 		if( ParseToken( Cmd, Temp, 0 ) )
 		{
+			// v436-compat port: take ".dem" (any case) out of the name before it is parsed as a
+			// URL, then always add it to the map (436 ULevel::Exec DEMOPLAY).
+			INT DemoPos = Temp.Caps().InStr( TEXT(".DEM") );
+			if( DemoPos != -1 )
+				Temp = Temp.Left(DemoPos) + Temp.Mid(DemoPos+4);
 			FURL URL(NULL, *Temp, TRAVEL_Absolute);
-			if( URL.Map.Right(4)!=TEXT(".dem") )
-				URL.Map += TEXT(".dem");
+			URL.Map += TEXT(".dem");
 			debugf( TEXT("Attempting to play demo %s"), *URL.Map );
 			UGameEngine* GameEngine = CastChecked<UGameEngine>( Engine );
 			if( GameEngine->GPendingLevel )
