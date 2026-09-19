@@ -2452,8 +2452,8 @@ public:
         Parms.bItems=bItems;
         ProcessEvent(FindFunctionChecked(ENGINE_ServerTravel),&Parms);
     }
-    DECLARE_CLASS(ALevelInfo,AZoneInfo,0)
-    NO_DEFAULT_CONSTRUCTOR(ALevelInfo)
+    DECLARE_CLASS(ALevelInfo,AZoneInfo,0|CLASS_NativeReplication)
+    #include "ALevelInfo.h"   // v436-compat port: nativereplication in v436 (was NO_DEFAULT_CONSTRUCTOR)
 };
 
 
@@ -3050,7 +3050,8 @@ public:
 
 // v436-compat port: APickup/AAmmo are native (nativereplication) script classes in v436 Engine
 // (Pickup.uc/Ammo.uc) absent from stock v400; without them UClass::Bind aborts. Layout copied
-// from the v432 reference (== v436 var order). No native functions.
+// from the v432 reference (== v436 var order). No script natives; their nativereplication
+// GetOptimizedRepList lives in APickup.h/AAmmo.h.
 class ENGINE_API APickup : public AInventory
 {
 public:
@@ -3061,7 +3062,7 @@ public:
     FStringNoInit ExpireMessage GCC_PACK(4);
     BITFIELD bAutoActivate:1 GCC_PACK(4);
     DECLARE_CLASS(APickup,AInventory,0|CLASS_NativeReplication)
-    NO_DEFAULT_CONSTRUCTOR(APickup)
+    #include "APickup.h"
 };
 
 class ENGINE_API AAmmo : public APickup
@@ -3073,7 +3074,7 @@ public:
     BYTE UsedInWeaponSlot[10];
     class AAmmo* PAmmo;
     DECLARE_CLASS(AAmmo,APickup,0|CLASS_NativeReplication)
-    NO_DEFAULT_CONSTRUCTOR(AAmmo)
+    #include "AAmmo.h"
 };
 
 
@@ -3142,8 +3143,8 @@ public:
     class UTexture* MFTexture;
     class UTexture* MuzzleFlare;
     FLOAT FlareOffset;
-    DECLARE_CLASS(AWeapon,AInventory,0)
-    NO_DEFAULT_CONSTRUCTOR(AWeapon)
+    DECLARE_CLASS(AWeapon,AInventory,0|CLASS_NativeReplication)
+    #include "AWeapon.h"   // v436-compat port: nativereplication in v436 (was NO_DEFAULT_CONSTRUCTOR)
 };
 
 

@@ -457,6 +457,88 @@ UBOOL AInventory::ShouldDoScriptReplication()
 	return !bAlwaysRelevant || bNetInitial;
 }
 
+// v436-compat port: AWeapon, APickup, AAmmo and ALevelInfo are `nativereplication` in the v436
+// Engine.u, which tells the engine to skip their script replication conditions and send only what
+// C++ lists. Without these overrides they inherited their parent's list, so AmmoType, AmmoAmount,
+// NumCopies, Pauser, TimeDilation, ... never reached a client. Property sets and conditions are
+// the retail v436 Engine.dll's.
+INT* AWeapon::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
+{
+	guard(AWeapon::GetOptimizedRepList);
+	if ( bAlwaysRelevant && !bNetInitial ) // only inventory pickups should be like this
+	{
+		DOREP(Actor,bHidden);
+		return Ptr;
+	}
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	{
+		if( bNetOwner && Role==ROLE_Authority )
+		{
+			DOREP(Weapon,AmmoType);
+			DOREP(Weapon,bLockedOn);
+			DOREP(Weapon,bHideWeapon);
+		}
+	}
+	return Ptr;
+	unguard;
+}
+INT* APickup::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
+{
+	guard(APickup::GetOptimizedRepList);
+	if ( bAlwaysRelevant && !bNetInitial ) // only inventory pickups should be like this
+	{
+		DOREP(Actor,bHidden);
+		return Ptr;
+	}
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	{
+		if( bNetOwner && Role==ROLE_Authority )
+		{
+			DOREP(Pickup,NumCopies);
+		}
+	}
+	return Ptr;
+	unguard;
+}
+INT* AAmmo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
+{
+	guard(AAmmo::GetOptimizedRepList);
+	if ( bAlwaysRelevant && !bNetInitial ) // only inventory pickups should be like this
+	{
+		DOREP(Actor,bHidden);
+		return Ptr;
+	}
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	{
+		if( bNetOwner && Role==ROLE_Authority )
+		{
+			DOREP(Ammo,AmmoAmount);
+		}
+	}
+	return Ptr;
+	unguard;
+}
+INT* ALevelInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
+{
+	guard(ALevelInfo::GetOptimizedRepList);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	{
+		if( Role==ROLE_Authority )
+		{
+			DOREP(LevelInfo,Pauser);
+			DOREP(LevelInfo,TimeDilation);
+			DOREP(LevelInfo,bNoCheating);
+			DOREP(LevelInfo,bAllowFOV);
+		}
+	}
+	return Ptr;
+	unguard;
+}
+
 /*-----------------------------------------------------------------------------
 	AActor networking implementation.
 -----------------------------------------------------------------------------*/
