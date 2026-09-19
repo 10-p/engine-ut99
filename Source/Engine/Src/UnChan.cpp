@@ -703,6 +703,7 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 
 	// Initialize client if first time through.
 	FClassNetCache* ClassCache = NULL;
+	UBOOL bJustSpawned = 0; // v436-compat port: this bunch spawned the actor (PostNetBeginPlay below).
 	if( Actor==NULL )
 	{
 		guard(InitialClientActor);
@@ -732,6 +733,7 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 			FVector Location;
 			Bunch << Location;
 			InActor = Level->SpawnActor( ActorClass, NAME_None, NULL, NULL, Location, FRotator(0,0,0), NULL, 1, 1 );
+			bJustSpawned = 1;
 			if( !InActor )
 			{
 				GWarn->Logf(TEXT("Actor not spawned for new channel"));
@@ -847,6 +849,14 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 
 		// Process important changed properties.
 		Actor->PostNetReceive();
+
+		// v436-compat port: an actor this channel spawned gets PostNetBeginPlay once, after its
+		// first batch of replicated properties has arrived.
+		if( bJustSpawned )
+		{
+			Actor->eventPostNetBeginPlay();
+			bJustSpawned = 0;
+		}
 
 		// Handle function calls.
 		if( FieldCache && Cast<UFunction>(FieldCache->Field) )

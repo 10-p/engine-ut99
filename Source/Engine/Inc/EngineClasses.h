@@ -73,6 +73,7 @@ AUTOGENERATE_NAME(TakeDamage)
 AUTOGENERATE_NAME(BeginPlay)
 AUTOGENERATE_NAME(PreBeginPlay)
 AUTOGENERATE_NAME(PostBeginPlay)
+AUTOGENERATE_NAME(PostNetBeginPlay)
 AUTOGENERATE_NAME(TravelPreAccept)
 AUTOGENERATE_NAME(TravelPostAccept)
 AUTOGENERATE_NAME(PreRender)
@@ -518,6 +519,9 @@ struct AActor_eventSetInitialState_Parms
 struct AActor_eventPostBeginPlay_Parms
 {
 };
+struct AActor_eventPostNetBeginPlay_Parms
+{
+};
 struct AActor_eventBroadcastLocalizedMessage_Parms
 {
     class UClass* Message;
@@ -950,6 +954,11 @@ public:
     void eventPostBeginPlay()
     {
         ProcessEvent(FindFunctionChecked(ENGINE_PostBeginPlay),NULL);
+    }
+    // v436-compat port: v436 Actor.uc event, sent by UActorChannel::ReceivedBunch.
+    void eventPostNetBeginPlay()
+    {
+        ProcessEvent(FindFunctionChecked(ENGINE_PostNetBeginPlay),NULL);
     }
     void eventBroadcastLocalizedMessage(class UClass* Message, INT Switch, class APlayerReplicationInfo* RelatedPRI_1, class APlayerReplicationInfo* RelatedPRI_2, class UObject* OptionalObject)
     {
