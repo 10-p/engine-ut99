@@ -237,9 +237,7 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		}
 
 		// Send first download request.
-		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
-			if( Connection->PackageMap->List(i).PackageFlags & PKG_Need )
-				{Connection->ReceiveFile( i ); break;}
+		ReceiveNextFile( Connection );
 
 		// We have successfully connected.
 		Success = 1;
@@ -259,6 +257,15 @@ void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT Packa
 	FPackageInfo& Info = Connection->PackageMap->List(PackageIndex);
 	if( *InError )
 	{
+		// v436-compat port: if another download manager was offered, drop the one that failed and
+		// retry the file with the next one; only the last failure becomes the connection's error.
+		if( Connection->DownloadInfo.Num() > 1 )
+		{
+			Connection->DownloadInfo.Remove( 0 );
+			ReceiveNextFile( Connection );
+			return;
+		}
+
 		// If transfer failed, so propagate error.
 		if( Error==TEXT("") )
 			Error = FString::Printf( LocalizeError("DownloadFailed"), Info.Parent->GetName(), InError );
@@ -271,11 +278,42 @@ void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT Packa
 		Info.PackageFlags &= ~PKG_Need;
 		FilesNeeded--;
 
+		// v436-compat port: a file the user skipped is dropped from the package map entirely, so the
+		// package is not expected on either side.
+		if( Skipped )
+			Connection->PackageMap->List.Remove( PackageIndex );
+
 		// Send next download request.
-		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
-			if( Connection->PackageMap->List(i).PackageFlags & PKG_Need )
-				{Connection->ReceiveFile( i ); break;}
+		ReceiveNextFile( Connection );
 	}
+	unguard;
+}
+//
+// v436-compat port: request the next package the client still needs. When there is none, the
+// download manager has finished its work and is destroyed.
+//
+void UNetPendingLevel::ReceiveNextFile( UNetConnection* Connection )
+{
+	guard(UNetPendingLevel::ReceiveNextFile);
+	for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
+		if( Connection->PackageMap->List(i).PackageFlags & PKG_Need )
+		{
+			Connection->ReceiveFile( i );
+			return;
+		}
+	if( Connection->Download )
+		delete Connection->Download;
+	unguard;
+}
+//
+// v436-compat port: ask the running download to skip its file (only an optional package can be).
+//
+UBOOL UNetPendingLevel::TrySkipFile()
+{
+	guard(UNetPendingLevel::TrySkipFile);
+	if( NetDriver->ServerConnection->Download && NetDriver->ServerConnection->Download->TrySkipFile() )
+		return 1;
+	return 0;
 	unguard;
 }
 UBOOL UNetPendingLevel::NotifySendingFile( UNetConnection* Connection, FGuid Guid )
