@@ -381,7 +381,10 @@ UObject::~UObject()
 
 	// Free execution stack.
 	if( StateFrame )
+	{
 		delete StateFrame;
+		StateFrame = NULL; // v436-compat port: 436 ~UObject clears the pointer.
+	}
 
 	unguard;
 }
