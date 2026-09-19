@@ -153,7 +153,7 @@ class ENGINE_API ULevel : public ULevelBase
 	AActor* FirstDeleted;
 	struct FActorLink* NewlySpawned;
 	UBOOL InTick, Ticked;
-	INT iFirstDynamicActor, NetTag;
+	INT iFirstDynamicActor, iFirstNetRelevantActor, NetTag; // v436-compat port: iFirstNetRelevantActor (see UGameEngine::LoadMap).
 	BYTE ZoneDist[64][64];
 
 	// Temporary stats.
