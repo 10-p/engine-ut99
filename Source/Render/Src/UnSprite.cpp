@@ -785,7 +785,8 @@ static DWORD GetPolyFlags( FSceneNode* Frame, AActor* Owner )
 void URender::DrawActorSprite( FSceneNode* Frame, FDynamicSprite* Sprite )
 {
 	guard(URender::DrawActorSprite);
-	PUSH_HIT(Frame,HActor(Sprite->Actor));
+	// v436-compat port: hits and the editor's selection tint go to the actor's HitActor, if any.
+	PUSH_HIT(Frame,HActor(Sprite->Actor->GetHitActor()));
 	DWORD PolyFlags = GetPolyFlags(Frame,Sprite->Actor);
 
 	// Draw the actor.
@@ -795,7 +796,7 @@ void URender::DrawActorSprite( FSceneNode* Frame, FDynamicSprite* Sprite )
 	{
 		// Sprite.
 		guard(DrawSprite);
-		FPlane    Color     = (GIsEditor && Sprite->Actor->bSelected) ? FPlane(.5,.9,.5,0) : FPlane(1,1,1,0);
+		FPlane    Color     = (GIsEditor && Sprite->Actor->GetHitActor()->bSelected) ? FPlane(.5,.9,.5,0) : FPlane(1,1,1,0);
 		UTexture* Texture   = Sprite->Actor->Texture;
 		FLOAT     DrawScale = Sprite->Actor->DrawScale;
 		UTexture* SavedNext = NULL;
