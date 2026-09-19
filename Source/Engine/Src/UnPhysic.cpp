@@ -43,9 +43,10 @@ void AActor::execAutonomousPhysics( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	// round acceleration to be consistent with replicated acceleration
-	Acceleration.X = 0.1 * int(10 * Acceleration.X);
-	Acceleration.Y = 0.1 * int(10 * Acceleration.Y);
-	Acceleration.Z = 0.1 * int(10 * Acceleration.Z);
+	// v436-compat port: rounded like the replicated vector (appRound), not truncated.
+	Acceleration.X = 0.1f * appRound(10.f * Acceleration.X);
+	Acceleration.Y = 0.1f * appRound(10.f * Acceleration.Y);
+	Acceleration.Z = 0.1f * appRound(10.f * Acceleration.Z);
 
 	// Perform physics.
 	if( Physics!=PHYS_None )
