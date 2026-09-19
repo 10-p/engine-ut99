@@ -55,7 +55,7 @@ class UNetPendingLevel : public UPendingLevel
 	UBOOL NotifyAcceptingChannel( class UChannel* Channel );
 	ULevel* NotifyGetLevel();
 	void NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text );
-	void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error );
+	void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error, UBOOL Skipped );
 	UBOOL NotifySendingFile( UNetConnection* Connection, FGuid Guid );
 
 	// UPendingLevel interface.

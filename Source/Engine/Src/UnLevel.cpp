@@ -755,7 +755,7 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 //
 // Called when a file receive is about to begin.
 //
-void ULevel::NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error )
+void ULevel::NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error, UBOOL Skipped )
 {
 	guard(ULevel::NotifyReceivingFile);
 	appErrorf( TEXT("Level received unexpected file") );
