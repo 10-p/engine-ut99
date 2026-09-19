@@ -473,7 +473,9 @@ void ULevel::TickNetClient( FLOAT DeltaSeconds )
 UBOOL ActorCanSee( AActor* Actor, APlayerPawn* RealViewer, AActor* Viewer, FVector SrcLocation )
 {
 	guardSlow(ActorCanSee);
-	if( Actor->bAlwaysRelevant || Actor->IsOwnedBy(Viewer) || Actor->IsOwnedBy(RealViewer) || Actor==Viewer || Actor==RealViewer )
+	// v436-compat port: 436 also treats whatever the viewer instigated (its projectiles, effects) as
+	// always visible to it.
+	if( Actor->bAlwaysRelevant || Actor->IsOwnedBy(Viewer) || Actor->IsOwnedBy(RealViewer) || Actor==Viewer || Actor==RealViewer || Actor->Instigator==Viewer )
 		return 1;
 	else if( Actor->AmbientSound 
 			&& ((Actor->Location-Viewer->Location).SizeSquared() < 0.3*Actor->WorldSoundRadius()*Actor->WorldSoundRadius()) )
