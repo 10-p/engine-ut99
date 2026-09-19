@@ -133,7 +133,8 @@ FLOAT FSoundData::GetPeriod()
 		INT BitsPerSample = *WaveInfo.pBitsPerSample;
 		INT WaveDataSize = *WaveInfo.pWaveDataSize;
 #endif
-		if (! SPS) SPS = DEFAULT_FREQUENCY;
+		// v436-compat port: no 22050 Hz stand-in for a zero sample rate -- that sound's period
+		// is 0 (436 FSoundData::GetPeriod).
 		INT DurDiv = Channels * BitsPerSample * SPS;
 		if ( DurDiv ) Period = WaveDataSize * 8.f / (FLOAT)DurDiv;
 		//debugf(TEXT("Name %19s pChannels %9i pBitsps %9i pSampPs %9i pWaveDataSize %9i Time %9f"),Owner->GetName(),Channels,BitsPerSample,SPS,WaveDataSize, Period );
