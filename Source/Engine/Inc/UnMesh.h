@@ -349,22 +349,20 @@ class ENGINE_API ULodMesh : public UMesh
 };
 
 /*-----------------------------------------------------------------------------
-	Skeletal mesh / animation serialization structs (v436-compat port).
+	Skeletal mesh / animation structs (v436-compat port).
 
 	v400 predates UE1 skeletal meshes, so the engine has no FQuat and none of the
-	skeletal serialization structs. v436-era mods (Infiltration, NeoCairo, TacticalOps,
-	Onslaught, OldSkool/ONP, ...) ship real USkeletalMesh/UAnimation exports; loading
-	them on the minimal (empty) classes left the archive short and tripped the fatal
-	"Serial size mismatch". We now deserialize the skeletal blob byte-for-byte so those
-	packages load. Skeletal *rendering* stays a non-goal — the data is consumed and kept
-	but the meshes are not skinned/drawn (skeletal actors show no mesh).
+	skeletal structs. v436-era mods (Infiltration, NeoCairo, TacticalOps, Onslaught,
+	OldSkool/ONP, ...) ship real USkeletalMesh/UAnimation exports, which we deserialize
+	byte for byte and animate as the retail v436 engine does.
 
 	Byte format ported from the v432 public headers (Ut99PubSrc/Engine/Inc/UnSkeletalMesh.h)
-	and cross-checked against SurrealEngine's USkeletalMesh::Load / UAnimation::Load. FQuat
-	is represented as FSkelQuat (4 raw floats) since we never do quaternion math on it.
+	and cross-checked against SurrealEngine's USkeletalMesh::Load / UAnimation::Load. v436's
+	FQuat lives in Core; here it is FSkelQuat, carrying exactly the quaternion math that
+	USkeletalMesh::GetFrame uses, ported from the retail v436 Core.dll/Engine.dll.
 -----------------------------------------------------------------------------*/
 
-// A quaternion on disk: 4 floats. (v400 has no FQuat; we only need byte-accurate I/O.)
+// A quaternion: 4 floats, as on disk.
 struct FSkelQuat
 {
 	FLOAT X, Y, Z, W;
@@ -374,61 +372,79 @@ struct FSkelQuat
 	{
 		return Ar << Q.X << Q.Y << Q.Z << Q.W;
 	}
-	// Conjugate (inverse rotation for unit quats).
-	FSkelQuat Conj() const { return FSkelQuat(-X,-Y,-Z,W); }
-	// Hamilton product: (a*b) applies rotation b, then a.
-	FSkelQuat operator*( const FSkelQuat& b ) const
+	// v436 FQuat::Normalize: below a square length of DELTA (0.00001) it becomes (0,0,0.1,0).
+	UBOOL Normalize()
 	{
-		return FSkelQuat(
-			W*b.X + X*b.W + Y*b.Z - Z*b.Y,
-			W*b.Y - X*b.Z + Y*b.W + Z*b.X,
-			W*b.Z + X*b.Y - Y*b.X + Z*b.W,
-			W*b.W - X*b.X - Y*b.Y - Z*b.Z );
+		FLOAT SquareSum = X*X + Y*Y + Z*Z + W*W;
+		if( SquareSum >= 0.00001f )
+		{
+			FLOAT Scale = 1.0f/appSqrt(SquareSum);
+			X *= Scale; Y *= Scale; Z *= Scale; W *= Scale;
+			return 1;
+		}
+		X = 0.0f; Y = 0.0f; Z = 0.1f; W = 0.0f;
+		return 0;
 	}
-	// Rotate a vector by this quaternion (matches CQuat::ToAxis matrix).
-	FVector Rotate( const FVector& v ) const
+	// v436 FQuat::FQuatToFMatrix, as the rows (axes) of an FCoords with the given origin.
+	FCoords ToCoords( const FVector& Origin ) const
 	{
-		FVector u( X, Y, Z );
-		FVector uv  = u ^ v;
-		FVector uuv = u ^ uv;
-		return v + ( uv * W + uuv ) * 2.0f;
-	}
-	void Normalize()
-	{
-		FLOAT m = appSqrt( X*X + Y*Y + Z*Z + W*W );
-		if( m > 0.0001f ) { FLOAT inv = 1.0f/m; X*=inv; Y*=inv; Z*=inv; W*=inv; }
+		FLOAT x2 = X+X, y2 = Y+Y, z2 = Z+Z;
+		FLOAT xx = X*x2, xy = X*y2, xz = X*z2;
+		FLOAT yy = Y*y2, yz = Y*z2, zz = Z*z2;
+		FLOAT wx = W*x2, wy = W*y2, wz = W*z2;
+		return FCoords
+		(
+			Origin,
+			FVector( 1.0f-(yy+zz), xy-wz,        xz+wy        ),
+			FVector( xy+wz,        1.0f-(xx+zz), yz-wx        ),
+			FVector( xz-wy,        yz+wx,        1.0f-(xx+yy) )
+		);
 	}
 };
 
-// Spherical-ish interpolation (normalized lerp along the shorter arc; good enough for playback).
-inline FSkelQuat SkelSlerp( FSkelQuat a, FSkelQuat b, FLOAT t )
+// v436 SlerpQuat (v432 UnMath.h): spherical interpolation, output not normalized. The v432 source
+// tests cos < 0.99999999f, which is 1.0f in float; the v436 DLL compares against 1.0.
+inline FSkelQuat SkelSlerpQuat( const FSkelQuat& Q1, const FSkelQuat& Q2, FLOAT Alpha )
 {
-	FLOAT dot = a.X*b.X + a.Y*b.Y + a.Z*b.Z + a.W*b.W;
-	if( dot < 0.0f ) { b.X=-b.X; b.Y=-b.Y; b.Z=-b.Z; b.W=-b.W; }
-	FSkelQuat r( a.X+(b.X-a.X)*t, a.Y+(b.Y-a.Y)*t, a.Z+(b.Z-a.Z)*t, a.W+(b.W-a.W)*t );
-	r.Normalize();
-	return r;
+	FLOAT CosOm = Q1.X*Q2.X + Q1.Y*Q2.Y + Q1.Z*Q2.Z + Q1.W*Q2.W;
+	if( CosOm < 1.0f )
+	{
+		FLOAT Omega  = acos( CosOm );		// v436 appAcos
+		FLOAT SinInv = 1.f/appSin( Omega );
+		FLOAT Scale0 = appSin( (1.0f - Alpha) * Omega ) * SinInv;
+		FLOAT Scale1 = appSin( Alpha * Omega ) * SinInv;
+		return FSkelQuat
+		(
+			Scale0*Q1.X + Scale1*Q2.X,
+			Scale0*Q1.Y + Scale1*Q2.Y,
+			Scale0*Q1.Z + Scale1*Q2.Z,
+			Scale0*Q1.W + Scale1*Q2.W
+		);
+	}
+	return Q1;
 }
 
-// A rigid coordinate frame (origin + 3 axis ROWS), matching UEViewer's CCoords/CAxis convention.
-// Vector ops (implemented in UnAnim.cpp): TransformVector(v)=R*v (rotate by the frame's quat),
-// UnTransformVector(v)=R^T*v (inverse), and the coord composition UnTransformCoords. Skeletal
-// bone transforms are composed with these to exactly match umodel's bind + animation math.
-struct FSkelCoords
+// v436: flip Q1 onto Q2's hemisphere when that brings it closer (shortest-arc interpolation).
+inline void SkelAlignQuatWith( FSkelQuat& Q1, const FSkelQuat& Q2 )
 {
-	FVector O;			// origin
-	FVector AX, AY, AZ;	// axis rows
-};
+	FLOAT Minus = Square(Q1.X-Q2.X) + Square(Q1.Y-Q2.Y) + Square(Q1.Z-Q2.Z) + Square(Q1.W-Q2.W);
+	FLOAT Plus  = Square(Q1.X+Q2.X) + Square(Q1.Y+Q2.Y) + Square(Q1.Z+Q2.Z) + Square(Q1.W+Q2.W);
+	if( Minus > Plus )
+	{
+		Q1.X = -Q1.X; Q1.Y = -Q1.Y; Q1.Z = -Q1.Z; Q1.W = -Q1.W;
+	}
+}
 
-// One bone's LOCAL pose: the (position, orientation) pair sampled from its animation track, BEFORE
-// the skeleton hierarchy is composed. This is the space animation blending happens in -- blending
-// locals and then composing keeps every bone's transform rigid, which blending composed world frames
-// would not. Stored in the per-actor tween cache; see USkeletalMesh::ComputeSkinnedPose.
-struct FSkelBonePose
+// v436 FCoords::ApplyPivot: A expressed in B's frame (child bone A under parent B).
+inline FCoords SkelApplyPivot( const FCoords& A, const FCoords& B )
 {
-	FVector		Pos;
-	FSkelQuat	Rot;
-};
+	FCoords Temp;
+	Temp.Origin = B.Origin + A.Origin.TransformVectorBy( B );
+	Temp.XAxis  = B.XAxis.TransformVectorBy( A );
+	Temp.YAxis  = B.YAxis.TransformVectorBy( A );
+	Temp.ZAxis  = B.ZAxis.TransformVectorBy( A );
+	return Temp;
+}
 
 // Extended LOD wedge with floating-point UVs.
 struct FMeshExtWedge
@@ -624,43 +640,39 @@ class ENGINE_API UAnimation : public UObject
 };
 
 //
-// v436-compat port: native SkeletalMesh class.
+// v436-compat port: native SkeletalMesh class (a ULodMesh subclass), as in the retail v436 DLL.
 //
 // OldSkool/ONP, Infiltration, NeoCairo, TacticalOps and other v436-era mods ship real
-// USkeletalMesh exports (a ULodMesh subclass) that stock v400 lacks. Serialize decodes the
-// skeletal blob (ext wedges, points, reference skeleton, bone weights, weapon attachment) so
-// those packages load. Skeletal *rendering* is an accepted non-goal — the data is consumed and
-// stored but the meshes are not skinned/drawn.
+// USkeletalMesh exports that stock v400 lacks. Serialize decodes the skeletal blob byte for byte;
+// GetFrame skins it into the pose of the owner's current animation, and the inherited ULodMesh
+// Faces/Wedges draw it (URender::DrawLodMesh).
 //
 class ENGINE_API USkeletalMesh : public ULodMesh
 {
 	DECLARE_CLASS(USkeletalMesh,ULodMesh,0)
 
-	// Skeletal data (serialized; not rendered).
+	// Skeletal data (serialized).
 	TArray<FMeshExtWedge>		ExtWedges;
 	TArray<FVector>				Points;
 	TArray<FSkelMeshBone>		RefSkeleton;
 	TArray<FSkelBoneInfIndex>	BoneWeightIdx;
 	TArray<FSkelBoneInfluence>	BoneWeights;
-	TArray<FVector>				LocalPoints;
+	TArray<FVector>				LocalPoints;	// Each weighted point in its bone's local space (per BoneWeights entry).
 	INT							SkeletalDepth;
 	UAnimation*					DefaultAnimation;
-	INT							WeaponBoneIndex;
-	FCoords						WeaponAdjust;
+	INT							WeaponBoneIndex;	// -1 means it hasn't been assigned.
+	FCoords						WeaponAdjust;		// Weapon adjustment relative to the weapon bone.
 
-	// v436-compat: cached inverse bind-pose (reference skeleton) bone coords, computed lazily; used to
-	// skin Points from the reference pose to the current animation pose. Not serialized.
-	TArray<FSkelCoords>	BindRefInv;
-	UBOOL				bBindComputed;
+	// Debugging only - not serialized (v436: filled by GetFrame when DisplayBones/DisplayInfluences).
+	TArray<FVector>				DebugPivots;
+	TArray<INT>					DebugParents;
+	TArray<BYTE>				DebugVerts;
+	UBOOL						DisplayBones;
+	UBOOL						DisplayInfluences;
 
-	// v436-compat weapon attachment: the animated WeaponBoneIndex bone frame (mirrored bone space,
-	// filled by ComputeSkinnedPose) and its resolved view-space frame (filled by GetFrame). DrawLodMesh
-	// publishes the view-space frame as the engine's SpecialCoords so the third-person weapon attaches
-	// to the hand bone instead of floating beside the pawn. Not serialized.
-	FSkelCoords	WeaponBoneM;		// animated weapon bone, mirrored space
-	UBOOL		bWeaponBoneM;
-	FVector		WeaponAttachOrigin, WeaponAttachX, WeaponAttachY, WeaponAttachZ;	// view space
-	UBOOL		bWeaponAttach;
+	// Runtime weapon coords - not serialized. GetFrame sets them from the weapon bone, in the same
+	// form as the classic special-face coords; DrawLodMesh uses them as the weapon's SpecialCoords.
+	FCoords						ClassicWeaponCoords;
 
 	// UObject interface.
 	USkeletalMesh();
@@ -673,17 +685,8 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	void SetScale( FVector NewScale );
 	virtual void FlipFaces();
 
-	// v436-compat: render the reference (bind) pose. v400 has no skeletal skinning; without this
-	// override a skeletal mesh falls through to ULodMesh::GetFrame, which reads the empty vertex-mesh
-	// Verts array (FrameVerts>0, Verts.Num()==0) and crashes. Emits Points (the skin vertices, in
-	// mesh space) so the inherited ULodMesh Wedges/Faces draw the mesh. Animated when possible.
+	// Skin the mesh into the owner's current (or tweening) animation pose.
 	void GetFrame( FVector* Verts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest );
-
-	// v436-compat skeletal animation: build bind-pose bone transforms (once); skin Points into the
-	// current animation pose for the owner. ComputeSkinnedPose returns 0 if no animation applies
-	// (falls back to the static bind pose).
-	void ComputeBindPose();
-	UBOOL ComputeSkinnedPose( AActor* Owner, TArray<FVector>& OutPoints );
 };
 
 /*----------------------------------------------------------------------------
