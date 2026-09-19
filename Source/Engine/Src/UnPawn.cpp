@@ -330,12 +330,13 @@ void APlayerPawn::execConsoleCommand( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	*(FString*)Result = TEXT("");
+	// v436-compat port: without a Player the command goes to the engine (436 execConsoleCommand).
+	FStringOutputDevice StrOut;
 	if( Player )
-	{
-		FStringOutputDevice StrOut;
 		Player->Exec( *Command, StrOut );
-		*(FString*)Result = *StrOut;
-	}
+	else
+		XLevel->Engine->Exec( *Command, StrOut );
+	*(FString*)Result = *StrOut;
 	unguard;
 }
 
