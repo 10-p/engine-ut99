@@ -171,6 +171,21 @@ FLOAT* UInput::FindAxisName( AActor* Actor, const TCHAR* ButtonName ) const
 }
 
 //
+// v436-compat port: drive a key's binding directly with an analog value (436 UInput::DirectAxis).
+// The binding runs as a held key with the value appended as its SPEED=, so an AXIS binding
+// moves by Delta*Length.
+//
+void UInput::DirectAxis( EInputKey iKey, FLOAT Length, FLOAT Delta )
+{
+	guard(UInput::DirectAxis);
+	FString Cmd = FString::Printf( TEXT("%s Speed=%f"), *Bindings[iKey], Length );
+	SetInputAction( IST_Hold, Delta );
+	ExecInputCommands( *Cmd, *GLog );
+	SetInputAction( IST_None );
+	unguard;
+}
+
+//
 // Execute input commands.
 //
 void UInput::ExecInputCommands( const TCHAR* Cmd, FOutputDevice& Ar )
