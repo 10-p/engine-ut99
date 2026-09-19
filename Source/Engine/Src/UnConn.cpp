@@ -789,9 +789,10 @@ void UNetConnection::Tick()
 
 		if( Actor )
 		{
+			// v436-compat port: 436 raises the alert on lag above 1 s; v400 used lag + 1.2*loss
+			// above 0.8 s.
 			FLOAT PktLoss = ::Max(InLoss, OutLoss) * 0.01;
-			FLOAT ModifiedLag = BestLag + 1.2 * PktLoss;
-			Actor->bBadConnectionAlert = !InternalAck && ((ModifiedLag>0.8 || CurrentNetSpeed * (1 - PktLoss)<2000) && ActorChannels.FindRef(Actor)) || InPackets < 2;
+			Actor->bBadConnectionAlert = !InternalAck && ((BestLag>1.0 || CurrentNetSpeed * (1 - PktLoss)<2000) && ActorChannels.FindRef(Actor)) || InPackets < 2;
 		}
 
 		// Init counters.
