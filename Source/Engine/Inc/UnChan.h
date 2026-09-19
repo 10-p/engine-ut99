@@ -112,6 +112,7 @@ class ENGINE_API UActorChannel : public UChannel
 	DOUBLE	RelevantTime;	// Last time this actor was relevant to client.
 	DOUBLE	LastUpdateTime;	// Last time this actor was replicated.
 	UBOOL   SpawnAcked;	    // Whether spawn has been acknowledged.
+	INT		NumReps;		// v436-compat port: number of times actor has been replicated (GetOptimizedRepList's NumReps).
 	TArray<BYTE> Recent;	// Most recently sent values.
 	TArray<BYTE> RepEval;	// Evaluated replication conditions.
 	TArray<INT>  Dirty;     // Properties that are dirty and need resending.

@@ -20,7 +20,7 @@
 
 	// AActor interface.
 	FLOAT GetNetPriority( AActor* Sent, FLOAT Time, FLOAT Lag );
-	INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map );
+	INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 
 	// Latent movement
 	void setMoveTimer(FLOAT MoveSize);

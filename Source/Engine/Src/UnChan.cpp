@@ -542,6 +542,7 @@ void UActorChannel::Init( UNetConnection* InConnection, INT InChannelIndex, INT 
 	Level			= Connection->Driver->Notify->NotifyGetLevel();
 	RelevantTime	= Connection->Driver->Time;
 	LastUpdateTime	= Connection->Driver->Time - Connection->Driver->SpawnPrioritySeconds;
+	NumReps			= 0; // v436-compat port.
 	unguard;
 }
 
@@ -1017,7 +1018,10 @@ void UActorChannel::ReplicateActor()
 	guard(FigureOutWhatNeedsReplicating);
 	BYTE*   CompareBin = Recent.Num() ? &Recent(0) : &ActorClass->Defaults(0);
 	INT     iCount     = ClassCache->RepProperties.Num();
-	LastRep            = Actor->GetOptimizedRepList( CompareBin, &Retirement(0), Reps, Connection->PackageMap );
+	// v436-compat port: 436 passes the channel's replication count (the native lists send a reduced
+	// set on most updates, the full set every 5th) and counts this update before script replication.
+	LastRep            = Actor->GetOptimizedRepList( CompareBin, &Retirement(0), Reps, Connection->PackageMap, NumReps );
+	NumReps++;
 	if( Actor->ShouldDoScriptReplication() )
 	{
 		for( INT iField=0; iField<iCount; iField++  )
