@@ -65,6 +65,8 @@ void UNetConnection::Serialize( FArchive& Ar )
 	Ar << PackageMap;
 	for( INT i=0; i<MAX_CHANNELS; i++ )
 		Ar << Channels[i];
+	// v436-compat port: the download is a UObject owned by the connection.
+	Ar << Download;
 
 	unguard;
 }
@@ -103,6 +105,9 @@ void UNetConnection::Destroy()
 
 	// Kill package map.
 	delete PackageMap;
+
+	// v436-compat port: kill the download.
+	delete Download;
 
 	Super::Destroy();
 	unguard;
@@ -853,6 +858,12 @@ void UNetConnection::Tick()
 	if( TimeSensitive || Driver->Time-LastSendTime>Driver->KeepAliveTime )
 		FlushNet();
 
+	// v436-compat port: tick the download (436 UNetConnection::Tick, guard "TickDownload").
+	guard(TickDownload);
+	if( Download )
+		Download->Tick();
+	unguard;
+
 	unguard;
 }
 
@@ -901,26 +912,22 @@ void UNetConnection::ReceiveFile( INT PackageIndex )
 {
 	guard(UNetConnection::ReceiveFile);
 	check(PackageMap->List.IsValidIndex(PackageIndex));
-	FPackageInfo& Info = PackageMap->List( PackageIndex );
 
-	// Create channel.
-	UFileChannel* Ch = (UFileChannel *)CreateChannel( CHTYPE_File, 1 );
-	if( !Ch )
+	// v436-compat port: 436 no longer opens the file channel here. It picks the first download manager
+	// the other side offered (its DLMGR lines, parsed by UNetPendingLevel::NotifyReceivedText) and lets
+	// that manager do the transfer; with no offer it defaults to the channel download.
+	if( DownloadInfo.Num() == 0 )
 	{
-		Driver->Notify->NotifyReceivedFile( this, PackageIndex, LocalizeError("ChAllocate"), 0 );
-		return;
+		DownloadInfo.AddZeroed();
+		DownloadInfo(0).Class       = UChannelDownload::StaticClass();
+		DownloadInfo(0).ClassName   = TEXT("Engine.UChannelDownload");
+		DownloadInfo(0).Params      = TEXT("");
+		DownloadInfo(0).Compression = 0;
 	}
 
-	// Set channel properties.
-	Ch->PackageIndex = PackageIndex;
-	appStrcpy( Ch->PrettyName, PackageMap->List(PackageIndex).Parent->GetName() );
-
-	// Send file request.
-	FOutBunch Bunch( Ch, 0 );
-	Bunch << Info.Guid;
-	Bunch.bReliable = 1;
-	check(!Bunch.IsError());
-	Ch->SendBunch( &Bunch, 0 );
+	delete Download;
+	Download = ConstructObject<UDownload>( DownloadInfo(0).Class );
+	Download->ReceiveFile( this, PackageIndex, *DownloadInfo(0).Params, DownloadInfo(0).Compression );
 
 	unguard;
 }
