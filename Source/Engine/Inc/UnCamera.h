@@ -368,6 +368,7 @@ class ENGINE_API UClient : public UObject
 	BITFIELD	NoLighting;
 	BITFIELD	Decals;
 	BITFIELD	NoDynamicLights;
+	BITFIELD	NoFractalAnim;		// v436-compat port: freeze fractal (Fire.dll) textures after priming.
 	INT			WindowedViewportX;
 	INT			WindowedViewportY;
 	INT			WindowedColorBits;
