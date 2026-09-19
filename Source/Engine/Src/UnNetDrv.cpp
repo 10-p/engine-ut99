@@ -108,6 +108,10 @@ IMPLEMENT_CLASS(UPackageMapLevel);
 UNetDriver::UNetDriver()
 :	ClientConnections()
 ,	Time( 0.0 )
+	// v436-compat port: DownloadManagers is a CPF_Config UArrayProperty, so InitProperties has already
+	// deep-copied the class defaults into it before this constructor runs (UnObj.cpp ConstructorLink).
+	// Default-constructing it here would throw that copy away, exactly as UFactory::Formats avoids.
+,	DownloadManagers( E_NoInit )
 {
 	guard(UNetDriver::UNetDriver);
 	RoleProperty       = FindObjectChecked<UProperty>( AActor::StaticClass(), TEXT("Role"      ) );
@@ -131,9 +135,20 @@ void UNetDriver::StaticConstructor()
 	new(GetClass(),TEXT("NetServerMaxTickRate"), RF_Public)UIntProperty  (CPP_PROPERTY(NetServerMaxTickRate ), TEXT("Client"), CPF_Config );
 	new(GetClass(),TEXT("LanServerMaxTickRate"), RF_Public)UIntProperty  (CPP_PROPERTY(LanServerMaxTickRate ), TEXT("Client"), CPF_Config );
 	new(GetClass(),TEXT("AllowDownloads"),       RF_Public)UBoolProperty (CPP_PROPERTY(AllowDownloads       ), TEXT("Client"), CPF_Config );
+	// v436-compat port: the download system's config.
+	new(GetClass(),TEXT("MaxDownloadSize"),      RF_Public)UIntProperty  (CPP_PROPERTY(MaxDownloadSize      ), TEXT("Client"), CPF_Config );
+	UArrayProperty* A = new(GetClass(),TEXT("DownloadManagers"),RF_Public)UArrayProperty(CPP_PROPERTY(DownloadManagers), TEXT("Client"), CPF_Config );
+	A->Inner = new(A,TEXT("StrProperty0"),RF_Public)UStrProperty;
 
 	// Default values.
 	MaxClientRate = 25000;
+
+	// v436-compat port: retail 436 ships these two in every ini's net-driver section; this branch keeps a
+	// zero delta against base's Config/System/web/Default.ini, so they are compiled defaults instead.
+	// A manager whose class will not load is skipped (UNetConnection::SendPackageMap) or dropped
+	// (UNetPendingLevel::NotifyReceivedText), so IpDrv.HTTPDownload not existing yet is not fatal.
+	new(DownloadManagers)FString(TEXT("IpDrv.HTTPDownload"));
+	new(DownloadManagers)FString(TEXT("Engine.ChannelDownload"));
 
 	unguard;
 }
