@@ -482,28 +482,99 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 			DOREP(Actor,bHidden);
 			return Ptr;
 	}
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
-	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	if( !(StaticClass()->ClassFlags & CLASS_NativeReplication) )
+		return Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+
+	// v436-compat port: except on the initial update or every 5th update, 436 sends inventory a
+	// hand-picked subset of the Actor properties instead of the whole Actor list.
+	if( !bNetInitial && (NumReps%5)!=0 )
 	{
 		if( Role==ROLE_Authority )
 		{
+			DOREP(Actor,LightType);
+			DOREP(Actor,bCollideWorld);
+			DOREP(Actor,bHidden);
 			if( bNetOwner )
 			{
-				DOREP(Inventory,bIsAnArmor);
-				DOREP(Inventory,Charge);
-				DOREP(Inventory,bActivatable);
-				DOREP(Inventory,bActive);
+				DOREP(Actor,Inventory);
+			}
+			if( !bCarriedItem && RemoteRole<ROLE_SimulatedProxy )
+			{
+				DOREP(Actor,Location);
+				if( DrawType==DT_Mesh || DrawType==DT_Brush )
+				{
+					DOREP(Actor,Rotation);
+				}
+			}
+			if( DrawType==DT_Mesh )
+			{
+				DOREP(Actor,bUnlit);
+				if( ((RemoteRole<=ROLE_SimulatedProxy) && (!bNetOwner || !bClientAnim)) || bDemoRecording )
+				{
+					DOREP(Actor,AnimSequence);
+					DOREP(Actor,SimAnim);
+					DOREP(Actor,AnimMinRate);
+					DOREP(Actor,bAnimNotify);
+				}
+			}
+			else if( DrawType==DT_Sprite )
+			{
+				if( !bHidden && (!bOnlyOwnerSee || bNetOwner) )
+				{
+					DOREP(Actor,Sprite);
+				}
+			}
+			if( LightType!=LT_None )
+			{
+				DOREP(Actor,LightEffect);
+				DOREP(Actor,LightBrightness);
+				DOREP(Actor,LightHue);
+				DOREP(Actor,LightSaturation);
+				DOREP(Actor,LightRadius);
+			}
+			if( RemoteRole==ROLE_SimulatedProxy )
+			{
+				DOREP(Actor,Base);
+			}
+			else if( bSimFall )
+			{
+				DOREP(Actor,Physics);
+				DOREP(Actor,Acceleration);
+				DOREP(Actor,bBounce);
+				DOREP(Actor,Velocity);
+			}
+			if( bNetOwner && Instigator && Instigator->Weapon==this )
+			{
 				DOREP(Inventory,PlayerViewOffset);
 				DOREP(Inventory,PlayerViewMesh);
 				DOREP(Inventory,PlayerViewScale);
 			}
-			else if ( (RemoteRole == ROLE_SimulatedProxy) && AmbientSound )
-				DOREP(Actor,Location);
-			DOREP(Inventory,FlashCount);
-			DOREP(Inventory,bSteadyFlash3rd);
-			DOREP(Inventory,ThirdPersonMesh);
-			DOREP(Inventory,ThirdPersonScale);
 		}
+	}
+	else
+	{
+		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+		if( bNetOwner )
+		{
+			DOREP(Inventory,bIsAnArmor);
+			DOREP(Inventory,Charge);
+			DOREP(Inventory,bActivatable);
+			DOREP(Inventory,bActive);
+			DOREP(Inventory,PlayerViewOffset);
+			DOREP(Inventory,PlayerViewMesh);
+			DOREP(Inventory,PlayerViewScale);
+		}
+	}
+	if( Role==ROLE_Authority )
+	{
+		if( !bNetOwner && (RemoteRole == ROLE_SimulatedProxy) && AmbientSound )
+		{
+			DOREP(Actor,Location);
+		}
+		DOREP(Inventory,FlashCount);
+		DOREP(Inventory,bSteadyFlash3rd);
+		DOREP(Inventory,ThirdPersonMesh);
+		DOREP(Inventory,ThirdPersonScale);
 	}
 	return Ptr;
 	unguard;
