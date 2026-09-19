@@ -236,7 +236,7 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 	}
 	unguard;
 }
-void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* InError )
+void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* InError, UBOOL Skipped )
 {
 	guard(UNetPendingLevel::NotifyReceivedFile);
 	check(Connection->PackageMap->List.IsValidIndex(PackageIndex));
