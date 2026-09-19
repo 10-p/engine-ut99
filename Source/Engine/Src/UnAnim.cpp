@@ -91,48 +91,17 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 }
 
 //
-// v436-compat: render-visibility bounding box for a skeletal mesh.
-//
-// Without this override a skeletal mesh inherits UMesh::GetRenderBoundingBox. Once our LinkSkelAnim
-// step (in GetFrame) copies DefaultAnimation->AnimSeqs into the mesh, that base method's
-// GetAnimSeq(Owner->AnimSequence) lookup succeeds and it takes the "animating" branch, reading
-// BoundingBoxes(iFrame) — a PER-FRAME array that is a vertex-mesh import feature and is empty for a
-// skeletal mesh. The result is a degenerate box, the actor fails the frustum test, and the mesh
-// blinks invisible for a frame or two during animation or at glancing camera angles. Real UT (v436)
-// overrides this and the models never flash.
-//
-// The P266-era engine used precomputed bounds, not a per-frame recompute, so we do too: resolve a
-// mesh-space box ONCE (the authored singular BoundingBox if valid, else an AABB over the skin
-// vertices Points), cache it, and transform it into world space exactly like UMesh's static
-// (non-animating) branch. This is render culling only — hit detection uses the actor's
-// CollisionRadius/CollisionHeight, so aiming/accuracy is unaffected.
+// v436-compat port: render bounding box of a skeletal mesh (retail v436
+// USkeletalMesh::GetRenderBoundingBox). It is UMesh's non-animating case, always: the authored
+// BoundingBox, scaled about Origin, expanded by one unit and moved into the actor's frame. A
+// skeletal mesh has no per-frame BoundingBoxes, so UMesh's animating case must not be used.
 //
 FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 {
 	guard(USkeletalMesh::GetRenderBoundingBox);
-
-	// Resolve the mesh-space box once and cache it.
-	if( !bBoundComputed )
-	{
-		bBoundComputed = 1;
-		if( BoundingBox.IsValid && !(BoundingBox.Min==BoundingBox.Max) )
-			LocalBound = BoundingBox;						// authored box (spans all anim poses)
-		else
-		{
-			// Authored box missing/degenerate: fall back to an AABB over the skin vertices.
-			FBox PointsBound(0);
-			for( INT i=0; i<Points.Num(); i++ )
-				PointsBound += Points(i);
-			LocalBound = PointsBound;
-		}
-	}
-	if( !LocalBound.IsValid )
-		return Super::GetRenderBoundingBox( Owner, Exact );	// no geometry to bound; defer to base.
-
-	// Transform the mesh-space box into world space exactly like UMesh::GetRenderBoundingBox's static
-	// (non-animating) branch: scale about Origin, expand a hair, then rotate/translate by the actor.
+	FBox Bound = BoundingBox;
 	FLOAT DrawScale = Owner->bParticles ? 1.5f : Owner->DrawScale;
-	FBox Bound = FBox( Scale*DrawScale*(LocalBound.Min - Origin), Scale*DrawScale*(LocalBound.Max - Origin) ).ExpandBy(1.0f);
+	Bound = FBox( Scale*DrawScale*(Bound.Min - Origin), Scale*DrawScale*(Bound.Max - Origin) ).ExpandBy(1.0f);
 	FCoords Coords = GMath.UnitCoords / RotOrigin / Owner->Rotation;
 	Coords.Origin  = Owner->Location + Owner->PrePivot;
 	return Bound.TransformBy( Coords.Transpose() );
