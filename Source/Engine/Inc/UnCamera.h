@@ -379,6 +379,7 @@ class ENGINE_API UClient : public UObject
 	FLOAT		MipFactor;
 	INT			TextureLODSet[LODSET_MAX];
 	FLOAT		MinDesiredFrameRate;
+	INT			ParticleDensity;	// v436-compat port: config property added to UClient in 436.
 
 	// Constructors.
 	UClient();
