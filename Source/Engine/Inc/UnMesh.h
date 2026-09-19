@@ -544,9 +544,8 @@ struct FSkelMotionChunk
 // v436-compat port: native Animation class.
 //
 // v436 engine.u references the native class 'Engine.Animation' (added to UT after v400 for
-// skeletal-mesh animation). Registering this class resolves the import; Serialize consumes the
-// reference-skeleton + motion data so packages that actually contain Animation exports load
-// without a serial-size mismatch. Animation *playback* is a non-goal — the data is kept, unused.
+// skeletal-mesh animation). Serialize consumes the reference-skeleton + motion data byte for byte;
+// USkeletalMesh::GetFrame plays it back and AActor::GetAnim resolves its sequences.
 //
 class ENGINE_API UAnimation : public UObject
 {
@@ -560,6 +559,68 @@ class ENGINE_API UAnimation : public UObject
 	// UObject interface.
 	UAnimation(){}
 	void Serialize( FArchive& Ar );
+
+	// v436-compat port: UAnimation's virtuals, as the retail v436 Engine.dll exports them (the
+	// bodies match Epic's v432 UnSkeletalMesh.h inlines). A skeletal mesh's sequences live HERE,
+	// not in the mesh: AActor::GetAnim and USkeletalMesh::GetFrame look them up through these.
+	virtual const FMeshAnimSeq* GetAnimSeq( FName SeqName ) const
+	{
+		guardSlow(UAnimation::GetAnimSeq);
+		for( INT i=0; i<AnimSeqs.Num(); i++ )
+			if( SeqName == AnimSeqs(i).Name )
+				return &AnimSeqs(i);
+		return NULL;
+		unguardSlow;
+	}
+	virtual FMeshAnimSeq* GetAnimSeq( FName SeqName )
+	{
+		guardSlow(UAnimation::GetAnimSeq);
+		for( INT i=0; i<AnimSeqs.Num(); i++ )
+			if( SeqName == AnimSeqs(i).Name )
+				return &AnimSeqs(i);
+		return NULL;
+		unguardSlow;
+	}
+	// The motion chunk of a sequence: Moves is indexed in step with AnimSeqs.
+	virtual const FSkelMotionChunk* GetMovement( FName SeqName ) const
+	{
+		guardSlow(UAnimation::GetAnimSeq);
+		for( INT i=0; i<AnimSeqs.Num(); i++ )
+			if( SeqName == AnimSeqs(i).Name )
+				return &Moves(i);
+		return NULL;
+		unguardSlow;
+	}
+	virtual FSkelMotionChunk* GetMovement( FName SeqName )
+	{
+		guardSlow(UAnimation::GetAnimSeq);
+		for( INT i=0; i<AnimSeqs.Num(); i++ )
+			if( SeqName == AnimSeqs(i).Name )
+				return &Moves(i);
+		return NULL;
+		unguardSlow;
+	}
+	// Estimated memory footprint of the digested key data, in bytes.
+	virtual INT MemFootprint()
+	{
+		guard(UAnimation::MemFootprint);
+		INT TotalMem = 0;
+		for( INT i=0; i<Moves.Num(); i++ )
+		{
+			for( INT j=0; j<Moves(i).AnimTracks.Num(); j++ )
+			{
+				TotalMem += sizeof(DWORD); // Flags
+				TotalMem += sizeof(FSkelQuat) * Moves(i).AnimTracks(j).KeyQuat.Num();
+				TotalMem += sizeof(FVector)   * Moves(i).AnimTracks(j).KeyPos.Num();
+				TotalMem += sizeof(FLOAT)     * Moves(i).AnimTracks(j).KeyTime.Num();
+			}
+			TotalMem += sizeof(FSkelQuat) * Moves(i).RootTrack.KeyQuat.Num();
+			TotalMem += sizeof(FVector)   * Moves(i).RootTrack.KeyPos.Num();
+			TotalMem += sizeof(FLOAT)     * Moves(i).RootTrack.KeyTime.Num();
+		}
+		return TotalMem;
+		unguard;
+	}
 };
 
 //
@@ -613,15 +674,6 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 
 	// UPrimitive interface.
 	FBox GetRenderBoundingBox( const AActor* Owner, UBOOL Exact );
-
-	// UMesh interface: link the DefaultAnimation's sequences into this mesh's AnimSeqs on demand, so
-	// GetAnimSeq/GetAnimGroup/PlayAnim/LoopAnim/HasAnim resolve them even before the mesh is first
-	// drawn (stock v436 links via the LinkSkelAnim native; without this, script anim queries on a
-	// not-yet-rendered skeletal mesh -- e.g. off-screen bots -- fail with "Sequence not found").
-	// Idempotent; safe to call every frame. Overrides route every lookup through it.
-	void LinkDefaultAnim();
-	virtual const FMeshAnimSeq* GetAnimSeq( FName SeqName ) const;
-	virtual FMeshAnimSeq* GetAnimSeq( FName SeqName );
 
 	// v436-compat: render the reference (bind) pose. v400 has no skeletal skinning; without this
 	// override a skeletal mesh falls through to ULodMesh::GetFrame, which reads the empty vertex-mesh
