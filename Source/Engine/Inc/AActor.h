@@ -40,6 +40,7 @@
 	virtual void PostNetReceive();
 	virtual UTexture* GetSkin( INT Index );
 	virtual struct FMeshAnimSeq* GetAnim( FName SequenceName ); // v436-compat port: see UnScript.cpp.
+	AActor* GetHitActor() { return HitActor ? HitActor : this; } // v436-compat port: the actor a hit on this one selects.
 	virtual FCoords ToLocal() const
 	{
 		return GMath.UnitCoords / Rotation / Location;
