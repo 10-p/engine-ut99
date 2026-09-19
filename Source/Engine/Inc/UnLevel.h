@@ -32,7 +32,7 @@ public:
 	virtual ULevel* NotifyGetLevel()=0;
 	virtual void NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )=0;
 	virtual UBOOL NotifySendingFile( UNetConnection* Connection, FGuid GUID )=0;
-	virtual void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error )=0;
+	virtual void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error, UBOOL Skipped )=0;
 	virtual void NotifyProgress( const TCHAR* Str1, const TCHAR* Str2, FLOAT Seconds )=0;
 };
 
@@ -212,7 +212,7 @@ class ENGINE_API ULevel : public ULevelBase
 	UBOOL NotifyAcceptingChannel( class UChannel* Channel );
 	ULevel* NotifyGetLevel() {return this;}
 	void NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text );
-	void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error );
+	void NotifyReceivedFile( UNetConnection* Connection, INT PackageIndex, const TCHAR* Error, UBOOL Skipped );
 	UBOOL NotifySendingFile( UNetConnection* Connection, FGuid GUID );
 
 	// Accessors.

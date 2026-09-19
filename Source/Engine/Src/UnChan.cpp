@@ -1345,7 +1345,7 @@ void UFileChannel::Destroy()
 		if( *Error )
 		{
 			// Failure.
-			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error );
+			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
 			if( FileAr )
 				GFileManager->Delete( Filename );
 		}
@@ -1357,7 +1357,7 @@ void UFileChannel::Destroy()
 			// Log it too, one line per package received (NotifyProgress reaches only the screen).
 			debugf( TEXT("%s"), Msg );
 			Connection->Driver->Notify->NotifyProgress( TEXT("Success"), Msg, 4.0 );
-			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error );
+			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
 		}
 	}
 	else if( FileAr )

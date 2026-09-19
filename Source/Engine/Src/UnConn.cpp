@@ -907,7 +907,7 @@ void UNetConnection::ReceiveFile( INT PackageIndex )
 	UFileChannel* Ch = (UFileChannel *)CreateChannel( CHTYPE_File, 1 );
 	if( !Ch )
 	{
-		Driver->Notify->NotifyReceivedFile( this, PackageIndex, LocalizeError("ChAllocate") );
+		Driver->Notify->NotifyReceivedFile( this, PackageIndex, LocalizeError("ChAllocate"), 0 );
 		return;
 	}
 
