@@ -59,6 +59,7 @@ class ENGINE_API UNetConnection : public UPlayer
 
 	// Negotiated parameters.
 	INT				ProtocolVersion;		// Protocol version we're communicating with (<=PROTOCOL_VERSION).
+	INT				RemoteVersion;			// v436-compat port: the remote engine version number (server side, from HELLO).
 	INT				MaxPacket;				// Maximum packet size.
 	INT				PacketOverhead;			// Bytes overhead per packet sent.
 	UBOOL			InternalAck;			// Internally ack all packets, for 100% reliable connections.
