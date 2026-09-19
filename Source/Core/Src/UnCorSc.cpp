@@ -2785,7 +2785,7 @@ void UObject::execDivide_RotatorFloat( FFrame& Stack, RESULT_DECL )
 	P_GET_FLOAT(B);
 	P_FINISH;
 
-	*(FRotator*)Result = A * (1.0/B);
+	*(FRotator*)Result = A * (1.f/B);
 
 	unguardexecSlow;
 }	
@@ -2813,7 +2813,7 @@ void UObject::execDivideEqual_RotatorFloat( FFrame& Stack, RESULT_DECL )
 	P_GET_FLOAT(B);
 	P_FINISH;
 
-	*(FRotator*)Result = (*A *= (1.0/B));
+	*(FRotator*)Result = (*A *= (1.f/B));
 
 	unguardexecSlow;
 }	

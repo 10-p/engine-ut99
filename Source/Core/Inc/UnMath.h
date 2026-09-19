@@ -653,17 +653,19 @@ public:
 	{
 		return FRotator( Pitch-R.Pitch, Yaw-R.Yaw, Roll-R.Roll );
 	}
+	// v436-compat port: scaled components are rounded, not truncated (436 Core FRotator
+	// operator*/operator*= inline appRound; v400 called _ftol).
 	FRotator operator*( FLOAT Scale ) const
 	{
-		return FRotator( Pitch*Scale, Yaw*Scale, Roll*Scale );
+		return FRotator( appRound(Pitch*Scale), appRound(Yaw*Scale), appRound(Roll*Scale) );
 	}
 	friend FRotator operator*( FLOAT Scale, const FRotator &R )
 	{
-		return FRotator( R.Pitch*Scale, R.Yaw*Scale, R.Roll*Scale );
+		return FRotator( appRound(R.Pitch*Scale), appRound(R.Yaw*Scale), appRound(R.Roll*Scale) );
 	}
 	FRotator operator*= (FLOAT Scale)
 	{
-		Pitch = (INT)(Pitch*Scale); Yaw = (INT)(Yaw*Scale); Roll = (INT)(Roll*Scale);
+		Pitch = appRound(Pitch*Scale); Yaw = appRound(Yaw*Scale); Roll = appRound(Roll*Scale);
 		return *this;
 	}
 	// Binary comparison operators.
@@ -713,9 +715,9 @@ public:
 	{
 		return FRotator
 		(
-			FSnap(Pitch,RotGrid.Pitch),
-			FSnap(Yaw,  RotGrid.Yaw),
-			FSnap(Roll, RotGrid.Roll)
+			appRound(FSnap(Pitch,RotGrid.Pitch)),
+			appRound(FSnap(Yaw,  RotGrid.Yaw)),
+			appRound(FSnap(Roll, RotGrid.Roll))
 		);
 	}
 	FVector Vector();
@@ -896,13 +898,14 @@ public:
 	{
 		return TrigFLOAT[(((i+16384)>>ANGLE_SHIFT)&(NUM_ANGLES-1))];
 	}
+	// v436-compat port: the table index is rounded (436 Core FGlobalMath::SinFloat/CosFloat).
 	FLOAT SinFloat( FLOAT F )
 	{
-		return SinTab((F*65536)/(2.0*PI));
+		return SinTab(appRound((F*65536.f)/(2.f*PI)));
 	}
 	FLOAT CosFloat( FLOAT F )
 	{
-		return CosTab((F*65536)/(2.0*PI));
+		return CosTab(appRound((F*65536.f)/(2.f*PI)));
 	}
 #endif
 	// Constructor.
