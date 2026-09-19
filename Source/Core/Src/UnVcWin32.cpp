@@ -165,12 +165,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		GConfig->Dump( Ar );
 		return 1;
 	}
-	else if( ParseCommand(&Cmd,TEXT("EXIT")) || ParseCommand(&Cmd,TEXT("QUIT")))
-	{
-		Ar.Log( TEXT("Closing by request") );
-		appRequestExit( 0 );
-		return 1;
-	}
+	// v436-compat port: EXIT/QUIT moved to UGameEngine::Exec (436 USystem::Exec no longer has them).
 	else if( ParseCommand( &Cmd, TEXT("RELAUNCH") ) )
 	{
 		debugf( TEXT("Relaunch: %s"), Cmd );

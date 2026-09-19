@@ -125,12 +125,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		Ar.Logf( TEXT("MEMSTAT command not available.") );
 		return 1;
 	}
-	else if( ParseCommand(&Cmd,TEXT("EXIT")) )
-	{
-		Ar.Log( TEXT("Closing by request") );
-		appRequestExit( 0 );
-		return 1;
-	}
+	// v436-compat port: EXIT/QUIT moved to UGameEngine::Exec (436 USystem::Exec no longer has them).
 	else if( ParseCommand(&Cmd,TEXT("APP")) )
 	{
 		//!UNIX No APP command.
