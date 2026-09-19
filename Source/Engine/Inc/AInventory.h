@@ -9,6 +9,8 @@
 	// AActor interface.
 	INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 	virtual UBOOL ShouldDoScriptReplication();
+	virtual UBOOL NoVariablesToReplicate( AActor* OldVer );
+	virtual UBOOL CheckRecentChanges() {return 1;}
 
 /*-----------------------------------------------------------------------------
 	The End.
