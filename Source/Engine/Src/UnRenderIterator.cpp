@@ -1,6 +1,7 @@
 // UnRenderIterator.cpp
 
 #include "EnginePrivate.h"
+#include "UnRender.h"
 
 /*-----------------------------------------------------------------------------
 	URenderIterator.
@@ -8,7 +9,8 @@
 
 URenderIterator::URenderIterator()
 :	Index( 0 ),
-	Observer( NULL )
+	Observer( NULL ),
+	Frame( NULL )
 {
 	guard(URenderIterator::URenderIterator);
 
@@ -20,11 +22,23 @@ URenderIterator::URenderIterator()
 	unguard;
 }
 
-void URenderIterator::Init( APlayerPawn* Camera ) //override to initialize subclass data (call Super required)
+void URenderIterator::Init( FSceneNode* Camera ) //override to initialize subclass data (call Super required)
 {
 	guard(URenderIterator::Init);
 
-	Observer = Camera;
+	// v436-compat port: keep the frame; the observer is its viewport's actor.
+	Frame = Camera;
+	if( Frame )
+		Observer = Frame->Viewport->Actor;
+
+	unguard;
+}
+
+void URenderIterator::UnInit() //must be called before Camera goes out of scope.
+{
+	guard(URenderIterator::UnInit);
+
+	Frame = NULL;
 
 	unguard;
 }
