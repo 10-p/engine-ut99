@@ -727,6 +727,44 @@ FLOAT AActor::GetNetPriority( AActor* Sent, FLOAT Time, FLOAT Lag )
 }
 
 //
+// Net update frequency for a viewer.
+// v436-compat port: a short-lived (bNetTemporary, non-optional) actor older than 0.2 s that is
+// far from the viewer or behind it drops to at most 8 Hz.
+//
+FLOAT AActor::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
+{
+	guard(AActor::UpdateFrequency);
+	if( bNetTemporary && !bNetOptional && (GetClass()->GetDefaultActor()->LifeSpan - 0.2f > LifeSpan) )
+	{
+		FVector Dir = Location - ViewPos;
+		if( Dir.SizeSquared() > 1000000.f || (Dir | ViewDir) < 0.f )
+			return Min( NetUpdateFrequency, 8.f );
+	}
+	return NetUpdateFrequency;
+	unguard;
+}
+FLOAT ACarcass::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
+{
+	// v436-compat port: a carcass that has stopped moving and animating replicates at <= 4 Hz.
+	if( Physics==PHYS_None && !IsAnimating() )
+		return Min( NetUpdateFrequency, 4.f );
+	return NetUpdateFrequency;
+}
+FLOAT AInventory::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
+{
+	// v436-compat port: a carried (hidden) item replicates at <= 4 Hz unless it is its pawn's
+	// weapon, and at <= 10 Hz when that pawn is not the viewer.
+	if( bHidden && Owner && Owner->IsA(APawn::StaticClass()) )
+	{
+		if( ((APawn*)Owner)->Weapon!=this )
+			return Min( NetUpdateFrequency, 4.f );
+		if( Owner!=Viewer )
+			return Min( NetUpdateFrequency, 10.f );
+	}
+	return NetUpdateFrequency;
+}
+
+//
 // Always called immediately before properties are received from the remote.
 //
 void AActor::PreNetReceive()

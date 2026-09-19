@@ -2873,7 +2873,7 @@ public:
     class APlayerReplicationInfo* PlayerOwner;
     class APawn* Bugs;
     DECLARE_CLASS(ACarcass,ADecoration,0)
-    NO_DEFAULT_CONSTRUCTOR(ACarcass)
+    #include "ACarcass.h"   // v436-compat port: UpdateFrequency (was NO_DEFAULT_CONSTRUCTOR)
 };
 
 
