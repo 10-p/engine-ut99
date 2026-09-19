@@ -7,6 +7,7 @@ set(SRC_FILES
   "Src/UnSocket.cpp"
   "Src/InternetLink.cpp"
   "Src/TcpNetDriver.cpp"
+  "Src/HTTPDownload.cpp"
   "Src/UMasterServerCommandlet.cpp"
   "Src/UUpdateServerCommandlet.cpp"
 
