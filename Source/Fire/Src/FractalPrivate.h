@@ -98,6 +98,7 @@ class DLL_EXPORT_CLASS UFractalTexture : public UTexture
 
 	// UTexture interface.
 	void Init( INT InUSize, INT InVSize );
+	void Prime();
 
 	// UFractalTexture interface.
 	virtual void TouchTexture(INT UPos, INT VPos, FLOAT Magnitude) {}
