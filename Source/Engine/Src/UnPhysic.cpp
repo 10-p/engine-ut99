@@ -273,12 +273,13 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 {
 	guard(APawn::physicsRotation);
 
+	// v436-compat port: every float->int conversion below is rounded (appRound), not truncated.
 	// Accumulate a desired new rotation.
 	FRotator NewRotation = Rotation;	
 
 	if (!IsA(APlayerPawn::StaticClass())) //don't pitch or yaw player
 	{
-		int deltaYaw = (INT) (RotationRate.Yaw * deltaTime);
+		int deltaYaw = appRound(RotationRate.Yaw * deltaTime);
 		bRotateToDesired = 1; //Pawns always have a "desired" rotation
 		bFixedRotationDir = 0;
 	
@@ -311,9 +312,9 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 		{
 			FLOAT SmoothRoll = Min(1.f, 8.f * deltaTime);
 			if (NewRotation.Roll < 32768)
-				NewRotation.Roll = (INT) (NewRotation.Roll * (1 - SmoothRoll));
+				NewRotation.Roll = appRound(NewRotation.Roll * (1 - SmoothRoll));
 			else
-				NewRotation.Roll = (INT) (NewRotation.Roll + (65536 - NewRotation.Roll) * SmoothRoll);
+				NewRotation.Roll = appRound(NewRotation.Roll + (65536 - NewRotation.Roll) * SmoothRoll);
 		}
 		else
 		{
@@ -328,9 +329,9 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 				RealAcceleration = RealAcceleration.TransformVectorBy(GMath.UnitCoords/NewRotation); //y component will affect roll
 
 				if (RealAcceleration.Y > 0) 
-					NewRotation.Roll = Min<INT>(RotationRate.Roll, (int)(RealAcceleration.Y * MaxRoll/AccelRate)); 
+					NewRotation.Roll = Min<INT>(RotationRate.Roll, appRound(RealAcceleration.Y * MaxRoll/AccelRate)); 
 				else
-					NewRotation.Roll = ::Max<INT>(65536 - RotationRate.Roll, (int)(65536.f + RealAcceleration.Y * MaxRoll/AccelRate));
+					NewRotation.Roll = ::Max<INT>(65536 - RotationRate.Roll, appRound(65536.f + RealAcceleration.Y * MaxRoll/AccelRate));
 
 				//smoothly change rotation
 				Rotation.Roll = Rotation.Roll & 65535;
@@ -343,7 +344,7 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 					Rotation.Roll -= 65536;
 	
 				FLOAT SmoothRoll = Min(1.f, 5.f * deltaTime);
-				NewRotation.Roll = (INT) (NewRotation.Roll * SmoothRoll + Rotation.Roll * (1 - SmoothRoll));
+				NewRotation.Roll = appRound(NewRotation.Roll * SmoothRoll + Rotation.Roll * (1 - SmoothRoll));
 
 				//if ((NewRotation.Roll > MaxRoll) && (NewRotation.Roll < (65536 - MaxRoll)))
 				//	debugf("Illegal roll for %f", RealAcceleration.Y);
@@ -352,9 +353,9 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 			{
 				FLOAT SmoothRoll = Min(1.f, 8.f * deltaTime);
 				if (NewRotation.Roll < 32768)
-					NewRotation.Roll = (INT) (NewRotation.Roll * (1 - SmoothRoll));
+					NewRotation.Roll = appRound(NewRotation.Roll * (1 - SmoothRoll));
 				else
-					NewRotation.Roll = (INT) (NewRotation.Roll + (65536 - NewRotation.Roll) * SmoothRoll);
+					NewRotation.Roll = appRound(NewRotation.Roll + (65536 - NewRotation.Roll) * SmoothRoll);
 			}
 		}
 	}
