@@ -381,6 +381,8 @@ CORE_API DOUBLE appPow( DOUBLE A, DOUBLE B );
 CORE_API UBOOL appIsNan( DOUBLE Value );
 CORE_API INT appRand();
 CORE_API FLOAT appFrand();
+CORE_API FLOAT appRandRange( FLOAT Min, FLOAT Max ); // v436-compat port
+CORE_API INT appRandRange( INT Min, INT Max ); // v436-compat port
 
 #if !DEFINED_appRound
 CORE_API INT appRound( FLOAT Value );
