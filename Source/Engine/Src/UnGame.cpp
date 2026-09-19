@@ -462,15 +462,22 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( ParseCommand( &Cmd, TEXT("CANCEL") ) )
 	{
-		// v436-compat port: CANCEL is guarded against re-entry (436 UGameEngine::Exec). 436 also
-		// first asks GPendingLevel->TrySkipFile() to skip just the file being downloaded; that
-		// belongs to the download system, which this engine does not have, so it is not called.
+		// v436-compat port: CANCEL is guarded against re-entry, and it first asks the pending level to
+		// skip just the file being downloaded; only when nothing can be skipped does it cancel the
+		// whole connection (436 UGameEngine::Exec).
 		static UBOOL InCancel = 0;
 		if( !InCancel )
 		{
 			InCancel = 1;
 			if( GPendingLevel )
+			{
+				if( GPendingLevel->TrySkipFile() )
+				{
+					InCancel = 0;
+					return 1;
+				}
 				SetProgress( LocalizeProgress("CancelledConnect"), TEXT(""), 2.0 );
+			}
 			else
 				SetProgress( TEXT(""), TEXT(""), 0.0 );
 			CancelPending();
