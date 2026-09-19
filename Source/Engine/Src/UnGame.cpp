@@ -404,6 +404,16 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 			Ar.Logf( TEXT("Reconnect failed: %s"), *Error );
 		return 1;
 	}
+	else if( ParseCommand(&Cmd,TEXT("EXIT")) || ParseCommand(&Cmd,TEXT("QUIT")) )
+	{
+		// v436-compat port: EXIT/QUIT live here in 436 (moved from USystem::Exec), and leave any
+		// server cleanly first.
+		CloseServerConnection( GLevel );
+		CloseServerConnection( GPendingLevel );
+		Ar.Log( TEXT("Closing by request") );
+		appRequestExit( 0 );
+		return 1;
+	}
 	else if( ParseCommand( &Str, TEXT("GETCURRENTTICKRATE") ) )
 	{
 		Ar.Logf( TEXT("%f"), CurrentTickRate );
