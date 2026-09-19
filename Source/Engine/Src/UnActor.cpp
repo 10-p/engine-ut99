@@ -598,7 +598,9 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 }
 UBOOL AInventory::ShouldDoScriptReplication()
 {
-	return !bAlwaysRelevant || bNetInitial;
+	// v436-compat port: 436 evaluates an inventory item's script replication conditions only for
+	// its owner or on the initial update (v400: `!bAlwaysRelevant || bNetInitial`).
+	return bNetInitial || bNetOwner;
 }
 
 // v436-compat port: AWeapon, APickup, AAmmo and ALevelInfo are `nativereplication` in the v436
