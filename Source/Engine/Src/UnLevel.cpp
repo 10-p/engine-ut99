@@ -682,6 +682,21 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 				if( It->Guid==Guid )
 					Parse( Text, TEXT("GEN=" ), It->RemoteGeneration );
 		}
+		else if( ParseCommand(&Text,TEXT("SKIP")) )
+		{
+			// v436-compat port: the client pressed F10 on an optional package; forget it so we stop
+			// expecting the other side to have it.
+			FGuid Guid(0,0,0,0);
+			Parse( Text, TEXT("GUID=" ), Guid );
+			if( Connection->PackageMap )
+				for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
+					if( Connection->PackageMap->List(i).Guid==Guid )
+					{
+						debugf( TEXT("User skipped download of '%s'"), *Connection->PackageMap->List(i).URL );
+						Connection->PackageMap->List.Remove( i );
+						break;
+					}
+		}
 		else if( ParseCommand(&Text,TEXT("LOGIN")) )
 		{
 			// Admit or deny the player here.
