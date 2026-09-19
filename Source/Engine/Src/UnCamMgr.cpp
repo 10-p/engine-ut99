@@ -81,12 +81,13 @@ UBOOL UClient::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	guard(UClient::Exec);
 	if( ParseCommand(&Cmd,TEXT("BRIGHTNESS")) )
 	{
-		if( (Brightness+=0.1) >= 1.0 )
+		// v436-compat port: FLOAT step, and the level shown is rounded (436 UClient::Exec).
+		if( (Brightness+=0.1f) >= 1.f )
 			Brightness = 0;
 		Engine->Flush(1);
 		SaveConfig();
 		if( Viewports.Num() && Viewports(0)->Actor )//!!ugly
-			Viewports(0)->Actor->eventClientMessage( *FString::Printf(TEXT("Brightness level %i/10"), (INT)(Brightness*10+1)), NAME_None, 0 );
+			Viewports(0)->Actor->eventClientMessage( *FString::Printf(TEXT("Brightness level %i/10"), appRound(Brightness*10+1)), NAME_None, 0 );
 		return 1;
 	}
 	else return 0;
