@@ -402,14 +402,14 @@ public:
 	UBOOL Encode( FArchive& In, FArchive& Out )
 	{
 		guard(FCodecFull::Encode);
-		Code( In, Out, 1, 0, FCodec::Encode );
+		Code( In, Out, 1, 0, &FCodec::Encode );
 		return 0;
 		unguard;
 	}
 	UBOOL Decode( FArchive& In, FArchive& Out )
 	{
 		guard(FCodecFull::Decode);
-		Code( In, Out, -1, Codecs.Num()-1, FCodec::Decode );
+		Code( In, Out, -1, Codecs.Num()-1, &FCodec::Decode );
 		return 1;
 		unguard;
 	}
