@@ -1024,6 +1024,25 @@ void UClass::Serialize( FArchive& Ar )
 		SetFlags( RF_Public | RF_Standalone );
 	}
 	Ar << ClassFlags << ClassGuid;
+
+	// Native-replication guard (the load-time detector the v436 sweep lacked): a `nativereplication`
+	// class tells UPackageMap::GetClassNetCache to skip its properties' script replication conditions,
+	// so only its C++ GetOptimizedRepList can send them. If the C++ class does not declare native
+	// replication (DECLARE_CLASS without CLASS_NativeReplication, which Engine keeps equal to "declares
+	// its own GetOptimizedRepList" with compile-time checks), those properties silently never reach a
+	// client: no error, no log, and only visible over the network. Warn here, at load, instead.
+	if( Ar.IsLoading() && (ClassFlags & CLASS_NativeReplication) )
+	{
+		extern UClass* GNativeFlagClasses[]; extern DWORD GNativeFlagValues[]; extern INT GNativeFlagCount;
+		INT Found = INDEX_NONE;
+		for( INT i=0; i<GNativeFlagCount; i++ )
+			if( GNativeFlagClasses[i]==this )
+				{ Found = i; break; }
+		if( Found==INDEX_NONE )
+			debugf( NAME_Warning, TEXT("[netrep] %s is nativereplication in script but has no C++ class -- its properties will not replicate"), GetName() );
+		else if( !(GNativeFlagValues[Found] & CLASS_NativeReplication) )
+			debugf( NAME_Warning, TEXT("[netrep] %s is nativereplication in script but its C++ has no GetOptimizedRepList -- its properties will not replicate"), GetName() );
+	}
 	Ar << Dependencies << PackageImports;
 	if( Ar.Ver()>=62 )
 		Ar << ClassWithin << ClassConfigName;
@@ -1119,7 +1138,13 @@ UClass::UClass
 ,	ClassConstructor		( InClassConstructor )
 ,	ClassStaticConstructor	( InClassStaticConstructor )
 ,	NativeConfigNameStash	( InConfigName )
-{}
+{
+	// Native-replication guard: remember the class flags C++ declared (DECLARE_CLASS), because
+	// loading the .u overwrites ClassFlags. See UClass::Serialize.
+	extern UClass* GNativeFlagClasses[]; extern DWORD GNativeFlagValues[]; extern INT GNativeFlagCount;
+	if( GNativeFlagCount < 4096 ) { GNativeFlagClasses[GNativeFlagCount]=this; GNativeFlagValues[GNativeFlagCount]=InClassFlags; GNativeFlagCount++; }
+}
+UClass* GNativeFlagClasses[4096]; DWORD GNativeFlagValues[4096]; INT GNativeFlagCount=0;
 
 IMPLEMENT_CLASS(UClass);
 
