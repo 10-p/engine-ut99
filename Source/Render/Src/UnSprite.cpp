@@ -506,8 +506,9 @@ void FDynamicChunk::Filter( UViewport* Viewport, FSceneNode* Frame, INT iNode, I
 		{
 			FLOAT	FloatYAdjust	= (FLOAT)Y0 + 1.0 - Intersect[0].ScreenY;
 			FLOAT	FloatFixDX 		= 65536.0 * (Intersect[1].ScreenX - Intersect[0].ScreenX) / (Intersect[1].ScreenY - Intersect[0].ScreenY);
-			INT		FixDX			= (INT) FloatFixDX;
-			INT		FixX			= (INT) (65536.0 * Intersect[0].ScreenX + FloatFixDX * FloatYAdjust);
+			// v436-compat port: both fixed-point values are rounded, not truncated.
+			INT		FixDX			= appRound( FloatFixDX );
+			INT		FixX			= appRound( 65536.0 * Intersect[0].ScreenX + FloatFixDX * FloatYAdjust );
 
 			if( Raster->StartY > Y0 ) 
 			{
