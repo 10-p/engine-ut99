@@ -32,6 +32,10 @@
 // The current Unrealfile version.
 #define PACKAGE_FILE_VERSION 68
 
+// v436-compat port: licensee version, the upper 16 bits of a package's file version (436 reads
+// it into FArchive::LicenseeVer). Epic packages carry 0 there.
+#define PACKAGE_FILE_VERSION_LICENSEE	0x00
+
 // The earliest file version which we can load with complete
 // backwards compatibility. Must be at least PACKAGE_FILE_VERSION.
 #define PACKAGE_MIN_VERSION 60

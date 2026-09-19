@@ -159,6 +159,10 @@ struct FPackageFileSummary
 		appMemzero( this, sizeof(*this) );
 	}
 
+	// v436-compat port: FileVersion carries the licensee version in its upper 16 bits.
+	INT GetFileVersion() const { return (FileVersion & 0xffff); }
+	INT GetFileVersionLicensee() const { return ((FileVersion >> 16) & 0xffff); }
+
 	// Serializer.
 	friend FArchive& operator<<( FArchive& Ar, FPackageFileSummary& Sum )
 	{
@@ -170,7 +174,7 @@ struct FPackageFileSummary
 		Ar << Sum.NameCount     << Sum.NameOffset;
 		Ar << Sum.ExportCount   << Sum.ExportOffset;
 		Ar << Sum.ImportCount   << Sum.ImportOffset;
-		if( Sum.FileVersion>=68 )
+		if( Sum.GetFileVersion()>=68 )
 		{
 			INT GenerationCount = Sum.Generations.Num();
 			Ar << Sum.Guid << GenerationCount;
@@ -346,6 +350,7 @@ class ULinkerLoad : public ULinker, public FArchive
 		// Set status info.
 		guard(InitAr);
 		ArVer       = PACKAGE_FILE_VERSION;
+		ArLicenseeVer = PACKAGE_FILE_VERSION_LICENSEE;
 		ArIsLoading = ArIsPersistent = 1;
 		ArForEdit   = GIsEditor;
 		ArForClient = 1;
@@ -355,7 +360,8 @@ class ULinkerLoad : public ULinker, public FArchive
 		// Read summary from file.
 		guard(LoadSummary);
 		*this << Summary;
-		ArVer = Summary.FileVersion;
+		ArVer = Summary.GetFileVersion();
+		ArLicenseeVer = Summary.GetFileVersionLicensee();
 		if( Cast<UPackage>(LinkerRoot) )
 			Cast<UPackage>(LinkerRoot)->PackageFlags = Summary.PackageFlags;
 		unguard;
@@ -371,7 +377,7 @@ class ULinkerLoad : public ULinker, public FArchive
 
 		// Validate the summary.
 		guard(CheckVersion);
-		if( Summary.FileVersion < PACKAGE_MIN_VERSION )
+		if( Summary.GetFileVersion() < PACKAGE_MIN_VERSION )
 			if( !GWarn->YesNof( LocalizeQuery("OldVersion"), *Filename ) )
 				throw( LocalizeError("Aborted") );
 		unguard;
@@ -1060,7 +1066,7 @@ class ULinkerSave : public ULinker, public FArchive
 
 		// Set main summary info.
 		Summary.Tag           = PACKAGE_FILE_TAG;
-		Summary.FileVersion	  = PACKAGE_FILE_VERSION;
+		Summary.FileVersion	  = (PACKAGE_FILE_VERSION_LICENSEE << 16) | PACKAGE_FILE_VERSION;
 		Summary.PackageFlags  = Cast<UPackage>(LinkerRoot) ? Cast<UPackage>(LinkerRoot)->PackageFlags : 0;
 
 		// Set status info.
