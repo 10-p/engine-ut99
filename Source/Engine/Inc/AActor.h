@@ -60,6 +60,7 @@
 		return Clamp( 1.0 - LifeSpan / GetClass()->GetDefaultActor()->LifeSpan, 0.0, 1.0 );
 	}
 	FVector GetCylinderExtent() const {return FVector(CollisionRadius,CollisionRadius,CollisionHeight);}
+	FBox GetVisibilityBox(); // v436-compat port
 	AActor* GetTopOwner();
 	UBOOL IsPendingKill() {return bDeleteMe;}
 

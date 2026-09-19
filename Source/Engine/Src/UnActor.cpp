@@ -1019,6 +1019,16 @@ void AZoneInfo::PostEditChange()
 	AActor.
 -----------------------------------------------------------------------------*/
 
+//
+// v436-compat port: the actor's collision cylinder as a box, grown by one unit on every side
+// (436 AActor::GetVisibilityBox; its only caller is the renderer).
+//
+FBox AActor::GetVisibilityBox()
+{
+	FVector Extent( CollisionRadius+1.f, CollisionRadius+1.f, CollisionHeight+1.f );
+	return FBox( Location-Extent, Location+Extent );
+}
+
 void AActor::Destroy()
 {
 	guard(AActor::Destroy);
