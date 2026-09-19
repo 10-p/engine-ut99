@@ -216,10 +216,16 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 		if ( Pawn->bIsPlayer && !Pawn->bCanFly && !Region.Zone->bWaterZone )
 		{
 			// only add gravity if pawn is not resting on valid floor
+			// v436-compat port: 436 probes 6 units down (was 8) and gives a pawn with no vertical
+			// speed an initial -120 before adding gravity (436 AActor::Tick).
 			FCheckResult Hit(1.0);
-			GetLevel()->SingleLineCheck(Hit, this, Location - FVector(0,0,8), Location, TRACE_VisBlocking, GetCylinderExtent());
+			GetLevel()->SingleLineCheck(Hit, this, Location - FVector(0,0,6), Location, TRACE_VisBlocking, GetCylinderExtent());
 			if ( (Hit.Time == 1.0) || (Hit.Normal.Z < 0.7) )
+			{
+				if ( Velocity.Z == 0.f )
+					Velocity.Z = -120.f;
 				Velocity += 0.5 * Region.Zone->ZoneGravity * DeltaSeconds;
+			}
 		}
 		//simulated pawns just predict location, no script execution
 		moveSmooth(Velocity * DeltaSeconds);
