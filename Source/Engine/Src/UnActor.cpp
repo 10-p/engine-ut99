@@ -229,19 +229,67 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(APawn::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
-	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
+	if( !(StaticClass()->ClassFlags & CLASS_NativeReplication) )
+		return Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+
+	// v436-compat port: except on the initial update, to the owner, or every 5th update, 436 sends
+	// a pawn a hand-picked subset of the Actor properties (and skips the Actor list entirely).
+	if( !bNetInitial && !bNetOwner && (NumReps%5)!=0 )
 	{
 		if( Role==ROLE_Authority )
 		{
-			DOREP(Pawn,Weapon);
+			DOREP(Actor,bHidden);
+			if( RemoteRole<=ROLE_SimulatedProxy )
+			{
+				DOREP(Actor,Location);
+				if( DrawType==DT_Mesh || DrawType==DT_Brush )
+				{
+					DOREP(Actor,Rotation);
+				}
+			}
+			if( DrawType==DT_Mesh )
+			{
+				if( RemoteRole<=ROLE_SimulatedProxy || bDemoRecording )
+				{
+					DOREP(Actor,AnimSequence);
+					DOREP(Actor,SimAnim);
+					DOREP(Actor,AnimMinRate);
+					DOREP(Actor,bAnimNotify);
+				}
+			}
+			else if( DrawType==DT_Sprite )
+			{
+				if( !bHidden && !bOnlyOwnerSee )
+				{
+					DOREP(Actor,Sprite);
+				}
+			}
+			if( RemoteRole==ROLE_SimulatedProxy )
+			{
+				DOREP(Actor,Base);
+				DOREP(Actor,Velocity);
+			}
+			else if( bSimFall )
+			{
+				DOREP(Actor,Physics);
+				DOREP(Actor,Acceleration);
+				DOREP(Actor,bBounce);
+				DOREP(Actor,Velocity);
+			}
+		}
+	}
+	else
+	{
+		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
+		if( Role==ROLE_Authority )
+		{
 			DOREP(Pawn,PlayerReplicationInfo);
 			DOREP(Pawn,Health);
-			DOREP(Pawn,bCanFly);
 			if( bNetOwner )
 			{
 				 DOREP(Pawn,bIsPlayer);
 				 DOREP(Pawn,carriedDecoration);
+				 DOREP(Pawn,MoveTarget);
 				 DOREP(Pawn,SelectedItem);
 				 DOREP(Pawn,GroundSpeed);
 				 DOREP(Pawn,WaterSpeed);
@@ -250,17 +298,21 @@ INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT*
 				 DOREP(Pawn,JumpZ);
 				 DOREP(Pawn,AirControl);
 				 DOREP(Pawn,bBehindView);
-				 DOREP(Pawn,MoveTarget);
 			}
 		}
-		if( (bNetOwner && bIsPlayer && bNetInitial) || bDemoRecording )
-		{
-			DOREP(Pawn,ViewRotation);
-		}
-		if( bDemoRecording )
-		{
-			DOREP(Pawn,EyeHeight);
-		}
+	}
+	if( Role==ROLE_Authority )
+	{
+		DOREP(Pawn,Weapon);
+		DOREP(Pawn,bCanFly);
+	}
+	if( (bNetOwner && bIsPlayer && bNetInitial) || bDemoRecording )
+	{
+		DOREP(Pawn,ViewRotation);
+	}
+	if( bDemoRecording )
+	{
+		DOREP(Pawn,EyeHeight);
 	}
 	return Ptr;
 	unguard;
