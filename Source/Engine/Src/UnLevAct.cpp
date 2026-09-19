@@ -121,10 +121,19 @@ AActor* ULevel::SpawnActor
 	Actor->eventPostBeginPlay();
 
 	// Check for encroachment.
-	if( !bNoCollisionFail && CheckEncroachment( Actor, Actor->Location, Actor->Rotation, 0 ) )
+	// v436-compat port: as in MoveActor, the actor is out of the collision hash while its
+	// encroachment is checked, and is re-hashed if it survives (436 ULevel::SpawnActor).
+	if( !bNoCollisionFail )
 	{
-		DestroyActor( Actor );
-		return NULL;
+		if( Actor->bCollideActors && Hash )
+			Hash->RemoveActor( Actor );
+		if( CheckEncroachment( Actor, Actor->Location, Actor->Rotation, 0 ) )
+		{
+			DestroyActor( Actor );
+			return NULL;
+		}
+		if( Actor->bCollideActors && Hash )
+			Hash->AddActor( Actor );
 	}
 
 	// Init scripting.
