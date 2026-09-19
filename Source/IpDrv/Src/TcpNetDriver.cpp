@@ -188,10 +188,17 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 	sockaddr_in	LocalAddr;
 	SOCKET		Socket;
 	TArray<FRecentlyClosed> RecentlyClosed;	// v436
+	UBOOL		OverrideBufferAllocation;	// v436 config
 
 	// Constructor.
 	UTcpNetDriver()
 	{}
+	void StaticConstructor()
+	{
+		guard(UTcpNetDriver::StaticConstructor);
+		new(GetClass(),TEXT("OverrideBufferAllocation"),RF_Public)UBoolProperty(CPP_PROPERTY(OverrideBufferAllocation), TEXT("Client"), CPF_Config );
+		unguard;
+	}
 
 	// UObject interface.
 	void Serialize( FArchive& Ar )
@@ -396,13 +403,24 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 #endif
 		// Increase socket queue size, because we are polling rather than threading
 		// and thus we rely on Windows Sockets to buffer a lot of data on the server.
-		INT RecvSize = Connect ? 0x8000 : 0x20000, SizeSize=sizeof(RecvSize);
-		INT SendSize = Connect ? 0x8000 : 0x20000;
-		setsockopt( Socket, SOL_SOCKET, SO_RCVBUF, (char*)&RecvSize, SizeSize );
-		getsockopt( Socket, SOL_SOCKET, SO_RCVBUF, (char*)&RecvSize, GCC_OPT_INT_CAST &SizeSize );
-		setsockopt( Socket, SOL_SOCKET, SO_SNDBUF, (char*)&SendSize, SizeSize );
-		getsockopt( Socket, SOL_SOCKET, SO_SNDBUF, (char*)&SendSize, GCC_OPT_INT_CAST &SizeSize );
-		debugf( NAME_Init, TEXT("%s: Socket queue %i / %i"), SOCKET_API, RecvSize, SendSize );
+		// v436: except on Windows NT 5.x (2000/XP), where the OS default is kept unless
+		// OverrideBufferAllocation is set. No other OS is NT 5, so elsewhere the sizes are always set.
+#if __WINSOCK__
+		UBOOL KeepDefaultQueue = (BYTE)GetVersion()==5 && !OverrideBufferAllocation;
+#else
+		UBOOL KeepDefaultQueue = 0;
+#endif
+		if( !KeepDefaultQueue )
+		{
+			INT RecvSize = Connect ? 0x8000 : 0x20000, SizeSize=sizeof(RecvSize);
+			INT SendSize = Connect ? 0x8000 : 0x20000;
+			setsockopt( Socket, SOL_SOCKET, SO_RCVBUF, (char*)&RecvSize, SizeSize );
+			getsockopt( Socket, SOL_SOCKET, SO_RCVBUF, (char*)&RecvSize, GCC_OPT_INT_CAST &SizeSize );
+			setsockopt( Socket, SOL_SOCKET, SO_SNDBUF, (char*)&SendSize, SizeSize );
+			getsockopt( Socket, SOL_SOCKET, SO_SNDBUF, (char*)&SendSize, GCC_OPT_INT_CAST &SizeSize );
+			debugf( NAME_Init, TEXT("%s: Socket queue %i / %i"), SOCKET_API, RecvSize, SendSize );
+		}
+		else debugf( NAME_Init, TEXT("%s: Socket queue size left as default."), SOCKET_API );
 
 		// Bind socket to our port.
 		LocalAddr.sin_family    = AF_INET;
