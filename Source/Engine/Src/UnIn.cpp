@@ -273,11 +273,18 @@ UBOOL UInput::Exec( const TCHAR* Str, FOutputDevice& Ar )
 		&&	ParseToken( Str, Temp, ARRAY_COUNT(Temp), 0 )
 		&&	(Axis=FindAxisName(Viewport->Actor,Temp))!=NULL )
 		{
-			FLOAT Speed=1.0;
+			// v436-compat port: SPEEDBASE= (436 UInput::Exec) -- a positive base applies the
+			// delta scaled by it whatever the input action is.
+			FLOAT Speed=1.f, SpeedBase=0.f;
 			Parse( Str, TEXT("SPEED="), Speed );
-			if( GetInputAction() == IST_Axis )
+			Parse( Str, TEXT("SPEEDBASE="), SpeedBase );
+			if( SpeedBase > 0.f )
 			{
-				*Axis += 0.01 * GetInputDelta() * Speed;
+				*Axis += GetInputDelta() * SpeedBase * Speed;
+			}
+			else if( GetInputAction() == IST_Axis )
+			{
+				*Axis += GetInputDelta() * Speed * 0.01f;
 			}
 			else if( GetInputAction() == IST_Hold )
 			{
