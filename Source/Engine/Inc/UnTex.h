@@ -362,6 +362,9 @@ class ENGINE_API UTexture : public UBitmap
 	virtual void MousePosition( DWORD Buttons, FLOAT X, FLOAT Y ) {}
 	virtual void Click( DWORD Buttons, FLOAT X, FLOAT Y ) {}
 	virtual void Update( DOUBLE Time );
+	// v436-compat port: priming moved out of Tick into this virtual so UFractalTexture can
+	// override it (Engine.dll 436 vtable slot after Update).
+	virtual void Prime();
 
 	// UTexture functions.
 	void BuildRemapIndex( UBOOL Masked );
