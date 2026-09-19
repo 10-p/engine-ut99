@@ -2940,7 +2940,16 @@ void URender::DrawFrame( FSceneNode* Frame )
 			if
 			(	(Pass==2 && bTranslucent)
 			||	(Viewport->RenDev->SpanBased ? Pass==2 : (Pass==1 && !bTranslucent) ) )
-				DrawActorSprite( Frame, Sprite );
+			{
+				// v436-compat port: an actor filtered by volume stands in for its render iterator's
+				// items (see SetupDynamics): draw those instead of the actor itself.
+				if( Sprite->Actor->bFilterByVolume )
+				{
+					for( FDynamicSprite* Sub=Sprite->FirstSub; Sub; Sub=Sub->RenderNext )
+						DrawActorSprite( Frame, Sub );
+				}
+				else DrawActorSprite( Frame, Sprite );
+			}
 		}
 	}
 

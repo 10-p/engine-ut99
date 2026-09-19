@@ -717,6 +717,7 @@ void AActor::Destroy()
 	{
 		RenderInterface->RemoveFromRoot();
 		RenderInterface->ConditionalDestroy();
+		delete RenderInterface;		// v436-compat port: v436 also frees it here.
 		RenderInterface = NULL;
 	}
 	UObject::Destroy();

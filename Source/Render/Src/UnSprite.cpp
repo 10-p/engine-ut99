@@ -41,7 +41,8 @@ void URender::SetupDynamics( FSceneNode* Frame, AActor* Exclude )
 			if
 			(	(Actor != Exclude)
 			&&	(GIsEditor ? !Actor->bHiddenEd : !Actor->bHidden)
-#if defined(LEGEND) //LEGEND
+			// v436-compat port: v436 enables the PlayerPawn Render Control Interface (RCI) and the
+			// visibility-volume cull, which v400 compiled out (they were Legend's, under LEGEND).
 			// call PlayerPawn Render Control Interface (RCI) to assess visible actors
 			&&	( ( GIsEditor && !( Frame->Viewport->Actor->ShowFlags & SHOW_PlayerCtrl ) )
 				|| ( Frame->Viewport->Actor->IsA( APlayerPawn::StaticClass() ) 
@@ -49,26 +50,25 @@ void URender::SetupDynamics( FSceneNode* Frame, AActor* Exclude )
 			// clip actors that aren't "visible" 
 			&&	( (Actor->VisibilityRadius == 0.0 || appSqrt((Actor->Location - Frame->Coords.Origin).SizeSquared2D()) < Actor->VisibilityRadius)
 				&&(Actor->VisibilityHeight == 0.0 || Abs    ((Actor->Location - Frame->Coords.Origin).Z              ) < Actor->VisibilityHeight) )
-#endif
 			&&	(!Actor->bOnlyOwnerSee || (Actor->IsOwnedBy(Frame->Viewport->Actor) && !Frame->Viewport->Actor->bBehindView))
 			&&	(!Actor->IsOwnedBy(Frame->Viewport->Actor) || !Actor->bOwnerNoSee || (Actor->IsOwnedBy(Frame->Viewport->Actor) && Frame->Viewport->Actor->bBehindView)) )
 			{
 				// Add the sprite proxy.
 				if( !Actor->IsMovingBrush() )
 				{
-#if defined(LEGEND) //LEGEND
-if( GIsRunning ) //!!Tim -- don't render until after the engine is fully initialized.
-{
+					// v436-compat port: the Enhanced Actor Render Interface (EARI), as v436 enables it.
+					// An actor with a RenderIteratorClass gets a RenderInterface object, which supplies
+					// the actors actually drawn. (Legend's version also required GIsRunning and rooted
+					// the object; v436 does neither, and releases it with ConditionalDestroy + delete.)
 					UClass* ObjectClass = Actor->RenderIteratorClass;
 					if( ObjectClass != NULL && (Actor->RenderInterface == NULL || !Actor->RenderInterface->IsValid()) )
 					{
 						Actor->RenderInterface = (URenderIterator*)StaticConstructObject( ObjectClass, Actor, NAME_None, 0, ObjectClass->GetDefaultObject() );
-						Actor->RenderInterface->AddToRoot();
 					}
 					else if( ObjectClass == NULL && Actor->RenderInterface != NULL )
 					{
-						Actor->RenderInterface->RemoveFromRoot();
-						Actor->RenderInterface->Destroy();
+						Actor->RenderInterface->ConditionalDestroy();
+						delete Actor->RenderInterface;
 						Actor->RenderInterface = NULL;
 					}
 					URenderIterator* i = Actor->RenderInterface;
@@ -79,20 +79,28 @@ if( GIsRunning ) //!!Tim -- don't render until after the engine is fully initial
 					}
 					else
 					{
-						i->Init( Frame->Viewport->Actor );
-						for( i->First(); !i->IsDone(); i->Next() )
+						i->Init( Frame );
+						if( Actor->bFilterByVolume )
 						{
-							AActor* DisplayOp = i->CurrentItem();
-							//!! modify the code so that only one FDynamicSprite
-							// is filtered through the BSP per actor, and the resulting span buffer is used
-							// for clipping all of the particles for the actor
-							new(GDynMem)FDynamicSprite( Frame, 0, DisplayOp );
+							// Filter only the actor's own sprite through the Bsp; its items ride along
+							// as unfiltered sub-sprites, drawn in its place (see DrawFrame).
+							FDynamicSprite* Group = new(GDynMem)FDynamicSprite( Frame, 0, Actor );
+							for( i->First(); !i->IsDone(); i->Next() )
+							{
+								AActor* DisplayOp = i->CurrentItem();
+								Group->AddSub( new(GDynMem)FDynamicSprite( Frame, DisplayOp ) );
+							}
 						}
+						else
+						{
+							for( i->First(); !i->IsDone(); i->Next() )
+							{
+								AActor* DisplayOp = i->CurrentItem();
+								new(GDynMem)FDynamicSprite( Frame, 0, DisplayOp );
+							}
+						}
+						i->UnInit();
 					}
-}
-#else
-					new(GDynMem)FDynamicSprite( Frame, 0, Actor );
-#endif
 				}
 				else if( Frame->Level->BrushTracker )
 				{
@@ -153,6 +161,8 @@ FDynamicSprite::FDynamicSprite( FSceneNode* Frame, INT iNode, AActor* InActor )
 ,	RenderNext		( NULL )
 ,	Volumetrics		( NULL )
 ,	LeafLights		( NULL )
+,	FirstSub		( NULL )
+,	LastSub			( &FirstSub )
 {
 	guardSlow(FDynamicSprite::FDynamicSprite);
 
@@ -162,53 +172,88 @@ FDynamicSprite::FDynamicSprite( FSceneNode* Frame, INT iNode, AActor* InActor )
 		FilterNext = GRender->Dynamic( iNode, 0 );
 		GRender->Dynamic( iNode, 0 ) = this;
 
-		// Compute four projection-plane points from sprite extents and viewport.
-		FLOAT FloatX1 = X1; 
-		FLOAT FloatX2 = X2;
-		FLOAT FloatY1 = Y1; 
-		FLOAT FloatY2 = Y2;
-
-		// Move closer to prevent actors from slipping into floor.
-		FLOAT PlaneZRD	= Z * Frame->RProj.Z;
-		FLOAT PlaneX1   = PlaneZRD * (FloatX1 - Frame->FX2);
-		FLOAT PlaneX2   = PlaneZRD * (FloatX2 - Frame->FX2);
-		FLOAT PlaneY1   = PlaneZRD * (FloatY1 - Frame->FY2);
-		FLOAT PlaneY2   = PlaneZRD * (FloatY2 - Frame->FY2);
-
-		// Generate four screen-aligned box vertices.
-		ProxyVerts[0].Point = FVector(PlaneX1, PlaneY1, Z).TransformPointBy( Frame->Uncoords );
-		ProxyVerts[1].Point = FVector(PlaneX2, PlaneY1, Z).TransformPointBy( Frame->Uncoords );
-		ProxyVerts[2].Point = FVector(PlaneX2, PlaneY2, Z).TransformPointBy( Frame->Uncoords );
-		ProxyVerts[3].Point = FVector(PlaneX1, PlaneY2, Z).TransformPointBy( Frame->Uncoords );
-
-		// Screen coords.
-		ProxyVerts[0].ScreenX = FloatX1; ProxyVerts[0].ScreenY = FloatY1;
-		ProxyVerts[1].ScreenX = FloatX2; ProxyVerts[1].ScreenY = FloatY1;
-		ProxyVerts[2].ScreenX = FloatX2; ProxyVerts[2].ScreenY = FloatY2;
-		ProxyVerts[3].ScreenX = FloatX1; ProxyVerts[3].ScreenY = FloatY2;
-
-		// Generate a full rasterization for this box, which we'll filter down the Bsp.
-		//!!inefficient when in box
-		check(Y1>=0);
-		check(Y2<=Frame->Y);
-		check(Y1<Y2);
-		FRasterPoly* Raster = (FRasterPoly *)New<BYTE>(GDynMem,sizeof(FRasterPoly) + (Y2-Y1)*sizeof(FRasterSpan));
-		Raster->StartY	    = Y1;
-		Raster->EndY	    = Y2;
-
-		FRasterSpan* Line = &Raster->Lines[0];
-		for( INT i=Raster->StartY; i<Raster->EndY; i++ )
-		{
-			Line->X[0] = X1;
-			Line->X[1] = X2;
-			Line++;
-		}
-
 		// Add first sprite chunk at end of dynamics list, and cause it to be filtered, since
 		// it's being added at the start.
+		FRasterPoly* Raster = SetupProxy( Frame );
 		new(GDynMem)FDynamicChunk( iNode, this, Raster );
 	}
 	STAT(GStat.NumSprites++);
+	unguardSlow;
+}
+
+//
+// v436-compat port: a sprite that is set up exactly like a filtered one but is neither registered
+// with the dynamics cache nor filtered through the Bsp (the retail v436 Render.dll's constructor for
+// the items of a bFilterByVolume render iterator). It has no span buffer; DrawFrame draws it as one
+// of its group's sub-sprites.
+//
+FDynamicSprite::FDynamicSprite( FSceneNode* Frame, AActor* InActor )
+:	Actor			( InActor )
+,	SpanBuffer		( NULL )
+,	RenderNext		( NULL )
+,	Volumetrics		( NULL )
+,	LeafLights		( NULL )
+,	FirstSub		( NULL )
+,	LastSub			( &FirstSub )
+{
+	guardSlow(FDynamicSprite::FDynamicSprite);
+
+	if( Setup( Frame ) )
+		SetupProxy( Frame );
+	STAT(GStat.NumSprites++);
+	unguardSlow;
+}
+
+//
+// Compute the sprite's projection-plane proxy and its full rasterization (the part of the
+// constructor after Setup; the raster is what a filtered sprite sends down the Bsp).
+//
+FRasterPoly* FDynamicSprite::SetupProxy( FSceneNode* Frame )
+{
+	guardSlow(FDynamicSprite::SetupProxy);
+
+	// Compute four projection-plane points from sprite extents and viewport.
+	FLOAT FloatX1 = X1; 
+	FLOAT FloatX2 = X2;
+	FLOAT FloatY1 = Y1; 
+	FLOAT FloatY2 = Y2;
+
+	// Move closer to prevent actors from slipping into floor.
+	FLOAT PlaneZRD	= Z * Frame->RProj.Z;
+	FLOAT PlaneX1   = PlaneZRD * (FloatX1 - Frame->FX2);
+	FLOAT PlaneX2   = PlaneZRD * (FloatX2 - Frame->FX2);
+	FLOAT PlaneY1   = PlaneZRD * (FloatY1 - Frame->FY2);
+	FLOAT PlaneY2   = PlaneZRD * (FloatY2 - Frame->FY2);
+
+	// Generate four screen-aligned box vertices.
+	ProxyVerts[0].Point = FVector(PlaneX1, PlaneY1, Z).TransformPointBy( Frame->Uncoords );
+	ProxyVerts[1].Point = FVector(PlaneX2, PlaneY1, Z).TransformPointBy( Frame->Uncoords );
+	ProxyVerts[2].Point = FVector(PlaneX2, PlaneY2, Z).TransformPointBy( Frame->Uncoords );
+	ProxyVerts[3].Point = FVector(PlaneX1, PlaneY2, Z).TransformPointBy( Frame->Uncoords );
+
+	// Screen coords.
+	ProxyVerts[0].ScreenX = FloatX1; ProxyVerts[0].ScreenY = FloatY1;
+	ProxyVerts[1].ScreenX = FloatX2; ProxyVerts[1].ScreenY = FloatY1;
+	ProxyVerts[2].ScreenX = FloatX2; ProxyVerts[2].ScreenY = FloatY2;
+	ProxyVerts[3].ScreenX = FloatX1; ProxyVerts[3].ScreenY = FloatY2;
+
+	// Generate a full rasterization for this box, which we'll filter down the Bsp.
+	//!!inefficient when in box
+	check(Y1>=0);
+	check(Y2<=Frame->Y);
+	check(Y1<Y2);
+	FRasterPoly* Raster = (FRasterPoly *)New<BYTE>(GDynMem,sizeof(FRasterPoly) + (Y2-Y1)*sizeof(FRasterSpan));
+	Raster->StartY	    = Y1;
+	Raster->EndY	    = Y2;
+
+	FRasterSpan* Line = &Raster->Lines[0];
+	for( INT i=Raster->StartY; i<Raster->EndY; i++ )
+	{
+		Line->X[0] = X1;
+		Line->X[1] = X2;
+		Line++;
+	}
+	return Raster;
 	unguardSlow;
 }
 
