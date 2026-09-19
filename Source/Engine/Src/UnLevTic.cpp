@@ -263,7 +263,8 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 				INT TimerTicksPassed = 1;
 				if( TimerRate > 0.0 )
 				{
-					TimerTicksPassed     = (int)(TimerCounter/TimerRate);
+					// v436-compat port: rounded, not truncated (436 AActor::Tick).
+					TimerTicksPassed     = appRound(TimerCounter/TimerRate);
 					TimerCounter -= TimerRate * TimerTicksPassed;
 					if( TimerTicksPassed && !bTimerLoop )
 					{
@@ -322,7 +323,8 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 			INT TimerTicksPassed = 1;
 			if( TimerRate > 0.0 )
 			{
-				TimerTicksPassed     = (int)(TimerCounter/TimerRate);
+				// v436-compat port: rounded, not truncated (436 AActor::Tick).
+				TimerTicksPassed     = appRound(TimerCounter/TimerRate);
 				TimerCounter -= TimerRate * TimerTicksPassed;
 				if( TimerTicksPassed && !bTimerLoop )
 				{
