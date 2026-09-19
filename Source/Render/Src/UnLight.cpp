@@ -1282,9 +1282,10 @@ static void global_Steady( AActor* Owner, FLOAT& Brightness, FVector& Color )
 static void global_Pulse( AActor* Owner, FLOAT& Brightness, FVector& Color )
 {
 	guardSlow(global_Pulse);
+	// v436-compat port: the table index is rounded, not truncated (SubtlePulse still truncates).
 	Brightness *= 0.6 + 0.39 * GMath.SinTab
 	(
-		(Owner->Level->TimeSeconds * 35.0 * 65536.0) / Max((int)Owner->LightPeriod,1) + (Owner->LightPhase << 8)
+		appRound( (Owner->Level->TimeSeconds * 35.0 * 65536.0) / Max((int)Owner->LightPeriod,1) + (Owner->LightPhase << 8) )
 	);
 	unguardSlow;
 }
@@ -1293,7 +1294,8 @@ static void global_Pulse( AActor* Owner, FLOAT& Brightness, FVector& Color )
 static void global_Blink( AActor* Owner, FLOAT& Brightness, FVector& Color )
 {
 	guardSlow(global_Blink);
-	if( (int)((Owner->Level->TimeSeconds * 35.0 * 65536.0)/(Owner->LightPeriod+1) + (Owner->LightPhase << 8)) & 1 )
+	// v436-compat port: the phase is rounded, not truncated.
+	if( appRound((Owner->Level->TimeSeconds * 35.0 * 65536.0)/(Owner->LightPeriod+1) + (Owner->LightPhase << 8)) & 1 )
 		Brightness = 0.0;
 	unguardSlow;
 }
@@ -1361,7 +1363,7 @@ static void global_TexturePaletteLoop( AActor* Owner, FLOAT& Brightness, FVector
 	if( Owner->Skin && Owner->Skin->Palette )
 	{
 		FLOAT Time        = Owner->Level->TimeSeconds * 35 / Max((int)Owner->LightPeriod,1) + Owner->LightPhase;
-		FColor C          = Owner->Skin->Palette->Colors(((int)(Time*256) & 255) % 255);
+		FColor C          = Owner->Skin->Palette->Colors((appRound(Time*256) & 255) % 255); // v436-compat port: rounded.
 		Color             = FVector( C.R, C.G, C.B ).UnsafeNormal();
 		Brightness       *= C.FBrightness() * 2.8;
 	}
