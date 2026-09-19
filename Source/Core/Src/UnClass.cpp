@@ -429,7 +429,7 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 						// The audited-benign remainder for the v436 packages: each is 4 bytes short because
 						// the C++ header does not declare a trailing script property, so no declared member moves.
 						static const TCHAR* AuditedBenign[] =
-						{ TEXT("PlayerStart"), TEXT("RenderIterator"), TEXT("StatLog"), TEXT("StatLogFile") };
+						{ TEXT("PlayerStart"), TEXT("StatLog"), TEXT("StatLogFile") };
 						UBOOL bKnown = 0;
 						for( INT ki=0; ki<ARRAY_COUNT(AuditedBenign); ki++ )
 							if( appStricmp(GetName(),AuditedBenign[ki])==0 )
