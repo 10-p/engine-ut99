@@ -686,7 +686,8 @@ void APawn::execFindStairRotation( FFrame& Stack, RESULT_DECL )
 			RotRate = 8000/Diff; 
 
 		RotRate = ::Min(1.f, RotRate * deltaTime);
-		stairRot = int(FLOAT(ViewRotation.Pitch) * ( 1 - RotRate) + FLOAT(stairRot) * RotRate);
+		// v436-compat port: the blended pitch is rounded, not truncated (436 execFindStairRotation).
+		stairRot = appRound(FLOAT(ViewRotation.Pitch) * ( 1 - RotRate) + FLOAT(stairRot) * RotRate);
 	}
 	*(DWORD*)Result = stairRot; 
 	unguardSlow;
