@@ -14,6 +14,8 @@
 	// nothing new to send (CheckRecentChanges opts a class in, NoVariablesToReplicate decides).
 	virtual UBOOL NoVariablesToReplicate( AActor* OldVer ) {return 0;}
 	virtual UBOOL CheckRecentChanges() {return 0;}
+	// v436-compat port: how often ServerTickClient considers this actor for this viewer.
+	virtual FLOAT UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos );
 	void ProcessEvent( UFunction* Function, void* Parms, void* Result=NULL );
 	void ProcessState( FLOAT DeltaSeconds );
 	UBOOL ProcessRemoteFunction( UFunction* Function, void* Parms, FFrame* Stack );
