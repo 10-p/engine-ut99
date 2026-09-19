@@ -430,6 +430,13 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		appLaunchURL( TEXT("GSpyLite.exe"), TEXT(""), &Error );
 		return 1;
 	}
+	else if( ParseCommand( &Str, TEXT("OBJCLEAN") ) )
+	{
+		// v436-compat port: force-purge destroyed actors (436 UGameEngine::Exec).
+		if( GLevel )
+			GLevel->CleanupDestroyed( 1 );
+		return 1;
+	}
 	else if( ParseCommand(&Str,TEXT("SAVEGAME")) )
 	{
 		if( appIsDigit(Str[0]) )
