@@ -1064,6 +1064,10 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	}
 	unguard;
 
+	// v436-compat port: let the audio subsystem clean up after the purge (436 LoadMap).
+	if( Audio )
+		Audio->CleanUp();
+
 	// Init collision.
 	GLevel->SetActorCollision( 1 );
 

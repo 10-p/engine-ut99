@@ -760,6 +760,12 @@ IMPLEMENT_CLASS(UMusic);
 
 IMPLEMENT_CLASS(UAudioSubsystem);
 
+// v436-compat port: 436 adds this hook; the base does nothing (436 UAudioSubsystem::CleanUp is a
+// bare `ret`), a driver may override it to drop per-level state after LoadMap's purge.
+void UAudioSubsystem::CleanUp()
+{
+}
+
 /*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/
