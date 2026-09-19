@@ -184,6 +184,7 @@ UBOOL UDemoRecDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL& C
 	DemoFilename   = ConnectURL.Map;
 	Time           = 0;
 	FrameNum       = 0;
+	DemoEnded      = 0; // v436-compat port
 
 	return 1;
 	unguard;
@@ -206,9 +207,11 @@ UBOOL UDemoRecDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, F
 		Error = FString::Printf( TEXT("Couldn't open demo file %s for reading"), *DemoFilename );//!!localize!!
 		return 0;
 	}
+	LoopURL				= ConnectURL; // v436-compat port
 	ClientThirdPerson	= ConnectURL.HasOption(TEXT("3rdperson"));
 	TimeBased			= ConnectURL.HasOption(TEXT("timebased"));
 	NoFrameCap          = ConnectURL.HasOption(TEXT("noframecap"));
+	Loop				= ConnectURL.HasOption(TEXT("loop")); // v436-compat port
 
 	return 1;
 	unguard;
@@ -298,6 +301,10 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 			{
 			AtEnd:
 				ServerConnection->State = USOCK_Closed;
+				// v436-compat port: note the end, and replay the demo if it was opened with ?loop.
+				DemoEnded = 1;
+				if( Loop )
+					GetLevel()->Exec( *(FString(TEXT("DEMOPLAY ")) + *LoopURL.String()), *GLog );
 				return;
 			}
 	
