@@ -1685,7 +1685,18 @@ struct FSubItem
 };
 static QSORT_RETURN CDECL CompareSubItems( const FSubItem* A, const FSubItem* B )
 {
-	return B->Max - A->Max;
+	// v436-compat port: ties are broken by class name, then by the number after the class
+	// name in the object's name (436's OBJ LIST comparator).
+	INT Result = B->Max - A->Max;
+	if( Result==0 )
+	{
+		const TCHAR* ClassA = A->Object->GetClass()->GetName();
+		const TCHAR* ClassB = B->Object->GetClass()->GetName();
+		Result = appStrcmp( ClassA, ClassB );
+		if( Result==0 )
+			Result = appAtoi(A->Object->GetName()+appStrlen(ClassA)) - appAtoi(B->Object->GetName()+appStrlen(ClassB));
+	}
+	return Result;
 }
 static QSORT_RETURN CDECL CompareItems( const FItem* A, const FItem* B )
 {
@@ -1900,23 +1911,35 @@ UBOOL UObject::StaticExec( const TCHAR* Cmd, FOutputDevice& Ar )
 					Total.Add( Count );
 				}
 			}
+			// v436-compat port: 436's layout -- pending-kill objects are only listed with VERBOSE
+			// (marked "X") and are counted; class sizes are in KB.
+			INT NumDeleted = 0;
 			if( Objects.Num() )
 			{
 				appQsort( &Objects(0), Objects.Num(), sizeof(Objects(0)), (QSORT_COMPARE)CompareSubItems );
-				Ar.Logf( TEXT("%60s % 10s % 10s"), TEXT("Object"), TEXT("NumBytes"), TEXT("MaxBytes") );
+				Ar.Log( TEXT(" ") );
+				Ar.Logf( TEXT("%-78s %10s %10s"), TEXT("Object"), TEXT("NumBytes"), TEXT("MaxBytes") );
+				UBOOL Verbose = ParseCommand( &Str, TEXT("VERBOSE") );
 				for( INT i=0; i<Objects.Num(); i++ )
-					Ar.Logf( TEXT("%60s % 10i % 10i"), Objects(i).Object->GetFullName(), Objects(i).Num, Objects(i).Max );
-				Ar.Log( TEXT("") );
+				{
+					UObject* Object = Objects(i).Object;
+					if( Verbose || !Object->IsPendingKill() )
+						Ar.Logf( TEXT("%-78s %10i %10i %s"), Object->GetFullName(), Objects(i).Num, Objects(i).Max, Object->IsPendingKill() ? TEXT("X") : TEXT(" ") );
+					if( Object->IsPendingKill() )
+						NumDeleted++;
+				}
+				Ar.Log( TEXT(" ") );
 			}
 			if( List.Num() )
 			{
 				appQsort( &List(0), List.Num(), sizeof(List(0)), (QSORT_COMPARE)CompareItems );
-				Ar.Logf(TEXT(" %30s % 6s % 10s  % 10s "), TEXT("Class"), TEXT("Count"), TEXT("NumBytes"), TEXT("MaxBytes") );
+				Ar.Logf( TEXT("%-30s %6s %10s %10s"), TEXT("Class"), TEXT("Count"), TEXT("NumKBytes"), TEXT("MaxKBytes") );
 				for( INT i=0; i<List.Num(); i++ )
-					Ar.Logf(TEXT(" %30s % 6i % 10iK % 10iK"), List(i).Class->GetName(), List(i).Count, List(i).Num/1024, List(i).Max/1024 );
-				Ar.Log( TEXT("") );
+					Ar.Logf( TEXT("%-30s %6i %10i %10i"), List(i).Class->GetName(), List(i).Count, List(i).Num/1024, List(i).Max/1024 );
+				Ar.Log( TEXT(" ") );
 			}
 			Ar.Logf( TEXT("%i Objects (%.3fM / %.3fM)"), Total.Count, (FLOAT)Total.Num/1024.0/1024.0, (FLOAT)Total.Max/1024.0/1024.0 );
+			Ar.Logf( TEXT("%i Deleted Objects"), NumDeleted );
 			return 1;
 		}
 		else if( ParseCommand(&Str,TEXT("VFHASH")) )
