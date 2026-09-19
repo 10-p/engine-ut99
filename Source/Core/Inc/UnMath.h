@@ -28,10 +28,12 @@ inline	INT Fix		(FLOAT A)		{return (INT)(A*65536.0);};
 inline	INT Unfix	(INT A)			{return A>>16;};
 
 // Constants.
+// v436-compat port: FLOAT constants, as in 436 (its FVector::Rotation/FCoords::OrthoRotation use
+// 65535/(2*(FLOAT)PI) and 32768/(FLOAT)PI, and SafeNormal/Normalize compare against 1.e-8f).
 #undef  PI
-#define PI 					(3.1415926535897932)
-#define SMALL_NUMBER		(1.e-8)
-#define KINDA_SMALL_NUMBER	(1.e-4)
+#define PI 					(3.1415926535897932f)
+#define SMALL_NUMBER		(1.e-8f)
+#define KINDA_SMALL_NUMBER	(1.e-4f)
 
 /*-----------------------------------------------------------------------------
 	Global functions.
@@ -928,23 +930,23 @@ inline INT ReduceAngle( INT Angle )
 // Lengths of normalized vectors (These are half their maximum values
 // to assure that dot products with normalized vectors don't overflow).
 //
-#define FLOAT_NORMAL_THRESH				(0.0001)
+#define FLOAT_NORMAL_THRESH				(0.0001f)
 
 //
 // Magic numbers for numerical precision.
 //
-#define THRESH_POINT_ON_PLANE			(0.10)		/* Thickness of plane for front/back/inside test */
-#define THRESH_POINT_ON_SIDE			(0.20)		/* Thickness of polygon side's side-plane for point-inside/outside/on side test */
-#define THRESH_POINTS_ARE_SAME			(0.002)		/* Two points are same if within this distance */
-#define THRESH_POINTS_ARE_NEAR			(0.015)		/* Two points are near if within this distance and can be combined if imprecise math is ok */
-#define THRESH_NORMALS_ARE_SAME			(0.00002)	/* Two normal points are same if within this distance */
+#define THRESH_POINT_ON_PLANE			(0.10f)		/* Thickness of plane for front/back/inside test */
+#define THRESH_POINT_ON_SIDE			(0.20f)		/* Thickness of polygon side's side-plane for point-inside/outside/on side test */
+#define THRESH_POINTS_ARE_SAME			(0.002f)	/* Two points are same if within this distance */
+#define THRESH_POINTS_ARE_NEAR			(0.015f)	/* Two points are near if within this distance and can be combined if imprecise math is ok */
+#define THRESH_NORMALS_ARE_SAME			(0.00002f)	/* Two normal points are same if within this distance */
 													/* Making this too large results in incorrect CSG classification and disaster */
-#define THRESH_VECTORS_ARE_NEAR			(0.0004)	/* Two vectors are near if within this distance and can be combined if imprecise math is ok */
+#define THRESH_VECTORS_ARE_NEAR			(0.0004f)	/* Two vectors are near if within this distance and can be combined if imprecise math is ok */
 													/* Making this too large results in lighting problems due to inaccurate texture coordinates */
-#define THRESH_SPLIT_POLY_WITH_PLANE	(0.25)		/* A plane splits a polygon in half */
-#define THRESH_SPLIT_POLY_PRECISELY		(0.01)		/* A plane exactly splits a polygon */
-#define THRESH_ZERO_NORM_SQUARED		(0.01*0.01)	/* Size of a unit normal that is considered "zero", squared */
-#define THRESH_VECTORS_ARE_PARALLEL		(0.02)		/* Vectors are parallel if dot product varies less than this */
+#define THRESH_SPLIT_POLY_WITH_PLANE	(0.25f)		/* A plane splits a polygon in half */
+#define THRESH_SPLIT_POLY_PRECISELY		(0.01f)		/* A plane exactly splits a polygon */
+#define THRESH_ZERO_NORM_SQUARED		(0.0001f)	/* Size of a unit normal that is considered "zero", squared */
+#define THRESH_VECTORS_ARE_PARALLEL		(0.02f)		/* Vectors are parallel if dot product varies less than this */
 
 /*-----------------------------------------------------------------------------
 	FVector transformation.
