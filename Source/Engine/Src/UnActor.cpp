@@ -722,6 +722,11 @@ UTexture* AActor::GetSkin( INT Index )
 FLOAT AActor::GetNetPriority( AActor* Sent, FLOAT Time, FLOAT Lag )
 {
 	guardSlow(AActor::GetNetPriority);
+	// v436-compat port: an always-relevant actor that updates rarely is not starved, and one that
+	// updates often does not crowd out the rest: its priority scales with NetUpdateFrequency/10,
+	// capped at 1.
+	if( bAlwaysRelevant )
+		return NetPriority * Time * Min( NetUpdateFrequency * 0.1f, 1.f );
 	return NetPriority * Time;
 	unguardSlow;
 }
