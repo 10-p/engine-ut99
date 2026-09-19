@@ -821,11 +821,12 @@ void UNetConnection::Tick()
 	LastTickTime        = Driver->Time;
 
 	// Update queued byte count.
+	// v436-compat port: 436 rounds both byte counts (fistp; the clamp is -round(AllowedLag)).
 	FLOAT DeltaBytes = CurrentNetSpeed * DeltaTime;
-	QueuedBytes     -= (INT) DeltaBytes;
+	QueuedBytes     -= appRound(DeltaBytes);
 	FLOAT AllowedLag = 2.0 * DeltaBytes;
 	if( QueuedBytes < -AllowedLag )
-		QueuedBytes = (INT) -AllowedLag;
+		QueuedBytes = -appRound(AllowedLag);
 
 	// Handle timeouts.
 	FLOAT Timeout = (State==USOCK_Pending || !Actor) ? Driver->InitialConnectTimeout : Driver->ConnectionTimeout;
