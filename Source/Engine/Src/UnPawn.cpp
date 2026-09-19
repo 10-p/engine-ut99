@@ -301,6 +301,16 @@ void AActor::execGetMapName( FFrame& Stack, RESULT_DECL )
 			}
 		}
 	}
+	// v436-compat port: reduce each found map to its bare file name before matching (436
+	// execGetMapName strips everything up to the last path separator).
+	FString Separator = PATH_SEPARATOR;
+	for( INT i=0; i<MapNames.Num(); )
+	{
+		if( MapNames(i).InStr(*Separator) >= 0 )
+			MapNames(i) = MapNames(i).Right( MapNames(i).Len() - (MapNames(i).InStr(*Separator) + 1) );
+		else
+			i++;
+	}
 	for( INT i=0; i<MapNames.Num(); i++ )
 	{
 		if( appStrcmp(*MapNames(i),*MapName)==0 )
