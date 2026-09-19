@@ -537,6 +537,37 @@ void UGameEngine::CancelPending()
 }
 
 //
+// v436-compat port: map-specific fixes applied when a level is brought up for play (436
+// UGameEngine::FixUpLevel). Only CTF-Coret has one: its two AlternatePaths become two-way and
+// PlayerStart5 is disabled.
+//
+void UGameEngine::FixUpLevel()
+{
+	guard(UGameEngine::FixUpLevel);
+	if( appStricmp( GLevel->GetFullName(), TEXT("Level CTF-Coret.MyLevel") )==0 )
+	{
+		debugf( TEXT("Fixing up CTF-Coret") );
+		for( ANavigationPoint* Nav=GLevel->GetLevelInfo()->NavigationPointList; Nav; Nav=Nav->nextNavigationPoint )
+		{
+			if
+			(	appStricmp( Nav->GetName(), TEXT("AlternatePath12") )==0
+			||	appStricmp( Nav->GetName(), TEXT("AlternatePath13") )==0 )
+			{
+				debugf( NAME_Log, TEXT("Fixed up %s"), Nav->GetName() );
+				Nav->bTwoWay = 1;
+			}
+			else if( appStricmp( Nav->GetName(), TEXT("PlayerStart5") )==0 && Nav->IsA(APlayerStart::StaticClass()) )
+			{
+				((APlayerStart*)Nav)->bEnabled = 0;
+				debugf( NAME_Log, TEXT("Fixed up %s"), Nav->GetName() );
+			}
+		}
+	}
+	debugf( TEXT("Level is %s"), GLevel->GetFullName() );
+	unguard;
+}
+
+//
 // Match Viewports to actors.
 //
 static void MatchViewportsToActors( UClient* Client, ULevel* Level, const FURL& URL )
@@ -1134,6 +1165,9 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	GLevel->iFirstDynamicActor = 0;
 	if( !Info->bBegunPlay )
 	{
+		// v436-compat port: per-map fix-ups before play begins (436 UGameEngine::LoadMap).
+		FixUpLevel();
+
 		// Lock the level.
 		debugf( NAME_Log, TEXT("Bringing %s up for play (%i)..."), GLevel->GetFullName(), appRound(GetMaxTickRate()) );
 		GLevel->TimeSeconds = 0;
