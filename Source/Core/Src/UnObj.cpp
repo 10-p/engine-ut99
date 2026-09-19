@@ -2103,9 +2103,8 @@ ULinkerLoad* UObject::GetPackageLinker
 			}
 		}
 
-		// Make sure the package is accessible in the sandbox.
-		if( Sandbox && !Sandbox->SupportsPackage(InOuter) )
-			appThrowf( LocalizeError("Sandbox"), InOuter->GetName() );
+		// v436-compat port: 436 no longer refuses packages outside the sandbox package map
+		// (the Sandbox->SupportsPackage check is gone from 436 Core GetPackageLinker).
 
 		// Create new linker.
 		if( !Result )
