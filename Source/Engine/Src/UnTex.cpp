@@ -205,8 +205,9 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 	else
 	{
 		// Catch up.
-		FLOAT MinTime  = 1.f/Clamp(MaxFrameRate,0.01f,100.0f);
-		FLOAT MaxTime  = 1.f/Clamp(MinFrameRate,0.01f,100.0f);
+		// v436-compat port: frame rates clamp to 0.1..100 fps (0.01 in v400).
+		FLOAT MinTime  = 1.f/Clamp(MaxFrameRate,0.1f,100.0f);
+		FLOAT MaxTime  = 1.f/Clamp(MinFrameRate,0.1f,100.0f);
 		Accumulator   += DeltaSeconds;
 		if( Accumulator < MinTime )
 		{
