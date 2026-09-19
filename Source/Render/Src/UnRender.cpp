@@ -2842,10 +2842,10 @@ void URender::DrawFrame( FSceneNode* Frame )
 					INT Index = Texture->GetIndex();
 					Color = FVector( (Index*67)&255, (Index*1371)&255, (Index*1991)&255 )/256.0;
 				}
-				else if( Viewport->Actor->RendMap!=REN_Zones || Model->NumZones==0 )
+				else if( Viewport->Actor->RendMap==REN_PolyCuts )
 				{
-					INT Index = Viewport->Actor->RendMap==REN_Polys ? Node->iSurf : Draw->iNode;
-					Color = Texture->MipZero.Plane() * (0.5 + (Index&7)/16.0);
+					// v436-compat port: v436 colours each run of 32 Bsp nodes by hue.
+					Color = FGetHSV( Draw->iNode/32, 0, 255 );
 				}
 				else
 				{
