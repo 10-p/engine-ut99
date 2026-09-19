@@ -67,6 +67,7 @@ enum EChannelType
 
 #include "UnNetDrv.h"		// Network driver class.
 #include "UnBunch.h"		// Bunch class.
+#include "UnDownload.h"		// Autodownloading classes.
 #include "UnConn.h"			// Connection class.
 #include "UnChan.h"			// Channel class.
 #include "UnPenLev.h"		// Pending levels.

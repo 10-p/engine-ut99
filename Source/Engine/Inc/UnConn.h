@@ -40,6 +40,18 @@ struct DelayedPacket
 #endif
 
 //
+// v436-compat port: one download manager offered by the server (its DLMGR line) or defaulted by the
+// client. 436 keeps them in order and falls through to the next when one fails.
+//
+struct FDownloadInfo
+{
+	UClass* Class;
+	FString ClassName;
+	FString Params;
+	UBOOL Compression;
+};
+
+//
 // A network connection.
 //
 class ENGINE_API UNetConnection : public UPlayer
@@ -123,6 +135,13 @@ class ENGINE_API UNetConnection : public UPlayer
 	TArray<UChannel*> OpenChannels;
 	TArray<AActor*> SentTemporaries;
 	TMap<AActor*,UActorChannel*> ActorChannels;
+
+	// File Download.
+	// v436-compat port: 436's UNetConnection is 0x14 bytes bigger than v400's. 0x04 of that is
+	// RemoteVersion (above); these two are the other 0x10 -- Download at +0x3e98 and the
+	// DownloadInfo array at +0x3e9c in the retail v436 Engine.dll.
+	UDownload*				Download;
+	TArray<FDownloadInfo>	DownloadInfo;
 
 #if DO_ENABLE_NET_TEST
 	// For development.
