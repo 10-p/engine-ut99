@@ -172,7 +172,8 @@ void UNetConnection::ReceivedRawPacket( void* InData, INT Count )
 	BYTE* Data = (BYTE*)InData;
 
 	// Handle an incoming raw packet from the driver.
-	debugfSlow( NAME_DevNetTraffic, TEXT("%03i: Received %i"), (INT)(appSeconds()*1000)%1000, Count );
+	// v436-compat port: 436 rounds the millisecond stamp (fistp), not truncates.
+	debugfSlow( NAME_DevNetTraffic, TEXT("%03i: Received %i"), appRound(appSeconds()*1000.f)%1000, Count );
 	InByteAcc += Count + PacketOverhead;
 	InPktAcc++;
 	if( Count>0 )
