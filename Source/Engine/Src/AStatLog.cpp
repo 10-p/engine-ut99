@@ -186,6 +186,13 @@ void AStatLog::execGetPlayerChecksum( FFrame& Stack, RESULT_DECL )
 	P_GET_STR_REF(Checksum);
 	P_FINISH;
 
+	// v436-compat port: a player without a world-stats secret gets no checksum (436).
+	if( P->ngWorldSecret.Len()==0 )
+	{
+		*Checksum = FString::Printf( TEXT("NoChecksum") );
+		return;
+	}
+
 	FMD5Context PContext;
 	appMD5Init( &PContext );
 	appMD5Update( &PContext, (BYTE*)*(P->PlayerReplicationInfo->PlayerName), P->PlayerReplicationInfo->PlayerName.Len()*sizeof(TCHAR) );
