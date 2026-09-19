@@ -360,6 +360,9 @@ FString UDemoRecDriver::LowLevelGetNetworkNumber()
 INT UDemoRecDriver::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UDemoRecDriver::Exec);
+	// v436-compat port: a demo that has played to its end handles no commands.
+	if( DemoEnded )
+		return 0;
 	if( ParseCommand(&Cmd,TEXT("DEMOREC")) || ParseCommand(&Cmd,TEXT("DEMOPLAY")) )
 	{
 		if( ServerConnection )
