@@ -12,6 +12,38 @@ Revision history:
 #define PACKETSIZE 512
 
 /*-----------------------------------------------------------------------------
+	Demo frame times.
+-----------------------------------------------------------------------------*/
+
+//
+// v436-compat port: 436 keeps time as fixed-point FTime and writes each demo frame's time
+// through operator<<(FArchive&,FTime&), which stores the time as a FLOAT repacked into 8 bytes:
+// sign at bit 63, the float's raw 8-bit exponent at bits 52..59 and its 23-bit mantissa at bits
+// 0..22 (not an IEEE double). We keep DOUBLE time and convert at the file boundary, so demos
+// recorded here play in 436 and 436's demos play here.
+//
+static void SerializeDemoTime( FArchive& Ar, DOUBLE& Time )
+{
+	QWORD Packed = 0;
+	if( Ar.IsSaving() )
+	{
+		FLOAT F = (FLOAT)Time;
+		DWORD B;
+		appMemcpy( &B, &F, sizeof(B) );
+		Packed = ((QWORD)(B & 0x80000000) << 32) | ((QWORD)(B & 0x7f800000) << 29) | (QWORD)(B & 0x007fffff);
+	}
+	Ar << Packed;
+	if( Ar.IsLoading() )
+	{
+		DWORD Hi = (DWORD)(Packed >> 32);
+		DWORD B  = (Hi & 0x80000000) | (((Hi >> 20) & 0xff) << 23) | ((DWORD)Packed & 0x007fffff);
+		FLOAT F;
+		appMemcpy( &F, &B, sizeof(F) );
+		Time = F;
+	}
+}
+
+/*-----------------------------------------------------------------------------
 	UDemoRecConnection.
 -----------------------------------------------------------------------------*/
 
@@ -43,7 +75,9 @@ void UDemoRecConnection::LowLevelSend( void* Data, INT Count )
 	guard(UDemoRecConnection::LowLevelSend);
 	if( !GetDriver()->ServerConnection )
 	{
-		*GetDriver()->FileAr << GetDriver()->FrameNum << Driver->Time << Count;
+		*GetDriver()->FileAr << GetDriver()->FrameNum;
+		SerializeDemoTime( *GetDriver()->FileAr, Driver->Time );
+		*GetDriver()->FileAr << Count;
 		GetDriver()->FileAr->Serialize( Data, Count );
 		//!!if GetDriver()->GetFileAr()->IsError(), print error, cancel demo recording
 	}
@@ -271,7 +305,7 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 			DOUBLE ServerPacketTime;
 
 			*FileAr << ServerFrameNum;
-			*FileAr << ServerPacketTime;
+			SerializeDemoTime( *FileAr, ServerPacketTime );
 			if((!TimeBased && ServerFrameNum > FrameNum) || (TimeBased && ServerPacketTime > Time))
 			{
 				FileAr->Seek(FileAr->Tell() - sizeof(ServerFrameNum) - sizeof(ServerPacketTime));
