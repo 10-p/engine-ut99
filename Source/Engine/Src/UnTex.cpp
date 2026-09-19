@@ -122,6 +122,16 @@ void UTexture::LockMips( FTextureInfo& TextureInfo, DOUBLE CurrentTime, INT LOD,
 	// See if format needs translating.
 	TArray<FMipmap>& WhichMips = UseComp ? CompMips : Mips;
 
+	// v436-compat port: a stored (non-parametric) texture with no mipmaps, e.g. one ripped out
+	// of a package without its data, is given a blank base mip instead of indexing an empty array.
+	if( !bParametric && WhichMips.Num()==0 )
+	{
+		guard(RippedTextureFixup);
+		WhichMips = Mips;
+		Init( USize, VSize );
+		unguard;
+	}
+
 	// Adjust LOD.
 	if( LOD==-1 )
 	{
