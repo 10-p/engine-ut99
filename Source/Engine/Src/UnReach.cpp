@@ -17,7 +17,8 @@ int FReachSpec::MonsterPath()
 {
 	guard(FReachSpec::MonsterPath);
 
-	return ( (CollisionRadius >= COMMONRADIUS) && (CollisionHeight >= MINCOMMONHEIGHT)
+	// v436-compat port: 436 admits paths down to 40 units high (was MINCOMMONHEIGHT, 48).
+	return ( (CollisionRadius >= COMMONRADIUS) && (CollisionHeight >= 40)
 			&& !(reachFlags & R_FLY) ); 
 	unguard;
 }
