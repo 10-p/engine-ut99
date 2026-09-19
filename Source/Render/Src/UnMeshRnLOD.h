@@ -208,23 +208,6 @@ void URender::DrawLodMesh
 		}
 	}
 
-	// v436-compat: skeletal meshes have no special verts, so attach the weapon to the animated
-	// WeaponBoneIndex bone frame (published in view space by USkeletalMesh::GetFrame).
-	if ( !HasSpecialCoords && Mesh->IsA(USkeletalMesh::StaticClass()) )
-	{
-		USkeletalMesh* SkM = (USkeletalMesh*)Mesh;
-		if ( SkM->bWeaponAttach )
-		{
-			FCoords C;
-			C.Origin = FVector(0,0,0);
-			C.XAxis  = SkM->WeaponAttachX;
-			C.YAxis  = SkM->WeaponAttachY;
-			C.ZAxis  = SkM->WeaponAttachZ;
-			SpecialCoords = GMath.UnitCoords * SkM->WeaponAttachOrigin * C;
-			HasSpecialCoords = 1;
-		}
-	}
-
 	// Render a wireframe view.
 	if ( bWire )
 	{
@@ -286,6 +269,15 @@ void URender::DrawLodMesh
 		Mark.Pop();
 		unguardSlow;
 		return;
+	}
+
+	// v436-compat port: a skeletal mesh with a weapon bone attaches the weapon to it. GetFrame left
+	// the bone's frame in ClassicWeaponCoords, in the same form as the special-face coords above.
+	UBOOL IsSkeletal = Mesh->IsA(USkeletalMesh::StaticClass());
+	if( IsSkeletal && ((USkeletalMesh*)Mesh)->WeaponBoneIndex > -1 )
+	{
+		SpecialCoords    = ((USkeletalMesh*)Mesh)->ClassicWeaponCoords;
+		HasSpecialCoords = 1;
 	}
 
 	// Coloring.
