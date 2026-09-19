@@ -773,7 +773,8 @@ UBOOL ULevel::FarMoveActor( AActor* Actor, FVector DestLocation,  UBOOL test, UB
 	
 	if( result )
 	{
-		if( !test )
+		// v436-compat port: a network client leaves bases and bJustTeleported alone (436 FarMoveActor).
+		if( !test && GetLevelInfo()->NetMode != NM_Client )
 		{
 			if( Actor->StandingCount > 0 )
 				for( INT i=0; i<Actors.Num(); i++ )
