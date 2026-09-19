@@ -2748,15 +2748,16 @@ void URender::DrawFrame( FSceneNode* Frame )
 			INT TextureLOD=-1;
 
 			// Setup panning.
+			// v436-compat port: 436 rounds the auto-pan offset (fistp), not truncates.
 			FLOAT PanU = Surf->PanU;
 			if( Surf->PolyFlags & PF_AutoUPan )
 			{
-				PanU += ((INT)(Frame->Level->GetLevelInfo()->TimeSeconds * 35.f * Draw->Zone->TexUPanSpeed * 256.0)&0x3ffff)/256.0;
+				PanU += (appRound(Frame->Level->GetLevelInfo()->TimeSeconds * 35.f * Draw->Zone->TexUPanSpeed * 256.0)&0x3ffff)/256.0;
 			}
 			FLOAT PanV = Surf->PanV;
 			if( Surf->PolyFlags & PF_AutoVPan )
 			{
-				PanV += ((INT)(Frame->Level->GetLevelInfo()->TimeSeconds * 35.f * Draw->Zone->TexVPanSpeed * 256.0)&0x3ffff)/256.0;
+				PanV += (appRound(Frame->Level->GetLevelInfo()->TimeSeconds * 35.f * Draw->Zone->TexVPanSpeed * 256.0)&0x3ffff)/256.0;
 			}
 			if( Surf->PolyFlags & PF_SmallWavy )
 			{
