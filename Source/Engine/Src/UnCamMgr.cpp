@@ -62,6 +62,8 @@ void UClient::StaticConstructor()
 	new(GetClass(),TEXT("NoDynamicLights"),		RF_Public)UBoolProperty (CPP_PROPERTY(NoDynamicLights		), TEXT("Display"), CPF_Config );
 	// v436-compat port: config switch added to UClient in 436; read by the Fire.dll textures.
 	new(GetClass(),TEXT("NoFractalAnim"),		RF_Public)UBoolProperty (CPP_PROPERTY(NoFractalAnim			), TEXT("Display"), CPF_Config );
+	// v436-compat port: 436 registers ParticleDensity last (no compiled default; the ini has 0).
+	new(GetClass(),TEXT("ParticleDensity"),		RF_Public)UIntProperty  (CPP_PROPERTY(ParticleDensity		), TEXT("Display"), CPF_Config );
 
 	unguard;
 }
