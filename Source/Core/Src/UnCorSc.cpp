@@ -2172,7 +2172,7 @@ void UObject::execRandRange( FFrame& Stack, RESULT_DECL )
 	P_GET_FLOAT(Max);
 	P_FINISH;
 
-	*(FLOAT*)Result = Min + (Max - Min) * appFrand();
+	*(FLOAT*)Result = appRandRange( Min, Max );
 
 	unguardexecSlow;
 }
