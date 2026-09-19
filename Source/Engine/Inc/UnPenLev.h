@@ -34,6 +34,9 @@ class UPendingLevel : public ULevelBase
 	virtual void Tick( FLOAT DeltaTime )=0;
 	virtual UNetDriver* GetDriver()=0;
 	virtual void SendJoin()=0;
+	// v436-compat port: F10 during a download asks the pending level to skip the current file
+	// (UGameEngine::Exec CANCEL). 436's vtable puts it right after SendJoin.
+	virtual UBOOL TrySkipFile()=0;
 };
 
 /*-----------------------------------------------------------------------------
@@ -62,6 +65,11 @@ class UNetPendingLevel : public UPendingLevel
 	void Tick( FLOAT DeltaTime );
 	UNetDriver* GetDriver() { return NetDriver; }
 	void SendJoin();
+	UBOOL TrySkipFile();
+
+	// UNetPendingLevel interface.
+	// v436-compat port: request the next package still flagged PKG_Need, or finish the download.
+	void ReceiveNextFile( UNetConnection* Connection );
 };
 
 /*-----------------------------------------------------------------------------
