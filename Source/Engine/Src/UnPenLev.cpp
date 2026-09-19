@@ -136,7 +136,21 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		Parse( Text, TEXT("SIZE="),  Info.FileSize );
 		Parse( Text, TEXT("FLAGS="), Info.PackageFlags );
 		Parse( Text, TEXT("PKG="), PackageName, ARRAY_COUNT(PackageName) );
+		// v436-compat port: the server also sends the package's bare file name.
+		Parse( Text, TEXT("FNAME="), Info.URL );
 		Info.Parent = CreatePackage(NULL,PackageName);
+	}
+	else if( ParseCommand( &Text, TEXT("DLMGR") ) )
+	{
+		// v436-compat port: a download manager the server offers. One whose class will not load is
+		// dropped here, so the next offer (or the built-in channel download) is used instead.
+		INT i = Connection->DownloadInfo.AddZeroed();
+		Parse( Text, TEXT("CLASS="), Connection->DownloadInfo(i).ClassName );
+		Parse( Text, TEXT("PARAMS="), Connection->DownloadInfo(i).Params );
+		ParseUBOOL( Text, TEXT("COMPRESSION="), Connection->DownloadInfo(i).Compression );
+		Connection->DownloadInfo(i).Class = StaticLoadClass( UDownload::StaticClass(), NULL, *Connection->DownloadInfo(i).ClassName, NULL, LOAD_NoWarn|LOAD_Quiet, NULL );
+		if( !Connection->DownloadInfo(i).Class )
+			Connection->DownloadInfo.Remove( i );
 	}
 	else if( ParseCommand(&Text,TEXT("USERFLAG")) )
 	{

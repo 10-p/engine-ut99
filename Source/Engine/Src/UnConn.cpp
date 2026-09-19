@@ -150,15 +150,52 @@ void UNetConnection::SendPackageMap()
 
 	// Send package map to the remote.
 	for( TArray<FPackageInfo>::TIterator It(PackageMap->List); It; ++It )
+	{
+		// v436-compat port: 436 also sends the package's bare file name, which the client stores in its
+		// own FPackageInfo::URL and uses for the cache.ini entry once the file has been downloaded.
+		// The DLL strips separators in four passes -- "\\", ":", "/", "\\" -- the last of which cannot
+		// match anything Mid() has left behind; it is kept so this reads exactly as the DLL does.
+		FString Fname = It->URL;
+		INT Pos;
+		while( (Pos=Fname.InStr(TEXT("\\")))!=-1 )
+			Fname = Fname.Mid( Pos+1 );
+		while( (Pos=Fname.InStr(TEXT(":")))!=-1 )
+			Fname = Fname.Mid( Pos+1 );
+		while( (Pos=Fname.InStr(TEXT("/")))!=-1 )
+			Fname = Fname.Mid( Pos+1 );
+		while( (Pos=Fname.InStr(TEXT("\\")))!=-1 )
+			Fname = Fname.Mid( Pos+1 );
 		Logf
 		(
-			TEXT("USES GUID=%s PKG=%s FLAGS=%i SIZE=%i GEN=%i"),
+			TEXT("USES GUID=%s PKG=%s FLAGS=%i SIZE=%i GEN=%i FNAME=%s"),
 			It->Guid.String(),
 			It->Parent->GetName(),
 			It->PackageFlags,
 			It->FileSize,
-			It->LocalGeneration
+			It->LocalGeneration,
+			*Fname
 		);
+	}
+
+	// v436-compat port: offer our download managers, in order. A class that will not load is simply
+	// skipped, and a manager whose DownloadParams default is empty is not offered at all.
+	for( INT i=0; i<Driver->DownloadManagers.Num(); i++ )
+	{
+		UClass* DownloadClass = StaticLoadClass( UDownload::StaticClass(), NULL, *Driver->DownloadManagers(i), NULL, LOAD_NoWarn, NULL );
+		if( DownloadClass )
+		{
+			UDownload* Default = (UDownload*)DownloadClass->GetDefaultObject();
+			const TCHAR* Params = *Default->DownloadParams;
+			if( *Params )
+				Logf
+				(
+					TEXT("DLMGR CLASS=%s PARAMS=%s COMPRESSION=%d"),
+					DownloadClass->GetPathName(),
+					Params,
+					Default->UseCompression
+				);
+		}
+	}
 
 	unguard;
 }
