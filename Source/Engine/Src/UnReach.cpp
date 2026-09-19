@@ -178,10 +178,11 @@ int FReachSpec::findBestReachable(FVector &begin, FVector &Destination, APawn * 
 
 	if (result)
 	{
-		CollisionRadius = (INT) Scout->CollisionRadius;
-		CollisionHeight = (INT) bestHeight;
+		// v436-compat port: rounded, not truncated (436 FReachSpec::findBestReachable).
+		CollisionRadius = appRound(Scout->CollisionRadius);
+		CollisionHeight = appRound(bestHeight);
 		FVector path = End->Location - Start->Location;
-		distance = (int)path.Size(); //fixme - reachable code should calculate
+		distance = appRound(path.Size()); //fixme - reachable code should calculate
 		if ( reachFlags & R_SWIM )
 			distance *= 2;
 	}
