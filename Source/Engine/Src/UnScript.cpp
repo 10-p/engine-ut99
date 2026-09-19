@@ -969,7 +969,8 @@ void AActor::execGetSoundDuration( FFrame& Stack, RESULT_DECL )
 	P_GET_OBJECT(USound,Sound);
 	P_FINISH;
 
-	*(FLOAT*)Result = Sound->GetDuration();
+	// v436-compat port: no sound, no duration.
+	*(FLOAT*)Result = Sound ? Sound->GetDuration() : 0.f;
 
 	unguardexec;
 }
