@@ -10,6 +10,10 @@
 	// UObject interface.
 	virtual INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 	virtual UBOOL ShouldDoScriptReplication() {return 1;}
+	// v436-compat port: ULevel::ServerTickClient skips an always-relevant actor whose channel has
+	// nothing new to send (CheckRecentChanges opts a class in, NoVariablesToReplicate decides).
+	virtual UBOOL NoVariablesToReplicate( AActor* OldVer ) {return 0;}
+	virtual UBOOL CheckRecentChanges() {return 0;}
 	void ProcessEvent( UFunction* Function, void* Parms, void* Result=NULL );
 	void ProcessState( FLOAT DeltaSeconds );
 	UBOOL ProcessRemoteFunction( UFunction* Function, void* Parms, FFrame* Stack );

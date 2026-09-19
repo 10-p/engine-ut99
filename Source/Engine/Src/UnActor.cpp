@@ -602,6 +602,11 @@ UBOOL AInventory::ShouldDoScriptReplication()
 	// its owner or on the initial update (v400: `!bAlwaysRelevant || bNetInitial`).
 	return bNetInitial || bNetOwner;
 }
+UBOOL AInventory::NoVariablesToReplicate( AActor* OldVer )
+{
+	// v436-compat port: an always-relevant (pickup) inventory item only ever changes bHidden.
+	return bHidden == OldVer->bHidden;
+}
 
 // v436-compat port: AWeapon, APickup, AAmmo and ALevelInfo are `nativereplication` in the v436
 // Engine.u, which tells the engine to skip their script replication conditions and send only what
