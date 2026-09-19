@@ -662,12 +662,6 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	FVector		WeaponAttachOrigin, WeaponAttachX, WeaponAttachY, WeaponAttachZ;	// view space
 	UBOOL		bWeaponAttach;
 
-	// v436-compat render bound: the mesh-space box used for frustum culling, resolved once (authored
-	// BoundingBox if valid, else an AABB over Points) and cached. Not serialized. See
-	// GetRenderBoundingBox for why skeletal meshes need their own override.
-	FBox		LocalBound;
-	UBOOL		bBoundComputed;
-
 	// UObject interface.
 	USkeletalMesh();
 	void Serialize( FArchive& Ar );
