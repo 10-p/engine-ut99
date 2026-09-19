@@ -2118,7 +2118,7 @@ DWORD FLightManager::SetupForActor( FSceneNode* InFrame, AActor* InActor, FVolAc
 	&&	!Frame->Viewport->GetOuterUClient()->NoLighting )
 	{
 		// Get actor light cache.
-		INT Delta      = Clamp<INT>( (INT)((Frame->Viewport->CurrentTime-Frame->Viewport->LastUpdateTime)*768), 0, 255 );
+		INT Delta      = Clamp<INT>( appRound((Frame->Viewport->CurrentTime-Frame->Viewport->LastUpdateTime)*768), 0, 255 ); // v436-compat port: rounded.
 		INT FrameCount = Frame->Viewport->FrameCount;
 		INT* Num       = NULL;
 		struct FInfo
