@@ -2048,9 +2048,10 @@ void URender::OccludeBsp( FSceneNode* Frame )
 						for( i=0; i<NumActiveZones; i++ )
 						{
 							BYTE iZone = ActiveZones[i];
+							// v436-compat port: 436 rounds the screen bounds (fistp), not truncates.
 							if
 							(	(Node->ZoneMask & ((QWORD)1<<iZone))
-							&&	(ZoneSpanBuffer[iZone].BoxIsVisible(Results.MinX,Results.MinY,Results.MaxX,Results.MaxY)) )
+							&&	(ZoneSpanBuffer[iZone].BoxIsVisible(appRound(Results.MinX),appRound(Results.MinY),appRound(Results.MaxX),appRound(Results.MaxY))) )
 								break;
 						}
 						if( i==NumActiveZones )
