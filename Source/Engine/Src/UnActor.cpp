@@ -88,7 +88,7 @@ UBOOL NEQ(FString A,FString B,UPackageMap* Map) {return A!=B;}
 		if( NEQ(v[i],((A##c*)Recent)->v[i],Map) ) \
 			*Ptr++ = sp##v->RepIndex+i;
 
-INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AActor::GetOptimizedRepList);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
@@ -222,10 +222,10 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 	return Ptr;
 	unguard;
 }
-INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(APawn::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -261,10 +261,10 @@ INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT*
 	return Ptr;
 	unguard;
 }
-INT* APlayerPawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* APlayerPawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(APlayerPawn::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -305,10 +305,10 @@ INT* APlayerPawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire
 	return Ptr;
 	unguard;
 }
-INT* AMover::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* AMover::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AMover::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -325,10 +325,10 @@ INT* AMover::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 	return Ptr;
 	unguard;
 }
-INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AZoneInfo::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -347,11 +347,11 @@ INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, 
 	return Ptr;
 	unguard;
 }
-INT* APlayerReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* APlayerReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(APlayerReplicationInfo::GetOptimizedRepList);
 	if ( bNetInitial )
-		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -383,10 +383,10 @@ INT* APlayerReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirem
 	return Ptr;
 	unguard;
 }
-INT* AGameReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* AGameReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AGameReplicationInfo::GetOptimizedRepList);
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )
@@ -417,7 +417,7 @@ INT* AGameReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetiremen
 	return Ptr;
 	unguard;
 }
-INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map )
+INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AInventory::GetOptimizedRepList);
 
@@ -426,7 +426,7 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 			DOREP(Actor,bHidden);
 			return Ptr;
 	}
-	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map);
+	Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
 	{
 		if( Role==ROLE_Authority )

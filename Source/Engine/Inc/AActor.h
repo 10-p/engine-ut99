@@ -8,7 +8,7 @@
 	void Destroy();
 
 	// UObject interface.
-	virtual INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map );
+	virtual INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 	virtual UBOOL ShouldDoScriptReplication() {return 1;}
 	void ProcessEvent( UFunction* Function, void* Parms, void* Result=NULL );
 	void ProcessState( FLOAT DeltaSeconds );
