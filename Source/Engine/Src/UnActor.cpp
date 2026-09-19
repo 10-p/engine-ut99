@@ -596,6 +596,39 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 	return Ptr;
 	unguard;
 }
+// Native-replication guard, compile-time half: for every class that declares CLASS_NativeReplication
+// in DECLARE_CLASS, the flag must mean "this class declares its own GetOptimizedRepList" and vice
+// versa. UClass::Serialize compares the loaded (script) flags with the DECLARE_CLASS ones and warns
+// when a `nativereplication` class has no C++ list -- which is how Weapon/Pickup/Ammo/LevelInfo went
+// unnoticed on this branch. `&T::GetOptimizedRepList` has type `INT* (T::*)(...)` only when T itself
+// declares it; an inherited one has the base class's member-pointer type.
+template<class A,class B> struct TNetRepSameType		{ enum{ Value=0 }; };
+template<class A>         struct TNetRepSameType<A,A>	{ enum{ Value=1 }; };
+#define CHECK_NATIVE_REPLICATION(cls) \
+	static_assert( ((cls::StaticClassFlags & CLASS_NativeReplication)!=0) == \
+		(TNetRepSameType<decltype(&cls::GetOptimizedRepList), INT* (cls::*)(BYTE*,FPropertyRetirement*,INT*,UPackageMap*,INT)>::Value!=0), \
+		#cls ": CLASS_NativeReplication in DECLARE_CLASS must match declaring GetOptimizedRepList" );
+CHECK_NATIVE_REPLICATION(AActor)
+CHECK_NATIVE_REPLICATION(APawn)
+CHECK_NATIVE_REPLICATION(APlayerPawn)
+CHECK_NATIVE_REPLICATION(AMover)
+CHECK_NATIVE_REPLICATION(AZoneInfo)
+CHECK_NATIVE_REPLICATION(ALevelInfo)
+CHECK_NATIVE_REPLICATION(APlayerReplicationInfo)
+CHECK_NATIVE_REPLICATION(AGameReplicationInfo)
+CHECK_NATIVE_REPLICATION(AInventory)
+CHECK_NATIVE_REPLICATION(AWeapon)
+CHECK_NATIVE_REPLICATION(APickup)
+CHECK_NATIVE_REPLICATION(AAmmo)
+// ...and a few native actor classes that must have neither.
+CHECK_NATIVE_REPLICATION(ABrush)
+CHECK_NATIVE_REPLICATION(ADecoration)
+CHECK_NATIVE_REPLICATION(ACarcass)
+CHECK_NATIVE_REPLICATION(AProjectile)
+CHECK_NATIVE_REPLICATION(AInfo)
+CHECK_NATIVE_REPLICATION(AReplicationInfo)
+#undef CHECK_NATIVE_REPLICATION
+
 UBOOL AInventory::ShouldDoScriptReplication()
 {
 	// v436-compat port: 436 evaluates an inventory item's script replication conditions only for
