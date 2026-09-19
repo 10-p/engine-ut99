@@ -405,22 +405,26 @@ UBOOL UInput::Process( FOutputDevice& Ar, EInputKey iKey, EInputAction State, FL
 void UInput::ReadInput( FLOAT DeltaSeconds, FOutputDevice& Ar )
 {
 	guard(UInput::ReadInput);
-	FCacheItem*     Item  = NULL;
-	FInputVarCache* Cache = FInputVarCache::Get( Viewport->Actor->GetClass(), Item );
+	// v436-compat port: input is only read while the main loop runs.
+	if( GIsRunning )
+	{
+		FCacheItem*     Item  = NULL;
+		FInputVarCache* Cache = FInputVarCache::Get( Viewport->Actor->GetClass(), Item );
 
-	// Update everything with IST_Hold.
-	if( DeltaSeconds!=-1.0 )
-		for( INT i=0; i<IK_MAX; i++ )
-			if( KeyDownTable[i] )
-				Process( *GLog, (EInputKey)i, IST_Hold, DeltaSeconds );
+		// Update everything with IST_Hold.
+		if( DeltaSeconds!=-1.0 )
+			for( INT i=0; i<IK_MAX; i++ )
+				if( KeyDownTable[i] )
+					Process( *GLog, (EInputKey)i, IST_Hold, DeltaSeconds );
 
-	// Scale the axes.
-	FLOAT Scale = DeltaSeconds!=-1.0 ? 20.0/DeltaSeconds : 0.0;
-	for( INT i=0; i<Cache->Count; i++ )
-		if( Cast<UFloatProperty>(Cache->Properties[i]) )
-			*(FLOAT*)((BYTE*)Viewport->Actor + Cache->Properties[i]->Offset) *= Scale;
+		// Scale the axes.
+		FLOAT Scale = DeltaSeconds!=-1.0 ? 20.0/DeltaSeconds : 0.0;
+		for( INT i=0; i<Cache->Count; i++ )
+			if( Cast<UFloatProperty>(Cache->Properties[i]) )
+				*(FLOAT*)((BYTE*)Viewport->Actor + Cache->Properties[i]->Offset) *= Scale;
 
-	Item->Unlock();
+		Item->Unlock();
+	}
 	unguard;
 }
 
