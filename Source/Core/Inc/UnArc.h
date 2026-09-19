@@ -109,6 +109,7 @@ public:
 	FArchive()
 	:	ArVer			(PACKAGE_FILE_VERSION)
 	,	ArNetVer		(ENGINE_NEGOTIATION_VERSION)
+	,	ArLicenseeVer	(PACKAGE_FILE_VERSION_LICENSEE)
 	,	ArIsLoading		(0)
 	,	ArIsSaving		(0)
 	,   ArIsTrans		(0)
@@ -122,6 +123,7 @@ public:
 	// Status accessors.
 	INT Ver()				{return ArVer;}
 	INT NetVer()			{return ArNetVer&0x7fffffff;}
+	INT LicenseeVer()		{return ArLicenseeVer;} // v436-compat port
 	UBOOL IsLoading()		{return ArIsLoading;}
 	UBOOL IsSaving()		{return ArIsSaving;}
 	UBOOL IsTrans()			{return ArIsTrans;}
@@ -193,6 +195,7 @@ protected:
 	// Status variables.
 	INT ArVer;
 	INT ArNetVer;
+	INT ArLicenseeVer; // v436-compat port: licensee half of the package file version.
 	UBOOL ArIsLoading;
 	UBOOL ArIsSaving;
 	UBOOL ArIsTrans;
