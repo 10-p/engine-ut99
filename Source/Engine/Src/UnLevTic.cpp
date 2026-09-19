@@ -494,11 +494,16 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 	guard(ULevel::ServerTickClient);
 	check(Connection);
 	check(Connection->State==USOCK_Pending || Connection->State==USOCK_Open || Connection->State==USOCK_Closed);
-	DOUBLE CullTime=0.0, TraceTime=0.0, RepTime=0.0; INT CullCount=0, RepCount=0;
 
 	// Handle not ready channels.
+	// v436-compat port: 436 stops replicating to a client it has not heard from for 1.5 seconds
+	// (and dropped v400's Cull/Trace/Rep profiling).
 	INT Updated=0;
-	if( Connection->Actor && Connection->IsNetReady(0) && Connection->State==USOCK_Open )
+	if
+	(	Connection->Actor
+	&&	Connection->IsNetReady(0)
+	&&	Connection->State==USOCK_Open
+	&&	Connection->Driver->Time-Connection->LastReceiveTime<1.5 )
 	{
 		// Get list of visible/relevant actors.
 		FMemMark Mark(GMem);
@@ -534,7 +539,6 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 		}
 
 		// Make list of all actors to consider.
-		CullTime-=appSeconds();
 		INT              ConsiderCount  = 0;
 		FActorPriority*  PriorityList   = new(GMem,Actors.Num())FActorPriority;
 		FActorPriority** PriorityActors = new(GMem,Actors.Num())FActorPriority*;
@@ -543,18 +547,54 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 		DOUBLE			 LastTime		= Connection->LastRepTime;
 		DOUBLE           ThisTime       = Connection->Driver->Time;
 		guard(MakeConsiderList);
-		for( INT i=0; i<Actors.Num(); i++ )
+		// v436-compat port: the level info and the default brush are always considered; the static
+		// actors that are not always relevant (before iFirstNetRelevantActor) never are.
+		for( INT i=0; i<2; i++ )
 		{
 			AActor* Actor = Actors(i);
-			if( Actor )
+			if( Actor && Actor->NetTag!=NetTag && Actor->RemoteRole!=ROLE_None )
 			{
-				if
-				(	(i>=iFirstDynamicActor || Actor->bAlwaysRelevant)
-				&&	(Actor->NetTag!=NetTag)
-				&&	(Actor->RemoteRole!=ROLE_None)
-				&&	(appRound(LastTime*Actor->NetUpdateFrequency)!=appRound(ThisTime*Actor->NetUpdateFrequency)) )
+				Actor->NetTag                 = NetTag;
+				PriorityList  [ConsiderCount] = FActorPriority( ViewPos, ViewDir, Connection, Actor );
+				// ⚠ Two statements on purpose: C++17 sequences the right operand of `=` first, so
+				// `PriorityActors[ConsiderCount] = PriorityList + ConsiderCount++;` would index with
+				// the ALREADY-incremented count (the old out-of-bounds Sort crash).
+				PriorityActors[ConsiderCount] = PriorityList + ConsiderCount;
+				ConsiderCount++;
+			}
+		}
+		FLOAT ServerTickRate = Engine->GetMaxTickRate();
+		for( INT i=iFirstNetRelevantActor; i<Actors.Num(); i++ )
+		{
+			AActor* Actor = Actors(i);
+			if( Actor && Actor->NetTag!=NetTag && Actor->RemoteRole!=ROLE_None )
+			{
+				UBOOL bConsider = 0;
+				if( Actor->bAlwaysRelevant )
 				{
-					CullCount++;
+					if( appRound(LastTime*Actor->NetUpdateFrequency)!=appRound(ThisTime*Actor->NetUpdateFrequency) )
+					{
+						// v436-compat port: skip an always-relevant actor whose channel shows nothing
+						// new to send, but keep the channel relevant.
+						UActorChannel* Channel = Actor->CheckRecentChanges() ? Connection->ActorChannels.FindRef(Actor) : NULL;
+						if( Channel && Channel->Recent.Num() && !Channel->Dirty.Num() && Actor->NoVariablesToReplicate((AActor*)&Channel->Recent(0)) )
+							Channel->RelevantTime = NetDriver->Time;
+						else
+							bConsider = 1;
+					}
+				}
+				else
+				{
+					// v436-compat port: drop an optional effect more than 0.15 s into its life, and
+					// throttle by the per-viewer UpdateFrequency (only when below the server tick rate).
+					if( Actor->bNetOptional && Actor->GetClass()->GetDefaultActor()->LifeSpan-0.15f>=Actor->LifeSpan )
+						continue;
+					FLOAT Frequency = Actor->UpdateFrequency( Viewer, ViewDir, ViewPos );
+					if( Frequency>=ServerTickRate || appRound(LastTime*Frequency)!=appRound(ThisTime*Frequency) )
+						bConsider = 1;
+				}
+				if( bConsider )
+				{
 					Actor->NetTag                 = NetTag;
 					PriorityList  [ConsiderCount] = FActorPriority( ViewPos, ViewDir, Connection, Actor );
 					// Two statements: C++17 sequences the right operand of `=` before the left, so a
@@ -567,7 +607,6 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 			}
 		}
 		Connection->LastRepTime = Connection->Driver->Time;
-		CullTime+=appSeconds();
 		unguard;
 
 		// Sort by priority.
@@ -577,37 +616,41 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 
 		// Update all relevant actors in sorted order.
 		guard(UpdateRelevant);
-		for( INT j=0; j<ConsiderCount && Connection->IsNetReady(0); j++ )
+		for( INT j=0; j<ConsiderCount; j++ )
 		{
 			AActor*        Actor       = PriorityActors[j]->Actor;
 			UActorChannel* Channel     = PriorityActors[j]->Channel;
-			TraceTime-=appSeconds();
-			UBOOL          CanSee      = ActorCanSee( Actor, InViewer, Viewer, Location );
-			TraceTime+=appSeconds();
+			// v436-compat port: a channel found relevant within the last 0.3 s is not traced again.
+			UBOOL          CanSee      = 0;
+			if( !Channel || NetDriver->Time-Channel->RelevantTime>0.3 )
+				CanSee = ActorCanSee( Actor, InViewer, Viewer, Location );
 			if( CanSee || (Channel && NetDriver->Time-Channel->RelevantTime<NetDriver->RelevantTimeout) )
 			{
 				// Find or create the channel for this actor.
 				Actor->GetLevel()->NumPV++;
-				if( !Channel && Connection->PackageMap->ObjectToIndex(Actor->GetClass())!=INDEX_NONE )
+				if( !Channel )
 				{
+					if( Connection->PackageMap->ObjectToIndex(Actor->GetClass())==INDEX_NONE )
+						continue;
+
 					// Create a new channel for this actor.
 					Channel = (UActorChannel*)Connection->CreateChannel( CHTYPE_Actor, 1 );
-					if( Channel )
-						Channel->SetChannelActor( Actor );
+					if( !Channel )
+						continue;
+					Channel->SetChannelActor( Actor );
 				}
-				if( Channel )
+				if( !Connection->IsNetReady(0) )
+					break;
+				// v436-compat port: jitter the relevancy stamp so channels do not all time out together.
+				if( CanSee )
+					Channel->RelevantTime = NetDriver->Time + 0.2*appFrand();
+				if( Channel->IsNetReady(0) )
 				{
-					if( CanSee )
-						Channel->RelevantTime = NetDriver->Time;
-					if( Channel->IsNetReady(0) )
-					{
-						RepTime-=appSeconds();
-						RepCount++;
-						Channel->ReplicateActor();
-						RepTime+=appSeconds();
-						Updated++;
-					}
+					Channel->ReplicateActor();
+					Updated++;
 				}
+				if( !Connection->IsNetReady(0) )
+					break;
 			}
 			else if( Channel )
 				Channel->Close();
@@ -615,8 +658,6 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 		unguard;
 		Mark.Pop();
 	}
-	if( NetDriver->ProfileStats )
-		debugf(TEXT("Cull=%01.4f (%03i) Trace=%01.4f Rep=%01.4f (%03i)"),CullTime*1000,CullCount,TraceTime*1000,RepTime*1000,RepCount);
 	return Updated;
 	unguard;
 }
