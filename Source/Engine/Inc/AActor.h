@@ -39,6 +39,7 @@
 	virtual void PreNetReceive();
 	virtual void PostNetReceive();
 	virtual UTexture* GetSkin( INT Index );
+	virtual struct FMeshAnimSeq* GetAnim( FName SequenceName ); // v436-compat port: see UnScript.cpp.
 	virtual FCoords ToLocal() const
 	{
 		return GMath.UnitCoords / Rotation / Location;
