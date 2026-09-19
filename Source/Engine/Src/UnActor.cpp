@@ -105,12 +105,7 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 			DOREP(Actor,bOnlyOwnerSee);
 			DOREP(Actor,Texture);
 			DOREP(Actor,DrawScale);
-			DOREP(Actor,PrePivot);
 			DOREP(Actor,DrawType);
-			DOREP(Actor,AmbientGlow);
-			DOREP(Actor,Fatness);
-			DOREP(Actor,ScaleGlow);
-			DOREP(Actor,bUnlit);
 			DOREP(Actor,Style);
 			if( bNetOwner )
 			{
@@ -148,8 +143,16 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 			{
 				DOREP(Actor,Rotation);
 			}
+			// v436-compat port: 436 sends the mesh display properties (AmbientGlow, ScaleGlow, bUnlit,
+			// Fatness, PrePivot) only for DT_Mesh and PrePivot again for DT_Brush; v400 sent them for
+			// every DrawType.
 			if( DrawType==DT_Mesh )
 			{
+				DOREP(Actor,AmbientGlow);
+				DOREP(Actor,ScaleGlow);
+				DOREP(Actor,bUnlit);
+				DOREP(Actor,Fatness);
+				DOREP(Actor,PrePivot);
 				DOREP(Actor,Mesh);
 				DOREP(Actor,bMeshEnviroMap);
 				DOREP(Actor,Skin);
@@ -169,8 +172,9 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 					DOREP(Actor,Sprite);
 				}
 			}
-			if( DrawType==DT_Brush )
+			else if( DrawType==DT_Brush )
 			{
+				DOREP(Actor,PrePivot);
 				DOREP(Actor,Brush);
 			}
 			if( LightType!=LT_None )
