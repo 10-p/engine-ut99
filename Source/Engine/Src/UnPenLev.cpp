@@ -209,7 +209,13 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 					if( !NetDriver->AllowDownloads || !(Info.PackageFlags & PKG_AllowDownload) )
 					{
 						Error = FString::Printf( TEXT("Downloading '%s' not allowed"), Info.Parent->GetName() );
-						NetDriver->ServerConnection->State = USOCK_Closed;
+						// v436-compat port: close the control channel first, as 436 does (a client never
+						// learns the server's RemoteVersion, so it still hard-closes).
+						if( Connection->Channels[0] )
+							Connection->Channels[0]->Close();
+						Connection->FlushNet();
+						if( Connection->RemoteVersion<=420 )
+							Connection->State = USOCK_Closed;
 						return;
 					}
 				}

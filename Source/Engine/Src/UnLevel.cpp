@@ -636,14 +636,21 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		if( ParseCommand(&Text,TEXT("HELLO")) )
 		{
 			// Versions.
+			// v436-compat port: 436 records the client's version and turns away anything older than
+			// 432 (while still advertising MINVER=400); on any rejection it closes the control channel
+			// and lets that end the connection, hard-closing only clients of 420 and older.
 			INT RemoteMinVer=219, RemoteVer=219;
 			Parse( Text, TEXT("MINVER="), RemoteMinVer );
 			Parse( Text, TEXT("VER="),    RemoteVer    );
-			if( RemoteVer<ENGINE_MIN_NET_VERSION || RemoteMinVer>ENGINE_VERSION )
+			Connection->RemoteVersion = RemoteVer;
+			if( RemoteVer<432 || RemoteVer<ENGINE_MIN_NET_VERSION || RemoteMinVer>ENGINE_VERSION )
 			{
 				Connection->Logf( TEXT("UPGRADE MINVER=%i VER=%i"), ENGINE_MIN_NET_VERSION, ENGINE_VERSION );
+				if( Connection->Channels[0] )
+					Connection->Channels[0]->Close();
 				Connection->FlushNet();
-				Connection->State = USOCK_Closed;
+				if( Connection->RemoteVersion<=420 )
+					Connection->State = USOCK_Closed;
 				return;
 			}
 			Connection->NegotiatedVer = Min<INT>( RemoteVer, ENGINE_VERSION );
@@ -681,8 +688,11 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 			||	(!Engine->ChallengeResponse(Connection->Challenge))==Response )
 			{
 				Connection->Logf( TEXT("FAILURE CHALLENGE") );
+				if( Connection->Channels[0] )
+					Connection->Channels[0]->Close();
 				Connection->FlushNet();
-				Connection->State = USOCK_Closed;
+				if( Connection->RemoteVersion<=420 )
+					Connection->State = USOCK_Closed;
 				return;
 			}
 			TCHAR Str[1024]=TEXT("");
@@ -699,8 +709,11 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 				Connection->Logf( TEXT("FAILURE %s"), *Error );
 				if( (*FailCode)[0] )
 					Connection->Logf( TEXT("FAILCODE %s"), *FailCode );
+				if( Connection->Channels[0] )
+					Connection->Channels[0]->Close();
 				Connection->FlushNet();
-				Connection->State = USOCK_Closed;
+				if( Connection->RemoteVersion<=420 )
+					Connection->State = USOCK_Closed;
 				return;
 			}
 			WelcomePlayer( Connection );
@@ -718,8 +731,11 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 				// Failed to connect.
 				debugf( NAME_DevNet, TEXT("Join failure: %s"), *Error );
 				Connection->Logf( TEXT("FAILURE %s"), *Error );
+				if( Connection->Channels[0] )
+					Connection->Channels[0]->Close();
 				Connection->FlushNet();
-				Connection->State = USOCK_Closed;
+				if( Connection->RemoteVersion<=420 )
+					Connection->State = USOCK_Closed;
 			}
 			else
 			{
