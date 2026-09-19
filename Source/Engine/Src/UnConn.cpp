@@ -112,12 +112,13 @@ UBOOL UNetConnection::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	guard(UNetConnection::Exec);
 	if( ParseCommand(&Cmd,TEXT("GETPING")) )
 	{
-		Ar.Logf( TEXT(" %i"), (INT) (BestLag*1000.0) );
+		// v436-compat port: 436 rounds the ping and the loss it reports (fistp), not truncates.
+		Ar.Logf( TEXT(" %i"), appRound(BestLag*1000.f) );
 		return 1;
 	}
 	else if( ParseCommand(&Cmd,TEXT("GETLOSS")) )
 	{
-		Ar.Logf( TEXT(" %i"), (INT) InLoss );
+		Ar.Logf( TEXT(" %i"), appRound(InLoss) );
 		return 1;
 	}
 	else if( UPlayer::Exec(Cmd,Ar) )
