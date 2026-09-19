@@ -29,6 +29,8 @@ void UFont::Serialize( FArchive& Ar )
 	// sync (SmallFont: Got 4107 -> Expected 4112). See UnTex.h.
 	if( Ar.Ver() >= 69 )
 		Ar << CharRemap << IsRemapped;
+	else
+		IsRemapped = 0; // v436-compat port: a pre-v69 font is never remapped (436 clears it).
 	check(!(CharactersPerPage&(CharactersPerPage-1)));
 	if( !GLazyLoad )
 		for( INT c=0,p=0; c<256; c+=CharactersPerPage,p++ )
