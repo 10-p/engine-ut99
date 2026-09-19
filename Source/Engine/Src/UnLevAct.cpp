@@ -981,16 +981,21 @@ UBOOL ULevel::MoveActor
 		}
 	}
 
+	// v436-compat port: the actor leaves the collision hash before the encroachment check,
+	// and goes back in if the move is declined (436 ULevel::MoveActor).
+	if( Actor->bCollideActors && Hash )
+		Hash->RemoveActor( Actor );
+
 	// Abort if encroachment declined.
 	if( !bTest && !bNoFail && !Actor->IsA(APawn::StaticClass()) && CheckEncroachment( Actor, Actor->Location + FinalDelta, NewRotation, 0 ) )
 	{
 		unclock(MoveCycles);
+		if( Actor->bCollideActors && Hash )
+			Hash->AddActor( Actor );
 		return 0;
 	}
 
 	// Update the location.
-	if( Actor->bCollideActors && Hash )
-		Hash->RemoveActor( Actor );
 	Actor->Location += FinalDelta;
 	Actor->Rotation  = NewRotation;
 	if( Actor->bCollideActors && Hash )
