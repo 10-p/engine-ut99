@@ -348,10 +348,11 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 		if( !GRender->BoundVisible( Frame, &Bounds, NULL, ScreenBounds ) )
 			return 0;
 
-		X1 = (INT) ScreenBounds.MinX;
-		X2 = (INT) ScreenBounds.MaxX;
-		Y1 = (INT) ScreenBounds.MinY;
-		Y2 = (INT) ScreenBounds.MaxY;
+		// v436-compat port: the screen bounds are rounded, not truncated.
+		X1 = appRound( ScreenBounds.MinX );
+		X2 = appRound( ScreenBounds.MaxX );
+		Y1 = appRound( ScreenBounds.MinY );
+		Y2 = appRound( ScreenBounds.MaxY );
 		if( Y1>=Y2 )
 			return 0;
 
