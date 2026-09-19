@@ -480,7 +480,9 @@ class ENGINE_API UFont : public UObject
 	// v436-compat port: char-remapping table added to UFont after v400 (present in the v432
 	// reference). Serialized only for package version >= 69 (the patched-package version); the
 	// v68 retail fonts predate it. C++-only (not script properties), like Pages above.
-	TMap<TCHAR,TCHAR> CharRemap;
+	// Keys and values are 16-bit: 436 is a Unicode build and stores them as UNICHAR, whereas
+	// TCHAR is 8-bit here, which would read a non-empty table at the wrong width.
+	TMap<_WORD,_WORD> CharRemap;
 	UBOOL IsRemapped;
 
 	// Constructors.
