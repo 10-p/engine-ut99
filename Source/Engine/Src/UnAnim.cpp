@@ -9,9 +9,6 @@
 
 #include "EnginePrivate.h"
 
-// -skelanimlog / -skelnoblend (defined near GetFrame, used from Serialize above it).
-static UBOOL SkelAnimLogging();
-
 IMPLEMENT_CLASS(UAnimation);
 
 // v436-compat port: SkeletalMesh native class (OldSkool/ONP, Infiltration and other v436 mods).
@@ -79,10 +76,6 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 	Ar << DefaultAnimation;
 	Ar << WeaponBoneIndex;
 	Ar << WeaponAdjust.Origin << WeaponAdjust.XAxis << WeaponAdjust.YAxis << WeaponAdjust.ZAxis;
-	if( SkelAnimLogging() )
-		debugf( NAME_Log, TEXT("[skelload] %s bones=%i points=%i wedges=%i anim=%s"),
-			GetName(), RefSkeleton.Num(), Points.Num(), ExtWedges.Num(),
-			DefaultAnimation ? DefaultAnimation->GetName() : TEXT("none") );
 	unguard;
 }
 
@@ -107,33 +100,6 @@ FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 /*-----------------------------------------------------------------------------
 	USkeletalMesh::GetFrame (v436-compat port of the retail v436 Engine.dll function).
 -----------------------------------------------------------------------------*/
-
-// -skelanimlog on the command line turns on the [skeldraw]/[skelanim] traces below and [skelload]
-// in Serialize. Resolved once. A diagnostic of this port, not part of v436.
-static UBOOL SkelAnimLogging()
-{
-	static INT Enabled = -1;
-	if( Enabled < 0 )
-		Enabled = ParseParam( appCmdLine(), TEXT("skelanimlog") ) ? 1 : 0;
-	return Enabled != 0;
-}
-
-// -skelnoblend disables the tween (a tweening pose snaps to the new sequence). It exists so a
-// blending measurement can prove it can see a snap. A diagnostic of this port, not part of v436.
-static UBOOL SkelBlendDisabled()
-{
-	static INT Disabled = -1;
-	if( Disabled < 0 )
-		Disabled = ParseParam( appCmdLine(), TEXT("skelnoblend") ) ? 1 : 0;
-	return Disabled != 0;
-}
-
-// Angle between two unit quaternions, in degrees ([skelanim] trace only).
-static FLOAT SkelQuatAngleDeg( const FSkelQuat& A, const FSkelQuat& B )
-{
-	FLOAT D = Clamp( Abs( A.X*B.X + A.Y*B.Y + A.Z*B.Z + A.W*B.W ), 0.f, 1.f );
-	return (FLOAT)( 2.0 * appAtan2( appSqrt(1.0-(DOUBLE)D*(DOUBLE)D), (DOUBLE)D ) * 180.0 / PI );
-}
 
 //
 // Per-actor skeletal state, kept in the global cache under MakeCacheID(CID_SkeletalData, Owner)
@@ -219,7 +185,7 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 		if( Seq )
 			AnimTime = Clamp( AnimOwner->AnimFrame, 0.0f, 1.0f ) * Move->TrackTime;
 	}
-	UBOOL bTween = ( AnimOwner->AnimFrame < 0.0f && Cache->bHavePose ) && !SkelBlendDisabled();
+	UBOOL bTween = ( AnimOwner->AnimFrame < 0.0f && Cache->bHavePose );
 
 	// Link the mesh's bones to the animation's tracks, by name, whenever the animation changes.
 	TArray<FCoords> BoneCoords;
@@ -245,7 +211,6 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 		unguard;
 	}
 
-	FLOAT MaxBoneDelta = -1.0f;	// [skelanim] trace only.
 	if( Anim && !Seq && bTween )
 	{
 		// Tweening into a sequence this animation lacks: hold the last pose.
@@ -333,8 +298,6 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 					else
 						P = RefSkeleton(b).BonePos.Position;
 				}
-				if( Cache->bHavePose && SkelAnimLogging() )
-					MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cache->Rot[b], Q ) );
 				Cache->Rot[b] = Q;
 				Cache->Pos[b] = P;
 				BoneCoords(b) = Q.ToCoords( P );
@@ -354,7 +317,6 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 			Alpha             = 0.0f;
 			Cache->TweenSeq   = AnimOwner->AnimSequence;
 		}
-		MaxBoneDelta = 0.0f;
 		for( INT b=0; b<NumBones; b++ )
 		{
 			INT t = Cache->Links[b];
@@ -367,8 +329,6 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 					SkelAlignQuatWith( Target, Cache->Rot[b] );
 					FSkelQuat Q = SkelSlerpQuat( Cache->Rot[b], Target, Alpha );
 					Q.Normalize();
-					if( SkelAnimLogging() )
-						MaxBoneDelta = Max( MaxBoneDelta, SkelQuatAngleDeg( Cache->Rot[b], Q ) );
 					Cache->Rot[b] = Q;
 				}
 				if( Track.KeyPos.Num() )
@@ -391,16 +351,6 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 		INT Parent = RefSkeleton(b).ParentIndex;
 		check(Parent != b);
 		BoneCoords(b) = SkelApplyPivot( BoneCoords(b), BoneCoords(Parent) );
-	}
-
-	if( SkelAnimLogging() )
-	{
-		debugf( NAME_Log, TEXT("[skeldraw] %s mesh=%s seq=%s af=%f anim=%s bones=%i tween=%i"),
-			Owner->GetName(), GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame,
-			Anim ? Anim->GetName() : TEXT("none"), NumBones, bTween ? 1 : 0 );
-		if( MaxBoneDelta >= 0.0f )
-			debugf( NAME_Log, TEXT("[skelanim] %s seq=%s af=%f tween=%i maxdeg=%f"),
-				Owner->GetName(), *AnimOwner->AnimSequence, AnimOwner->AnimFrame, bTween ? 1 : 0, MaxBoneDelta );
 	}
 
 	// Debugging: bone pivots (view space) and per-vertex influence counts.

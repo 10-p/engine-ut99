@@ -1751,7 +1751,6 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 
 	// Command line.
 	debugf( NAME_Init, TEXT("Version: %i"), ENGINE_VERSION );
-	debugf( NAME_Init, TEXT(">>> UT99 v400->v436 compat port (feat/v436-compat) <<<") );
 	debugf( NAME_Init, TEXT("Compiled: %s %s"), appFromAnsi(__DATE__), appFromAnsi(__TIME__) );
 	debugf( NAME_Init, TEXT("Command line: %s"), appCmdLine() );
 	debugf( NAME_Init, TEXT("Base directory: %s"), appBaseDir() );
