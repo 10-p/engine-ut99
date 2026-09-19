@@ -26,7 +26,7 @@
 #else
 // A core-only SDK (no <AL/efx.h>): spell out the handful of types and enums this driver uses, so it still
 // COMPILES. The EAX reverb preset table is efx-presets.h's and is not reproduced — without those headers the
-// EAX path compiles out and only the Galaxy effect (whose enums are ours, below) or no reverb remain.
+// EAX path compiles out and there is no reverb.
 #define NOPENAL_NO_EAX 1
 typedef void (AL_APIENTRY *LPALGENEFFECTS)( ALsizei, ALuint* );
 typedef void (AL_APIENTRY *LPALDELETEEFFECTS)( ALsizei, const ALuint* );
@@ -42,16 +42,6 @@ typedef void (AL_APIENTRY *LPALAUXILIARYEFFECTSLOTI)( ALuint, ALenum, ALint );
 #define AL_FILTER_NULL                           0x0000
 #define AL_AUXILIARY_SEND_FILTER                 0x20006
 #define AL_METERS_PER_UNIT                       0x20004
-#endif
-// ufront 2.70: the classic Galaxy reverb is an effect only our openal-soft fork has (AL_UFRONT_galaxy_reverb,
-// 10-p/openal-soft-web). A stock <AL/alext.h> (the Windows build's prebuilt OpenAL Soft) lacks the enums, so
-// they are spelled here too; the run-time extension check decides whether they can be used.
-#ifndef AL_UFRONT_galaxy_reverb
-#define AL_EFFECT_GALAXY_REVERB_UFRONT           0xB000
-#define AL_GALAXY_REVERB_VOLUME                  0x0001
-#define AL_GALAXY_REVERB_HFDAMP                  0x0002
-#define AL_GALAXY_REVERB_DELAY_TIMES             0x0003
-#define AL_GALAXY_REVERB_DELAY_GAINS             0x0004
 #endif
 // openal-soft's output-mode extension (1.23+); spelled out for older alext.h headers a native build may find.
 #ifndef ALC_OUTPUT_MODE_SOFT
@@ -137,7 +127,6 @@ void UNOpenALAudioSubsystem::StaticConstructor()
 	new(GetClass(), TEXT("DopplerFactor"),      RF_Public)UFloatProperty ( CPP_PROPERTY( DopplerFactor      ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("UseReverb"),          RF_Public)UBoolProperty  ( CPP_PROPERTY( UseReverb          ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("UseHRTF"),            RF_Public)UBoolProperty  ( CPP_PROPERTY( UseHRTF            ), TEXT("Audio"), CPF_Config );
-	new(GetClass(), TEXT("UseEAX"),             RF_Public)UBoolProperty  ( CPP_PROPERTY( UseEAX             ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("MusicInterpolation"), RF_Public)UByteProperty  ( CPP_PROPERTY( MusicInterpolation ), TEXT("Audio"), CPF_Config );
 	unguardSlow;
 }
@@ -152,7 +141,6 @@ UNOpenALAudioSubsystem::UNOpenALAudioSubsystem()
 	DopplerFactor = 0.01f;
 	UseHRTF = false;	// ufront 2.61: the player's choice (see Init)
 	UseReverb = true;
-	UseEAX = true;		// ufront 2.70: with UseReverb, which reverb — True = EFX's EAX reverb (2.61), False = the classic Galaxy one
 	ReverbKind = REVERB_EAX;
 	MusicInterpolation = XMP_INTERP_LINEAR;
 }
@@ -217,11 +205,8 @@ UBOOL UNOpenALAudioSubsystem::Init()
 
 	alcMakeContextCurrent( Ctx );
 
-	// ufront 2.70: two reverbs. UseReverb && UseEAX -> EFX's EAX reverb (the 2.61 path). UseReverb && !UseEAX ->
-	// the classic Galaxy reverb of Unreal/UT99, recovered from GALAXY.LIB and carried by our openal-soft fork as
-	// AL_EFFECT_GALAXY_REVERB_UFRONT. A library without that extension (the Windows build's stock OpenAL Soft)
-	// keeps EAX and says so once. Decided here, with the context current, so the line below can report it.
-	// ufront 2.76: a third tier — an OpenAL with no EFX at all plays everything except reverb.
+	// ufront 2.76: two tiers, decided here (context current, so the line below can report it) by what the LINKED
+	// library offers: EFX -> EFX's EAX reverb (the 2.61 path); no EFX at all -> everything except reverb plays.
 	ResolveEfx( Device );
 	ReverbKind = REVERB_EAX;
 	if( UseReverb && !Efx.Present )
@@ -229,18 +214,11 @@ UBOOL UNOpenALAudioSubsystem::Init()
 		ReverbKind = REVERB_NONE;
 		debugf( TEXT("NOpenALDrv: this OpenAL has no EFX (ALC_EXT_EFX) - reverb is off; everything else plays") );
 	}
-	else if( UseReverb && !UseEAX )
-	{
-		if( alIsExtensionPresent( "AL_UFRONT_galaxy_reverb" ) )
-			ReverbKind = REVERB_GALAXY;
-		else
-			debugf( TEXT("NOpenALDrv: UseEAX=False, but this OpenAL has no Galaxy reverb (AL_UFRONT_galaxy_reverb) - EAX reverb stays") );
-	}
 #if NOPENAL_NO_EAX
 	if( ReverbKind == REVERB_EAX && UseReverb )
 	{
 		ReverbKind = REVERB_NONE;
-		debugf( TEXT("NOpenALDrv: built without the EFX headers - only the Galaxy reverb is available, reverb is off") );
+		debugf( TEXT("NOpenALDrv: built without the EFX headers - reverb is off") );
 	}
 #endif
 
@@ -250,8 +228,7 @@ UBOOL UNOpenALAudioSubsystem::Init()
 		alcGetIntegerv( Device, ALC_HRTF_SOFT, 1, &HRTFActive );
 		debugf( TEXT("NOpenALDrv: HRTF %s (UseHRTF=%s), reverb %s"), HRTFActive ? TEXT("ACTIVE") : TEXT("inactive"),
 			UseHRTF ? TEXT("True") : TEXT("False"),
-			!UseReverb ? TEXT("off (UseReverb=False)") : ReverbKind == REVERB_NONE ? TEXT("off (no EFX in this OpenAL)")
-				: ReverbKind == REVERB_GALAXY ? TEXT("on (Galaxy, UseEAX=False)") : TEXT("on (EAX)") );
+			!UseReverb ? TEXT("off (UseReverb=False)") : ReverbKind == REVERB_NONE ? TEXT("off (no EFX in this OpenAL)") : TEXT("on (EAX)") );
 	}
 
 	alDistanceModel( AL_LINEAR_DISTANCE_CLAMPED );
@@ -1090,30 +1067,13 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 			ReverbZone = NewReverbZone;
 			// Unbind effect, change parameters, then bind again.
 			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
-			if( ReverbKind == REVERB_GALAXY )
-			{
-				// ufront 2.70: the zone -> Galaxy mapping exactly as UnGalaxy.cpp UpdateReverb handed it to
-				// glxSetSampleReverb (ut99-v400/Galaxy/Src/UnGalaxy.cpp): every ZoneInfo reverb property is used.
-				FLOAT Times[6], Gains[6];
-				for( INT i=0; i<6; i++ )
-				{
-					Times[i] = Clamp( ReverbZone->Delay[i]/500.0f, 0.001f, 0.340f );
-					Gains[i] = Clamp( ReverbZone->Gain[i]/255.0f, 0.001f, 0.999f );
-				}
-				Efx.Effectf( ReverbEffect, AL_GALAXY_REVERB_VOLUME, ReverbZone->MasterGain/255.0f );
-				Efx.Effectf( ReverbEffect, AL_GALAXY_REVERB_HFDAMP, (FLOAT)Clamp( (INT)ReverbZone->CutoffHz, 0, 44100 ) );
-				Efx.Effectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_TIMES, Times );
-				Efx.Effectfv( ReverbEffect, AL_GALAXY_REVERB_DELAY_GAINS, Gains );
-			}
-			else
-				Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );	// the EAX preset takes only the master gain
+			Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );
 			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
 			// ufront 2.61: reverb used to be unreachable on the web; say once that it really engages.
 			static UBOOL LoggedReverb = 0;
 			if( !LoggedReverb )
 			{
-				debugf( TEXT("NOpenALDrv: %s reverb applied for zone %s (MasterGain %d, CutoffHz %d)"),
-					ReverbKind == REVERB_GALAXY ? TEXT("Galaxy") : TEXT("EAX"), ReverbZone->GetName(), ReverbZone->MasterGain, ReverbZone->CutoffHz );
+				debugf( TEXT("NOpenALDrv: EAX reverb applied for zone %s (MasterGain %d)"), ReverbZone->GetName(), ReverbZone->MasterGain );
 				LoggedReverb = 1;
 			}
 		}
@@ -1129,13 +1089,6 @@ void UNOpenALAudioSubsystem::InitReverbEffect()
 	if( ReverbKind == REVERB_NONE )
 		return;   // ufront 2.76: no EFX — no effect object was created
 
-	// ufront 2.70: ReverbKind was decided in Init (with the context current); the Galaxy effect takes its
-	// parameters per zone in UpdateReverb, the EAX one its preset here.
-	if( ReverbKind == REVERB_GALAXY )
-	{
-		Efx.Effecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_GALAXY_REVERB_UFRONT );
-		return;
-	}
 #if !NOPENAL_NO_EAX
 	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
 	Efx.Effecti( ReverbEffect, AL_EFFECT_TYPE, AL_EFFECT_EAXREVERB );

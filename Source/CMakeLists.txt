@@ -615,7 +615,7 @@ if(BUILD_NOPENALDRV)
     ufront_openal_soft(PLATFORM WEB EAX OFF)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UT_BUNDLED_OPENAL)
     # ufront 2.70: native Linux carries the same fork, SHARED, beside the binary (cmake/OpenALSoft.cmake) —
-    # the system libopenal is whatever the distro built, and the Galaxy reverb effect lives in the fork.
+    # the system libopenal is whatever the distro built, and this way native plays through what the web does.
     include(OpenALSoft)
     ufront_openal_soft(PLATFORM NATIVE EAX OFF)
   endif()

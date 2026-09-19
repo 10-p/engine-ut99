@@ -47,8 +47,8 @@ module, generalised — `ufront_openal_soft(PLATFORM WEB|NATIVE …)`) FetchCont
 otherwise). Backends are whatever this host's headers allowed at configure time — PulseAudio, ALSA, OSS on
 this box, each dlopen'd at run time — and the configure log says which
 (`Building OpenAL with support for the following backends`). `-DUT_BUNDLED_OPENAL=OFF` restores the system
-library. Why: the system library is whatever the distro built, and the Galaxy reverb effect (2.70) lives in
-the fork, so the native binary has to carry the fork to play what the web plays.
+library. Why: the system library is whatever the distro built, so the native binary carries the fork to play
+what the web plays.
 
 ### Running the native oracle
 The client runs from a `System/` dir (cwd), reading assets via relative `../Maps`, `../Textures`, … (the

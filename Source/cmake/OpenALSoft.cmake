@@ -8,9 +8,9 @@
 #            request, EFX reverb, the launcher's audio buffer settings (Module.alsoftConfig).
 #     NATIVE a SHARED libopenal.so.1 that NOpenALDrv links (DT_NEEDED) and the launcher copies beside the
 #            binary, found through $ORIGIN. Why not the system libopenal: it is whatever the distro built
-#            (Ubuntu's has no EAX), and the Galaxy reverb effect (2.70) lives in the fork, so the native
-#            binary has to carry the fork to play what the web plays. Backends are whatever the host's
-#            headers allowed at configure time (PulseAudio + ALSA on this box), each dlopen'd at run time.
+#            (Ubuntu's has no EAX), so the native binary carries the fork to play what the web plays.
+#            Backends are whatever the host's headers allowed at configure time (PulseAudio + ALSA on this
+#            box), each dlopen'd at run time.
 #
 # The fork: https://github.com/10-p/openal-soft-web `ufront/web` = openal-soft 1.25.2 + the Web Audio backend
 # + the wasm build patches (harmless natively: all under __EMSCRIPTEN__). A BRANCH, on purpose — a rebuild
