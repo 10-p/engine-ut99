@@ -535,7 +535,7 @@ static INT GetFileAgeDays( const TCHAR* Filename )
 		FileTime = Buf.st_mtime;
 		time( &CurrentTime );
 		DOUBLE DiffSeconds = difftime( CurrentTime, FileTime );
-		return DiffSeconds / 60.0 / 60.0 / 24.0;
+		return appRound( DiffSeconds / 60.0 / 60.0 / 24.0 ); // v436-compat port: rounded, not truncated.
 	}
 	return 0;
 	unguard;
