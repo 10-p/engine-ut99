@@ -4180,6 +4180,10 @@ void UFireTexture::TouchTexture(INT UPos, INT VPos, FLOAT Magnitude)
 void UFireTexture::ConstantTimeTick()
 {
 	guard(UFireTexture::ConstantTimeTick);
+	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
+	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	if( !__Client || __Client->NoFractalAnim )
+		return;
 
 	if( (USize>=8) && (VSize>=8) ) // safe sizes ?
 	{
@@ -4572,6 +4576,10 @@ void UWaveTexture::Clear( DWORD ClearFlags )
 void UWaveTexture::ConstantTimeTick()
 {
 	guard(UWaveTexture::ConstantTimeTick);
+	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
+	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	if( !__Client || __Client->NoFractalAnim )
+		return;
 
 	if( (USize>=8) && (VSize>=8) ) // safe sizes ?
 	{
@@ -4740,6 +4748,10 @@ void UWetTexture::Clear( DWORD ClearFlags )
 void UWetTexture::ConstantTimeTick()
 {
 	guard(UWetTexture::ConstantTimeTick);
+	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
+	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	if( !__Client || __Client->NoFractalAnim )
+		return;
 	if( SourceTexture && USize>=8 && VSize>=8 ) // safe sizes ?
 	{
 		// Make sure referred textures are updated also.
@@ -4938,6 +4950,10 @@ void UIceTexture::Clear( DWORD ClearFlags )
 void UIceTexture::ConstantTimeTick()
 {
 	guard(UIceTexture::ConstantTimeTick);
+	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
+	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	if( !__Client || __Client->NoFractalAnim )
+		return;
 
 	// Make sure referred textures are updated/loaded also.
 	if( SourceTexture )
@@ -4972,6 +4988,10 @@ void UIceTexture::ConstantTimeTick()
 void UIceTexture::Tick(FLOAT DeltaSeconds)  //"raw tick" override
 {
 	guard(UIceTexture::Tick);
+	// v436-compat port: no ice update without a client or with its NoFractalAnim set; 436
+	// skips the whole tick, the frame-synced (TimeMethod 0) path included.
+	if( !__Client || __Client->NoFractalAnim )
+		return;
 
 	// Revert to parent Tick() if panning stile is 'FrameSynced'. 
 	if( TimeMethod == 0 ) 
