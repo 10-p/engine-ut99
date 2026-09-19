@@ -1988,6 +1988,9 @@ void UObject::SafeLoadError( DWORD LoadFlags, const TCHAR* Error, const TCHAR* F
 	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt );
 
 	guard(UObject::SafeLoadError);
+	// v436-compat port: -STRICT makes every load failure critical (436 Core SafeLoadError).
+	if( GIsStrict )
+		LoadFlags = LOAD_NoFail;
 	if( !(LoadFlags & LOAD_Quiet)  ) debugf( NAME_Warning, TempStr );
 #ifndef __EMSCRIPTEN__
 	if(   LoadFlags & LOAD_Throw   ) appThrowf( TEXT("%s"), Error   );
