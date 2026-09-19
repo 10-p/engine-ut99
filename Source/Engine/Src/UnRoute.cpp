@@ -8,6 +8,9 @@ Revision history:
 
 #include "EnginePrivate.h"
 
+// v436-compat port: 436 rounds (appRound) every float->int conversion in the routing code
+// where v400 truncated with an (INT) cast -- path distances, collision sizes, list midpoints.
+
 /* clearPaths()
 clear all temporary path variables used in routing
 */
@@ -78,13 +81,13 @@ void FSortedPathList::FindVisiblePaths(APawn *Searcher, FVector Dest, FSortedPat
 			Searcher->clearPath(Nav);
 		if ( !startanchor )
 		{
-			dist = (int)(Searcher->Location - Nav->Location).SizeSquared();
+			dist = appRound((Searcher->Location - Nav->Location).SizeSquared());
 			if ( dist < 640000 )
 				addPath(Nav, dist);
 		}
 		if ( !endanchor )
 		{
-			dist = (int)(Dest - Nav->Location).SizeSquared();
+			dist = appRound((Dest - Nav->Location).SizeSquared());
 			if ( dist < 640000 )
 				DestPoints->addPath(Nav, dist);
 		}
@@ -114,8 +117,8 @@ int FSortedPathList::findEndPoint(APawn *Searcher, INT &startanchor)
 		if ( MyLevel->Model->FastLineCheck(Path[0]->Location, ViewPoint)
 			&& Searcher->pointReachable(Path[0]->Location, 1) )
 		{
-			Dist[0] = (INT) appSqrt(Dist[0]);
-			if ( (Dist[0] < ::Max(48, (int)Searcher->CollisionRadius))
+			Dist[0] = appRound(appSqrt(Dist[0]));
+			if ( (Dist[0] < ::Max(48, appRound(Searcher->CollisionRadius)))
 				&& (Abs(Path[0]->Location.Z - Searcher->Location.Z) < Searcher->CollisionHeight) )
 				startanchor = 1;
 			else
@@ -166,8 +169,8 @@ void FSortedPathList::expandAnchor(APawn *Searcher)
 	FReachSpec *spec;
 	FCheckResult Hit;
 	INT moveFlags = Searcher->calcMoveFlags(); 
-	INT iRadius = (int)(Searcher->CollisionRadius);
-	INT iHeight = (int)(Searcher->CollisionHeight);
+	INT iRadius = appRound(Searcher->CollisionRadius);
+	INT iHeight = appRound(Searcher->CollisionHeight);
 	while (j<16)
 	{
 		if (anchor->Paths[j] == -1)
@@ -211,8 +214,8 @@ int APawn::CanMoveTo(AActor *Anchor, AActor *Dest)
 		{
 			spec = &MyLevel->ReachSpecs(Start->Paths[j]);
 			if ( (spec->End == Dest) 
-				&& spec->supports((int)CollisionRadius,
-									(int)CollisionHeight,
+				&& spec->supports(appRound(CollisionRadius),
+									appRound(CollisionHeight),
 									calcMoveFlags()) )
 			{
 				MyLevel->SingleLineCheck(Hit, this, Dest->Location, Start->Location, TRACE_VisBlocking);
@@ -233,8 +236,8 @@ int APawn::CanMoveTo(AActor *Anchor, AActor *Dest)
 		{
 			spec = &MyLevel->ReachSpecs(Start->PrunedPaths[j]);
 			if ( (spec->End == Dest)
-				&& spec->supports((int)CollisionRadius,
-									(int)CollisionHeight,
+				&& spec->supports(appRound(CollisionRadius),
+									appRound(CollisionHeight),
 									calcMoveFlags()) )
 			{
 				MyLevel->SingleLineCheck(Hit, this, Dest->Location, Start->Location, TRACE_VisBlocking);
@@ -260,11 +263,11 @@ void FSortedPathList::findAltEndPoint(APawn *Searcher, AActor *&bestPath)
 	AltEndPoints.numPoints = 0;
 	for (int j=1; j<numPoints; j++)
 	{
-		int newDist = (INT) appSqrt(Dist[j]);
+		int newDist = appRound(appSqrt(Dist[j]));
 		newDist += ((ANavigationPoint *)Path[j])->visitedWeight;
 		if ( (newDist < bestDist) && (Abs(Path[j]->Location.Z - Searcher->Location.Z) < 120)
 			&& ((((Path[j]->Location - Searcher->Location) | (bestPath->Location - Searcher->Location)) < 0)
-			|| (newDist < ::Max((int)(0.85 * bestDist), bestDist - 150))) )
+			|| (newDist < ::Max(appRound(0.85f * bestDist), bestDist - 150))) )
 			AltEndPoints.addPath(Path[j], newDist);
 	}
 	FVector	ViewPoint = Searcher->Location;
@@ -373,7 +376,7 @@ int APawn::findPathToward(AActor *goal, INT bSinglePath, AActor *&bestPath, INT 
 				{
 					endanchor = 1;
 					DestPoints.Path[0] = DestPoints.Path[j];
-					DestPoints.Dist[0] = (INT) appSqrt(DestPoints.Dist[j]);
+					DestPoints.Dist[0] = appRound(appSqrt(DestPoints.Dist[j]));
 					j = DestPoints.numPoints;
 				}
 			}
@@ -543,7 +546,7 @@ int APawn::findPathTo(FVector Dest, INT bSinglePath, AActor *&bestPath, INT bCle
 				{
 					endanchor = 1;
 					DestPoints.Path[0] = DestPoints.Path[j];
-					DestPoints.Dist[0] = (INT) appSqrt(DestPoints.Dist[j]);
+					DestPoints.Dist[0] = appRound(appSqrt(DestPoints.Dist[j]));
 					j = DestPoints.numPoints;
 				}
 			j++;
@@ -609,7 +612,7 @@ int APawn::findRandomDest(AActor *&bestPath)
 			{ 	
 				FVector dir = Actor->Location - Location;
 				FLOAT dist = dir.Size();
-				EndPoints.addPath(Actor, dist); 
+				EndPoints.addPath(Actor, appRound(dist)); 
 				if ( EndPoints.numPoints == 4 )
 					break;
 			}
@@ -659,8 +662,8 @@ int APawn::TraverseFrom(AActor *start, int moveFlags)
 	int numMarked = 1; //mark the one we're at
 	ANavigationPoint *node = (ANavigationPoint *)start;
 
-	int iRadius = (int)CollisionRadius;
-	int iHeight = (int)CollisionHeight;
+	int iRadius = appRound(CollisionRadius);
+	int iHeight = appRound(CollisionHeight);
 	node->bEndPoint = 1;
 	FReachSpec *spec;
 	ULevel *MyLevel = GetLevel();
@@ -697,8 +700,8 @@ int APawn::breadthPathFrom(AActor *start, AActor *&bestPath, int bSinglePath, in
 	ANavigationPoint* nextnode;
 	ANavigationPoint* BinTree = currentnode;
 
-	int iRadius = (int)CollisionRadius;
-	int iHeight = (int)CollisionHeight;
+	int iRadius = appRound(CollisionRadius);
+	int iHeight = appRound(CollisionHeight);
 	int p = 0;
 	int n = 0;
 	int realSplit = 1;
@@ -786,7 +789,7 @@ int APawn::breadthPathFrom(AActor *start, AActor *&bestPath, int bSinglePath, in
 				}
 			}
 			realSplit++;
-			int move = (int)(0.5 * realSplit);
+			int move = appRound(0.5f * realSplit);
 			while ( p < move )
 			{
 				p++;
@@ -852,7 +855,7 @@ inline void FSortedPathList::addPath(AActor * node, INT dist)
 			AActor *afterPath = Path[n];
 			FLOAT afterDist = Dist[n];
 			Path[n] = nextPath;
-			Dist[n] = (INT) nextDist;
+			Dist[n] = appRound(nextDist);
 			nextPath = afterPath;
 			nextDist = afterDist;
 			n++;
@@ -889,8 +892,8 @@ FLOAT APawn::breadthPathToInventory(AActor *start, AActor *&bestPath, int moveFl
 	ANavigationPoint* BinTree = currentnode;
 	ANavigationPoint* BestDest = NULL;
 
-	int iRadius = (int)CollisionRadius;
-	int iHeight = (int)CollisionHeight;
+	int iRadius = appRound(CollisionRadius);
+	int iHeight = appRound(CollisionHeight);
 	int p = 0;
 	int n = 0;
 	int realSplit = 1;
@@ -1000,7 +1003,7 @@ FLOAT APawn::breadthPathToInventory(AActor *start, AActor *&bestPath, int moveFl
 			}
 		}
 		realSplit++;
-		int move = (int)(0.5 * realSplit);
+		int move = appRound(0.5f * realSplit);
 		while ( p < move )
 		{
 			p++;
