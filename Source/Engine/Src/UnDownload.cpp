@@ -161,11 +161,13 @@ void UDownload::DownloadDone()
 				Codec.AddCodec(new FCodecRLE);
 				Codec.AddCodec(new FCodecBWT);
 				Codec.AddCodec(new FCodecMTF);
+				// 436 @1040fc81: `cmpl $5678; jne` lands on the FIFTH codec's allocation, so the signature
+				// gates the second RLE pass ALONE and Huffman is always the last stage. With both inside
+				// the test, a 1234 file (what `ucc compress` writes, 469e's included) reached the BWT
+				// decoder still Huffman-coded and died in check(DecompressLength<=MAX_BUFFER_SIZE+1).
 				if( Signature==5678 )
-				{
 					Codec.AddCodec(new FCodecRLE);
-					Codec.AddCodec(new FCodecHuffman);
-				}
+				Codec.AddCodec(new FCodecHuffman);
 				Codec.Decode( *CFileAr, *UFileAr );
 			}
 		}
