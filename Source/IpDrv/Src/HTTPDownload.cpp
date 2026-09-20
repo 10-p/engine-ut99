@@ -8,6 +8,7 @@
 
 #include "IpDrvPrivate.h"
 #include "HTTPDownload.h"
+#include "WebHttp.h"
 
 /*-----------------------------------------------------------------------------
 	UHTTPDownload implementation.
@@ -36,6 +37,9 @@ UHTTPDownload::UHTTPDownload()
 	ResolveInfo  = NULL;
 	HTTPState    = HTTP_Initialized;
 	ConnectStartTime = 0.0;
+#ifdef __EMSCRIPTEN__
+	WebHandle = -1;
+#endif
 	unguard;
 }
 
@@ -63,6 +67,9 @@ void UHTTPDownload::Serialize( FArchive& Ar )
 void UHTTPDownload::Destroy()
 {
 	guard(UHTTPDownload::Destroy);
+#ifdef __EMSCRIPTEN__
+	WebClose();
+#endif
 	if( ServerSocket != INVALID_SOCKET )
 	{
 		closesocket( ServerSocket );
@@ -94,6 +101,11 @@ void UHTTPDownload::ReceiveFile( UNetConnection* InConnection, INT InPackageInde
 	else
 		DownloadURL = FURL( &Base, *(StrURL + File), TRAVEL_Relative );
 
+#ifdef __EMSCRIPTEN__
+	// No sockets and no resolver in a browser: the registered web-HTTP hook, or an immediate error.
+	WebReceiveFile();
+	return;
+#endif
 	const TCHAR* h = (*(*ProxyServerHost)) ? *ProxyServerHost : *DownloadURL.Host;
 	DWORD addr = inet_addr( appToAnsi(h) );
 	if( addr==INADDR_NONE )
@@ -116,6 +128,10 @@ void UHTTPDownload::ReceiveFile( UNetConnection* InConnection, INT InPackageInde
 void UHTTPDownload::Tick()
 {
 	guard(UHTTPDownload::Tick);
+#ifdef __EMSCRIPTEN__
+	WebTick();
+	return;
+#endif
 	switch( HTTPState )
 	{
 	case HTTP_Resolving:
@@ -348,6 +364,140 @@ UBOOL UHTTPDownload::TrySkipFile()
 	return 0;
 	unguard;
 }
+
+#ifdef __EMSCRIPTEN__
+/*-----------------------------------------------------------------------------
+	The browser build: no sockets, so the fetch goes through whoever registered
+	the web-HTTP hook table (Inc/WebHttp.h). Nobody registered = fail at once, and
+	the engine moves on to the next download manager the server named.
+-----------------------------------------------------------------------------*/
+
+FWebHttpHooks* GWebHttp = NULL;
+
+#define WEBHTTP_READ_SIZE		(256*1024)	// one Read()
+#define WEBHTTP_READS_PER_TICK	8			// so one tick hands the file writer at most 2 MB
+#define WEBHTTP_STALL_SECONDS	30			// the native path's connect timeout, applied to any silence
+
+void UHTTPDownload::WebReceiveFile()
+{
+	guard(UHTTPDownload::WebReceiveFile);
+
+	// The URL the native path requests, put back together — unescaped, as 436 sends it. The scheme is
+	// kept, so an https redirect works here although it never could over the native plain socket.
+	const UBOOL bSecure = DownloadURL.Protocol.Caps()==TEXT("HTTPS");
+	FString Url = FString::Printf( TEXT("%s://%s"), bSecure ? TEXT("https") : TEXT("http"), *DownloadURL.Host );
+	if( DownloadURL.Port!=80 && !(bSecure && DownloadURL.Port==443) )
+		Url += FString::Printf( TEXT(":%i"), DownloadURL.Port );
+	Url += FString(TEXT("/")) + DownloadURL.Map;
+
+	WebHandle = GWebHttp ? GWebHttp->Open( Connection, appToAnsi(*Url) ) : -1;
+	if( WebHandle < 0 )
+	{
+		// Nobody can fetch for this connection. Tick() reports it and the next manager takes over.
+		debugf( NAME_DevNet, TEXT("HTTPDownload: no web fetch available for this connection") );
+		DownloadError( LocalizeError(TEXT("ConnectionFailed"),TEXT("Engine")) );
+		HTTPState = HTTP_Closed;
+		return;
+	}
+	debugf( TEXT("HTTPDownload: fetching %s"), *Url );
+	ConnectStartTime = appSeconds();
+	HTTPState = HTTP_ReceivingHeader;
+
+	// Show progress while connecting.
+	ReceiveData( NULL, 0 );
+	unguard;
+}
+
+void UHTTPDownload::WebTick()
+{
+	guard(UHTTPDownload::WebTick);
+	if( HTTPState==HTTP_Closed )
+	{
+		// As on the native path, nothing may follow DownloadDone(): it can start the next download,
+		// which deletes this object.
+		WebClose();
+		DownloadDone();
+		return;
+	}
+	if( WebHandle < 0 )
+		return;
+
+	INT Status=WEBHTTP_Failed, Received=0, Total=-1;
+	if( !GWebHttp || GWebHttp->Poll( WebHandle, &Status, &Received, &Total )!=0 )
+		Status = WEBHTTP_Failed;
+	if( Status==WEBHTTP_Failed )
+	{
+		debugf( TEXT("HTTPDownload: fetch failed after %i bytes"), Transfered );
+		DownloadError( *FString::Printf( LocalizeError(TEXT("InvalidUrl"),TEXT("Engine")), *DownloadURL.String() ) );
+		HTTPState = HTTP_Closed;
+		return;
+	}
+
+	if( HTTPState==HTTP_ReceivingHeader && Status!=WEBHTTP_Pending )
+	{
+		// The response has begun. As on the native path, a compressed file is not the size the package
+		// map knows, so only the uncompressed case is checked against FileSize.
+		if( !IsCompressed && Total>0 && Total!=Info->FileSize )
+		{
+			DownloadError( LocalizeError(TEXT("NetSize"),TEXT("Engine")) );
+			HTTPState = HTTP_Closed;
+			return;
+		}
+		HTTPState = HTTP_ReceivingData;
+	}
+
+	UBOOL bGotData = 0;
+	if( HTTPState==HTTP_ReceivingData )
+	{
+		if( ReceivedData.Num() < WEBHTTP_READ_SIZE )
+			ReceivedData.Add( WEBHTTP_READ_SIZE - ReceivedData.Num() );
+		for( INT i=0; i<WEBHTTP_READS_PER_TICK; i++ )
+		{
+			INT Count = GWebHttp->Read( WebHandle, &ReceivedData(0), WEBHTTP_READ_SIZE );
+			if( Count <= 0 )
+				break;
+			ReceiveData( &ReceivedData(0), Count );
+			bGotData = 1;
+			if( *Error )
+			{
+				// The cache file could not be written: more bytes will not help.
+				HTTPState = HTTP_Closed;
+				return;
+			}
+		}
+	}
+
+	if( Status==WEBHTTP_Done )
+	{
+		// Done is only reported once the whole body has been read.
+		HTTPState = HTTP_Closed;
+	}
+	else if( bGotData )
+	{
+		ConnectStartTime = appSeconds();
+	}
+	else if( appSeconds() - ConnectStartTime > WEBHTTP_STALL_SECONDS )
+	{
+		debugf( NAME_DevNet, TEXT("HTTPDownload: fetch stalled") );
+		DownloadError( LocalizeError(TEXT("ConnectionFailed"),TEXT("Engine")) );
+		HTTPState = HTTP_Closed;
+	}
+	unguard;
+}
+
+void UHTTPDownload::WebClose()
+{
+	guard(UHTTPDownload::WebClose);
+	if( WebHandle >= 0 )
+	{
+		if( GWebHttp )
+			GWebHttp->Close( WebHandle );
+		WebHandle = -1;
+	}
+	ReceivedData.Empty();
+	unguard;
+}
+#endif
 
 IMPLEMENT_CLASS(UHTTPDownload);
 

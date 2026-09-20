@@ -17,6 +17,10 @@ target_include_directories(${PROJECT_NAME}
   PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CMAKE_SOURCE_DIR}/../vendor/glue
+  # IpDrv/Inc/WebHttp.h only: the hook table UHTTPDownload asks for a redirect download. A header with no
+  # socket types in it — this package still includes nothing else of IpDrv's.
+  PRIVATE
+  ${CMAKE_SOURCE_DIR}/IpDrv/Inc
 )
 
 target_link_libraries(${PROJECT_NAME} Engine Core)
