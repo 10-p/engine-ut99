@@ -24,6 +24,7 @@
 
 #include "Engine.h"
 #include "UnNet.h"
+#include "WebHttp.h"
 
 #ifdef __EMSCRIPTEN__
 #include "ue_proxynet_abi.h"
@@ -33,11 +34,19 @@
 #define PROXYNET_STATE_CONNECTING 1
 #define PROXYNET_STATE_OPEN       2
 #define PROXYNET_STATE_CLOSED     3
+#define PROXYNET_HTTP_PENDING     0
+#define PROXYNET_HTTP_RECEIVING   1
+#define PROXYNET_HTTP_DONE        2
+#define PROXYNET_HTTP_FAILED      3
 inline int  ue_proxynet_connect( const char*, int ) { return -1; }
 inline int  ue_proxynet_state( int ) { return PROXYNET_STATE_CLOSED; }
 inline int  ue_proxynet_send( int, const void*, int ) { return 0; }
 inline int  ue_proxynet_recv( int, void*, int ) { return 0; }
 inline void ue_proxynet_close( int ) {}
+inline int  ue_proxynet_http_open( int, const char* ) { return -1; }
+inline int  ue_proxynet_http_poll( int, int*, int*, int* ) { return -1; }
+inline int  ue_proxynet_http_read( int, void*, int ) { return 0; }
+inline void ue_proxynet_http_close( int ) {}
 #endif
 
 // Package.
@@ -141,6 +150,43 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 IMPLEMENT_CLASS(UProxyNetConnection);
 
 /*-----------------------------------------------------------------------------
+	Redirect downloads.
+
+	A native server names an HTTP redirect (`DLMGR CLASS=IpDrv.HTTPDownload`). In a browser
+	IpDrv's UHTTPDownload cannot open a socket, so it asks the table in IpDrv/Inc/WebHttp.h —
+	and this package, which owns the `ue_proxynet_http_*` imports, is what fills it. The game
+	proxy does the fetch for a LIVE session and pays for it from that session's download
+	allowance; any refusal is simply FAILED and the engine falls back to the in-band download.
+-----------------------------------------------------------------------------*/
+
+// The hook's status values ARE the ABI's: they cross unconverted.
+static_assert( WEBHTTP_Pending==PROXYNET_HTTP_PENDING && WEBHTTP_Receiving==PROXYNET_HTTP_RECEIVING
+	&& WEBHTTP_Done==PROXYNET_HTTP_DONE && WEBHTTP_Failed==PROXYNET_HTTP_FAILED, "WebHttp.h and ue_proxynet_abi.h disagree" );
+
+static INT ProxyNetHttpOpen( UNetConnection* Connection, const ANSICHAR* Url )
+{
+	// Only for a download that belongs to one of OUR connections: its session is what the proxy
+	// charges. Anything else (a P2P connection in the same build) gets -1 and falls back at once.
+	UProxyNetConnection* Conn = Cast<UProxyNetConnection>( Connection );
+	if( !Conn || Conn->ConnId < 0 )
+		return -1;
+	return ue_proxynet_http_open( Conn->ConnId, Url );
+}
+static INT ProxyNetHttpPoll( INT Handle, INT* Status, INT* Received, INT* Total )
+{
+	return ue_proxynet_http_poll( Handle, Status, Received, Total );
+}
+static INT ProxyNetHttpRead( INT Handle, BYTE* Buffer, INT MaxLen )
+{
+	return ue_proxynet_http_read( Handle, Buffer, MaxLen );
+}
+static void ProxyNetHttpClose( INT Handle )
+{
+	ue_proxynet_http_close( Handle );
+}
+static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, ProxyNetHttpRead, ProxyNetHttpClose };
+
+/*-----------------------------------------------------------------------------
 	UProxyNetDriver.
 -----------------------------------------------------------------------------*/
 class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
@@ -211,6 +257,10 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 			Error = TEXT("Proxy networking needs a server address (host:port).");
 			return 0;
 		}
+
+		// Redirect downloads: registered on the first Proxy connection and left in place — the functions
+		// are static, and Open() turns away every connection that is not ours.
+		GWebHttp = &GProxyNetHttpHooks;
 
 		// Connect to remote — through the game proxy. A NEW connection id every time.
 		INT NewConnId = ue_proxynet_connect( appToAnsi(*ConnectURL.Host), ConnectURL.Port );
