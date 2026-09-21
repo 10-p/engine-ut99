@@ -38,7 +38,7 @@ void AUdpLink::Destroy()
 #ifdef __EMSCRIPTEN__
 	WebRTCLan_Unbind( this );   // ufront 2.38 — drop any queued synthetic packets for this link
 #endif
-	if( GetSocket() )
+	if( HasSocket() )
 		closesocket(GetSocket());
 	Super::Destroy();
 	unguard;
@@ -115,8 +115,9 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 				else Stack.Logf( TEXT("BindPort: setsockopt failed") );
 			}
 			else Stack.Logf( TEXT("BindPort: socket failed") );
-			closesocket(GetSocket());
-			GetSocket()=0;
+			if( HasSocket() )
+				closesocket(GetSocket());
+			GetSocket()=INVALID_SOCKET;
 		}
 		else Stack.Logf( TEXT("BindPort: already bound") );
 	}
@@ -142,7 +143,7 @@ void AUdpLink::execSendText( FFrame& Stack, RESULT_DECL )
 	*(DWORD*)Result = 1;
 	return;
 #endif
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		sockaddr_in Addr;
 		Addr.sin_family      = AF_INET;
@@ -179,7 +180,7 @@ void AUdpLink::execSendBinary( FFrame& Stack, RESULT_DECL )
 	*(DWORD*)Result = 0;
 	return;
 #endif
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		sockaddr_in Addr;
 		Addr.sin_family      = AF_INET;
@@ -227,7 +228,7 @@ UBOOL AUdpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 	// RMODE_Manual (ReadText/ReadBinary polling) is not fed: nothing in either stock browser uses it.
 	return Result;
 #endif
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		if( ReceiveMode == RMODE_Event )
 		{
@@ -290,7 +291,7 @@ void AUdpLink::execReadText( FFrame& Stack, RESULT_DECL )
 	P_GET_STR_REF( Str );
 	P_FINISH;
 	*Str = TEXT("");
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		BYTE Buffer[MAXRECVDATASIZE];
 		sockaddr_in FromAddr;
@@ -327,7 +328,7 @@ void AUdpLink::execReadBinary( FFrame& Stack, RESULT_DECL )
 	P_GET_INT(Count);
 	P_GET_ARRAY_REF(BYTE,B);
 	P_FINISH;
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		sockaddr_in FromAddr;
 		socklen_t FromSize = sizeof(FromAddr);

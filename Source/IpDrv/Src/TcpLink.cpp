@@ -33,7 +33,7 @@ ATcpLink::ATcpLink()
 void ATcpLink::Destroy()
 {
 	guard(ATcpLink::Destroy);
-	if( GetSocket() )
+	if( HasSocket() )
 		closesocket(GetSocket());
 	if( RemoteSocket != INVALID_SOCKET )
 		closesocket(RemoteSocket);
@@ -105,8 +105,9 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 				else Stack.Logf( TEXT("BindPort: setsockopt failed") );
 			}
 			else Stack.Logf( TEXT("BindPort: socket failed") );
-			closesocket(GetSocket());
-			GetSocket()=0;
+			if( HasSocket() )
+				closesocket(GetSocket());
+			GetSocket()=INVALID_SOCKET;
 		}
 		else Stack.Logf( TEXT("BindPort: already bound") );
 	}
@@ -133,7 +134,8 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 		return;
 	}
 	
-	if ( (LinkState == STATE_Listening) && GetSocket() )
+	// ufront: RemoteSocket is INVALID_SOCKET until a client is accepted -- never FD_SET it then.
+	if ( (LinkState == STATE_Listening) && HasSocket() && RemoteSocket != INVALID_SOCKET )
 	{
 		FD_ZERO( &SocketSet );
 		FD_SET( RemoteSocket, &SocketSet );
@@ -144,7 +146,7 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 		}
 	}
 
-	if ( GetSocket() )
+	if ( HasSocket() )
 	{
 		FD_ZERO( &SocketSet );
 		FD_SET( Socket, &SocketSet );
@@ -168,7 +170,7 @@ void ATcpLink::execListen( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	INT Error;
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		if( LinkState != STATE_ListenClosing )
 		{
@@ -203,7 +205,7 @@ UBOOL ATcpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 	guard(ATcpLink::Tick);
 	UBOOL Result = Super::Tick( DeltaTime, TickType );
 
-	if( GetSocket() )
+	if( HasSocket() )
 	{
 		switch( LinkState )
 		{
@@ -467,7 +469,7 @@ void ATcpLink::execOpen( FFrame& Stack, RESULT_DECL )
 	SOCKADDR_IN RemoteHost;
 	INT Error;
 
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		RemoteHost.sin_family      = AF_INET;
 		RemoteHost.sin_port		   = htons(Addr.Port);
@@ -536,7 +538,7 @@ void ATcpLink::execClose( FFrame& Stack, RESULT_DECL )
 	guard(ATcpLink::execClose);
 	P_FINISH;
 
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		if ( LinkState == STATE_Listening )
 		{
@@ -561,7 +563,7 @@ void ATcpLink::execClose( FFrame& Stack, RESULT_DECL )
 void ATcpLink::ShutdownConnection()
 {
 	guard(ATcpLink::ShutdownConnection);
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		INT Error = 0;
 		if( LinkState == STATE_ListenClosePending )
@@ -598,7 +600,7 @@ void ATcpLink::execReadText( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	INT BytesReceived;
-	if( GInitialized && GetSocket() )
+	if( GInitialized && HasSocket() )
 	{
 		if( LinkState==STATE_Listening || LinkState==STATE_Connected )
 		{
@@ -663,7 +665,7 @@ void ATcpLink::execSendBinary( FFrame& Stack, RESULT_DECL )
 	P_GET_ARRAY_REF(BYTE,B);
 	P_FINISH;
 
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		INT Index = SendFIFO.Add( Count );
 		for(INT i=0; i < Count; i++)
@@ -689,7 +691,7 @@ void ATcpLink::execSendText( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	*(DWORD*)Result = 0;
-	if( GInitialized && GetSocket() )
+	if( GInitialized && HasSocket() )
 	{
 		if( LinkMode == MODE_Line )
 			Str += TEXT("\r\n");
@@ -720,7 +722,7 @@ void ATcpLink::execReadBinary( FFrame& Stack, RESULT_DECL )
 
 	int BytesReceived;
 
-	if ( GInitialized && GetSocket() )
+	if ( GInitialized && HasSocket() )
 	{
 		if ( (LinkState == STATE_Listening) || (LinkState == STATE_Connected) )
 		{
