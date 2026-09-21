@@ -58,6 +58,16 @@ public:
     INT PrivateResolveInfo;
     INT DataPending;
     BYTE ReceiveMode;
+    // v436-compat layout fix (same class of bug as ABrush::bColored -> AMover): ReceiveMode is the last
+    // member and leaves 3 bytes of TRAILING PADDING. GCC/Itanium reuses a base class's tail padding for a
+    // derived class's first member, so ATcpLink's `BYTE LinkState` landed at 549 -- but MSVC never does
+    // that, and UE1's UStruct::Link starts a subclass at Align(Super->PropertiesSize,4) = 552. Every
+    // ATcpLink member was therefore 3-4 bytes below where the runtime v436 IpDrv.u puts it (guard said
+    // C++ 576 vs script 580), corrupting TcpLink's own state (LinkState/RemoteAddr/AcceptClass/SendFIFO)
+    // for UBrowser HTTP downloads, the server browser and any TCP mod. Consuming the padding explicitly
+    // makes derived classes start at 552 on both compilers. AUdpLink was always safe -- its first member
+    // is 4-aligned, so it re-aligned anyway.
+    BYTE ReceiveModePad[3];
     DECLARE_FUNCTION(execGetLocalIP);
     DECLARE_FUNCTION(execValidate);
     DECLARE_FUNCTION(execStringToIpAddr);
