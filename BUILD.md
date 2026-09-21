@@ -59,6 +59,12 @@ a `UnrealTournament.ini` selecting `NOpenGLESDrv.NOpenGLESRenderDevice` + `NSDLD
 (step 2.7a): loads the v400 engine + all v68 retail packages + a real DM map — proving v400↔v68 asset
 compatibility.
 
+**`ucc-bin` (target `UCC`, `build-native/UCC/ucc-bin`)** is self-contained on a static preset (ufront 2.79):
+it whole-archives the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, + Editor), so
+`./ucc-bin server "DM-Deck16][?game=Botpack.DeathMatchPlus" -nohomedir` runs a dedicated server from
+`System/` with no package `.so` beside it (no `libopenal.so.1` either: it links no audio or render device).
+v400 has no `compress` commandlet (retail v400 had none either).
+
 ## Render drivers — fetched, not vendored
 
 The two shared HW render drivers are **pulled from their own GitHub repos at configure time** (CMake
