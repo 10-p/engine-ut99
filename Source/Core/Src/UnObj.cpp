@@ -7,16 +7,6 @@
 =============================================================================*/
 
 #include "CorePrivate.h"
-// maximqad:: remove that when zeroing on actor construct is fixed
-static UProperty* FindRoleProperty( UClass* InClass )
-{
-	for( UProperty* Prop = InClass ? InClass->PropertyLink : NULL; Prop; Prop = Prop->PropertyLinkNext )
-	{
-		if( appStricmp( Prop->GetName(), TEXT("Role") ) == 0 )
-			return Prop;
-	}
-	return NULL;
-}
 /*-----------------------------------------------------------------------------
 	Globals.
 -----------------------------------------------------------------------------*/
@@ -3227,101 +3217,49 @@ UObject* UObject::StaticConstructObject
 	guard(UObject::StaticConstructObject);
 	check(Error);
 
-	// maximqad: figure out how to fix zeroing on player actor 
-#if 1
-	// Allocate the object.
+	// Allocate the object, then run its C++ constructor -- as retail does, for EVERY class.
+	//
+	// ufront: the Dreamcast port this engine descends from wrapped this in a "STUPID HACK" (`maximqad: remove
+	// that when zeroing on actor construct is fixed`) that saved every property byte of an ACTOR before its
+	// constructor and copied them back afterwards, so actor constructors were silently undone on every
+	// platform. Its reason -- the value-initialising `new(X)TClass()` zeroing objects under GCC -- is fixed at
+	// the root (DECLARE_CLASS, a680288), so the hack only did harm: AInternetLink's `Socket = INVALID_SOCKET`
+	// and `ReceiveMode = RMODE_Event` were thrown away, and every UdpLink/TcpLink (the server query, the
+	// beacon, the web admin, UBrowser) failed "BindPort: already bound". Actor string members are
+	// FStringNoInit and the rest are plain data, so a constructor changes nothing it does not assign.
 	UObject* Result = StaticAllocateObject( InClass, InOuter, InName, InFlags, InTemplate, Error );
 	if( Result )
 	{
-		// STUPID HACK: 
-		// For Actor classes (detected by Role property), save and restore initialized data around constructor.
-		UProperty* RoleProp = FindRoleProperty( InClass );
-		if( RoleProp )
-		{
-			// Save UObject header fields
-			INT SavedIndex = Result->Index;
-			UClass* SavedClass = Result->Class;
-			UObject* SavedOuter = Result->Outer;
-			FName SavedName = Result->Name;
-			DWORD SavedFlags = Result->ObjectFlags;
-
-			// Save ALL actor data (everything after UObject header)
-			INT StartOffset = sizeof(UObject);
-			INT ActorDataSize = InClass->GetPropertiesSize() - StartOffset;
-			BYTE* SavedActorData = NULL;
-
-			if( ActorDataSize > 0 )
-			{
-				SavedActorData = (BYTE*)appMalloc(ActorDataSize, TEXT("SavedActorData"));
-				appMemcpy(SavedActorData, (BYTE*)Result + StartOffset, ActorDataSize);
-			}
-
-			(*InClass->ClassConstructor)( Result );
-
-			// Restore UObject header fields
-			Result->Index = SavedIndex;
-			Result->Class = SavedClass;
-			Result->Outer = SavedOuter;
-			Result->Name = SavedName;
-			Result->ObjectFlags = SavedFlags;
-
-			// Restore ALL actor data
-			if( ActorDataSize > 0 && SavedActorData )
-			{
-				appMemcpy((BYTE*)Result + StartOffset, SavedActorData, ActorDataSize);
-				appFree(SavedActorData);
-			}
-		}
-		else
-		{
 #ifndef __EMSCRIPTEN__
-			// ufront (2.12 Part B) — native segfault-on-quit fix. The value-init ClassConstructor
-			// (new(X)TClass()) zero-initialises the WHOLE object for classes with no user-provided default
-			// ctor, wiping the UObject header (Index/Class/Outer/Name/ObjectFlags) that StaticAllocateObject
-			// set up. The Actor branch above already save/restores this; non-actor CLASS_Config classes
-			// (render devices, audio/net drivers, client) were left wiped, so at shutdown PurgeGarbage ->
-			// UViewport::Destroy -> `delete RenDev` -> ~UObject crashes: Class==NULL faults ExitProperties
-			// (UnObj.cpp:1163) and the zeroed Index makes IsValid() fail "Other object in slot" (:373). That
-			// is the owner-reported native "segfault on quit" (gdb-confirmed 2026-07-16). Save the header,
-			// and if the ctor actually wiped it (Class went NULL) for a native CLASS_Config class, restore the
-			// WHOLE header (not just Class -- the stale Index is what trips IsValid) + re-load the wiped
-			// CPF_Config feature flags. Self-detecting: classes with a real ctor (Class survives, e.g. the
-			// Render subsystem) fall through untouched. Web keeps the lighter Class-only repair below and
-			// never runs PurgeGarbage on exit (the page navigates away), so its preprocessor output is
-			// unchanged by this native-only branch.
-			INT      SavedIndex = Result->Index;
-			UClass*  SavedClass = Result->Class;
-			UObject* SavedOuter = Result->Outer;
-			FName    SavedName  = Result->Name;
-			DWORD    SavedFlags = Result->ObjectFlags;
-			(*InClass->ClassConstructor)( Result );
-			if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
-			{
-				Result->Index       = SavedIndex;
-				Result->Class       = SavedClass;
-				Result->Outer       = SavedOuter;
-				Result->Name        = SavedName;
-				Result->ObjectFlags = SavedFlags;
-				Result->LoadConfig();
-			}
-#else
-			// Not an Actor - just call the constructor normally
-			(*InClass->ClassConstructor)( Result );
-#endif
+		// ufront (2.12 Part B) — native segfault-on-quit fix. The value-init ClassConstructor
+		// (new(X)TClass()) zero-initialised the WHOLE object for classes with no user-provided default
+		// ctor, wiping the UObject header (Index/Class/Outer/Name/ObjectFlags) that StaticAllocateObject
+		// set up; for native CLASS_Config classes (render devices, audio/net drivers, client) that crashed at
+		// shutdown (PurgeGarbage -> UViewport::Destroy -> `delete RenDev` -> ~UObject: Class==NULL faults
+		// ExitProperties and the zeroed Index fails IsValid()). DECLARE_CLASS no longer value-initialises
+		// (a680288), so this is a self-detecting safety net: if the ctor ever wipes the header (Class went
+		// NULL) of a native CLASS_Config class, restore the WHOLE header and re-load its config.
+		INT      SavedIndex = Result->Index;
+		UClass*  SavedClass = Result->Class;
+		UObject* SavedOuter = Result->Outer;
+		FName    SavedName  = Result->Name;
+		DWORD    SavedFlags = Result->ObjectFlags;
+		(*InClass->ClassConstructor)( Result );
+		if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
+		{
+			Result->Index       = SavedIndex;
+			Result->Class       = SavedClass;
+			Result->Outer       = SavedOuter;
+			Result->Name        = SavedName;
+			Result->ObjectFlags = SavedFlags;
+			Result->LoadConfig();
 		}
-
-#ifdef __EMSCRIPTEN__
-		// ufront (2.12): the value-init ClassConstructor (new(X)TClass()) zero-initialises the WHOLE object
-		// for native classes that lack a user-provided default ctor -- wiping the UObject header (incl. the
-		// Class pointer) AND all property data that StaticAllocateObject/InitProperties had set up. The
-		// "STUPID HACK" above save/restores that for Actor classes only; non-actor native config classes
-		// (render devices, audio/net drivers, client) come out with Class==NULL and their inherited
-		// CPF_Config feature flags (Coronas, VolumetricLighting, DetailTextures, ...) zeroed. Detect exactly
-		// the wiped objects (Class got nulled) and, for native CLASS_Config classes, restore the class
-		// pointer and re-load config onto the live instance from its own [Pkg.Class] ini section. Objects the
-		// ctor did NOT wipe (Class survived -- they have a real C++ ctor, e.g. the Render subsystem) are left
-		// untouched, so this needs no per-type allowlist. Native (non-web) binds packages normally and never
-		// hits the StaticFindObject/no-bind path, hence the __EMSCRIPTEN__ guard.
+#else
+		(*InClass->ClassConstructor)( Result );
+		// ufront (2.12): the web's lighter form of the same safety net -- a native CLASS_Config object whose
+		// ctor wiped the Class pointer gets it back and re-loads config onto the live instance from its own
+		// [Pkg.Class] section (its CPF_Config feature flags -- Coronas, VolumetricLighting, DetailTextures --
+		// would otherwise be zero). Self-detecting: an object whose Class survived is untouched.
 		if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
 		{
 			Result->Class = InClass;
@@ -3330,13 +3268,6 @@ UObject* UObject::StaticConstructObject
 #endif
 	}
 	return Result;
-#else
-		// Allocate the object.
-		UObject* Result = StaticAllocateObject( InClass, InOuter, InName, InFlags, InTemplate, Error );
-		if( Result )
-			(*InClass->ClassConstructor)( Result );
-		return Result;
-#endif
 	unguard;
 }
 /*-----------------------------------------------------------------------------
