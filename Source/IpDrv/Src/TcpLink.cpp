@@ -476,7 +476,18 @@ void ATcpLink::execOpen( FFrame& Stack, RESULT_DECL )
 		RemoteHost.sin_addr.s_addr = htonl(Addr.Addr);
 		Error = connect( GetSocket(), (SOCKADDR*) &RemoteHost, sizeof(RemoteHost) );
 		if ( Error == SOCKET_ERROR ) {
-			if ( WSAGetLastError() != WSAEWOULDBLOCK ) {
+			// ufront: a non-blocking connect() that is still in progress is not an error. WinSock says
+			// WSAEWOULDBLOCK; BSD sockets say EINPROGRESS -- and UnSocket.h maps WSAEWOULDBLOCK to EAGAIN (right
+			// for recv/recvfrom, where BSD says EAGAIN; the Dreamcast port changed it from EINPROGRESS, which
+			// was right only here). So accept both at the one call that answers EINPROGRESS: without this,
+			// every outbound TcpLink.Open (the server browser's master query, the HTTP news, IRC, mods) failed
+			// "An error occured while attempting to connect: 115" on Linux and Android (the web has no sockets at all).
+			INT ConnectError = WSAGetLastError();
+#if __BSD_SOCKETS__
+			if ( ConnectError != WSAEWOULDBLOCK && ConnectError != EINPROGRESS ) {
+#else
+			if ( ConnectError != WSAEWOULDBLOCK ) {
+#endif
 				debugf(NAME_Log, TEXT("Open: An error occured while attempting to connect: %i"), WSAGetLastError());
 				*(DWORD*) Result = 0;
 				return;
