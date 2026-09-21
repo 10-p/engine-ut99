@@ -1320,6 +1320,10 @@ void UFileChannel::Destroy()
 			// Success.
 			TCHAR Msg[256];
 			appSprintf( Msg, TEXT("Received '%s'"), PrettyName );
+			// ufront: LOG it too. The web host persists Cache/ to its download store when this line reaches the
+			// log (the page's print tap); NotifyProgress alone only reaches the screen, so without it every visit
+			// downloaded a server's custom files again.
+			debugf( TEXT("%s"), Msg );
 			Connection->Driver->Notify->NotifyProgress( TEXT("Success"), Msg, 4.0 );
 			Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error );
 		}
