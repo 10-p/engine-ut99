@@ -203,6 +203,10 @@ void UDownload::DownloadDone()
 
 		TCHAR Msg[256];
 		appSprintf( Msg, TEXT("Received '%s'"), Info->Parent->GetName() );
+		// ufront: LOG it too. The web host persists Cache/ to its download store when this line reaches the log
+		// (the page's print tap); NotifyProgress alone only reaches the screen, so without it every visit
+		// downloaded a server's custom files again. (Base v400 carries the same line in UnChan.cpp's file channel.)
+		debugf( TEXT("%s"), Msg );
 		Connection->Driver->Notify->NotifyProgress( TEXT("Success"), Msg, 4.f );
 		Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
 	}
