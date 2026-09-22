@@ -230,7 +230,8 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 					Connection->State = USOCK_Closed;
 				return;
 			}
-			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename ) )
+			// Info.FileSize is what the server announced: the lookup then needs no file of its own (see UnMisc.cpp).
+			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename, Info.FileSize ) )
 			{
 				appSprintf( Filename, TEXT("%s%s"), Info.Parent->GetName(), DLLEXT );
 				if( GFileManager->FileSize(Filename) <= 0 )

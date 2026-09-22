@@ -80,7 +80,7 @@ CORE_API void appEnableFastMath( UBOOL Enable );
 CORE_API class FGuid appCreateGuid();
 CORE_API void appCreateTempFilename( const TCHAR* Path, TCHAR* Result256 );
 CORE_API void appCleanFileCache();
-CORE_API UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out );
+CORE_API UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out, INT ExpectedSize=0 );	// ufront 2.79o: the size the server announced, when it is known (then no file is opened)
 
 /*-----------------------------------------------------------------------------
 	Clipboard.

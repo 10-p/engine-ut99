@@ -1578,11 +1578,21 @@ static UBOOL appFindFileNoCase( const TCHAR* Dir, const TCHAR* In, const TCHAR* 
 // does, because the code packages that clash on real servers are exactly the ones a client has NOT
 // loaded yet (a loaded one is refused before any download -- UNetPendingLevel).
 //
-static UBOOL appPackageFileHasGuid( const TCHAR* Filename, const FGuid* Guid )
+static UBOOL appPackageFileIsTheOneAsked( const TCHAR* Filename, const FGuid* Guid, INT ExpectedSize )
 {
-	guard(appPackageFileHasGuid);
+	guard(appPackageFileIsTheOneAsked);
 	if( !Guid )
 		return 1;
+
+	// ★ SIZE FIRST, AND ON THE JOIN PATH SIZE ONLY (ufront 2.79o). A server's USES line carries the package's
+	// SIZE beside its GUID, and a build with another GUID is another build: a different size settles it from
+	// metadata alone. That matters beyond speed -- on the WEB a read here is a FetchFS fetch on the engine
+	// thread, and from UNetPendingLevel (a live level ticking underneath) it DEADLOCKED: measured, the client
+	// sat in WELCOME for ten minutes without a line. Callers that know the size pass it and no file is opened.
+	if( ExpectedSize > 0 )
+		return GFileManager->FileSize( Filename ) == ExpectedSize;
+
+	// No size known (a load, where the linker is about to open this very file anyway): read the summary.
 	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
 	if( !Ar )
 		return 1;	// cannot tell: the file as found, as before
@@ -1596,7 +1606,7 @@ static UBOOL appPackageFileHasGuid( const TCHAR* Filename, const FGuid* Guid )
 	unguard;
 }
 
-UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
+UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out, INT ExpectedSize )
 {
 	guard(appFindPackageFile);
 	TCHAR Temp[256];
@@ -1610,7 +1620,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 
 	// Try file as specified.
 	appStrcpy( Out, In );
-	if( GFileManager->FileSize( Out ) >= 0 && appPackageFileHasGuid( Out, Guid ) )
+	if( GFileManager->FileSize( Out ) >= 0 && appPackageFileIsTheOneAsked( Out, Guid, ExpectedSize ) )
 		return 1;
 
 	// Try all of the predefined paths.
@@ -1655,7 +1665,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 
 				// Check for file.
 				UBOOL Found = 0;
-				Found = (GFileManager->FileSize(Out)>=0 && appPackageFileHasGuid( Out, Guid ));
+				Found = (GFileManager->FileSize(Out)>=0 && appPackageFileIsTheOneAsked( Out, Guid, ExpectedSize ));
 				if( !Found && Ext )
 				{
 					appStrcat( Out, TEXT(".") );
@@ -1665,7 +1675,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 						appStrcat( Out, TEXT("_") );
 					}
 					appStrcat( Out, Ext+1 );
-					Found = (GFileManager->FileSize( Out )>=0 && appPackageFileHasGuid( Out, Guid ));
+					Found = (GFileManager->FileSize( Out )>=0 && appPackageFileIsTheOneAsked( Out, Guid, ExpectedSize ));
 				}
 				if( Found )
 				{
@@ -1676,7 +1686,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 			}
 			// Nothing matched exactly in this directory: try it ignoring case before moving on. Not for
 			// the cache directory (i == Paths.Num()), whose files are named after a GUID.
-			if( i<GSys->Paths.Num() && appFindFileNoCase( Temp, In, Ext, Out ) && appPackageFileHasGuid( Out, Guid ) )
+			if( i<GSys->Paths.Num() && appFindFileNoCase( Temp, In, Ext, Out ) && appPackageFileIsTheOneAsked( Out, Guid, ExpectedSize ) )
 				return 1;
 		}
 	}
