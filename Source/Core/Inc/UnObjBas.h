@@ -492,6 +492,7 @@ public:
 	static void ResetLoaders( UObject* InOuter, UBOOL DynamicOnly, UBOOL ForceLazyLoad );
 	static UPackage* CreatePackage( UObject* InOuter, const TCHAR* PkgName );
 	static ULinkerLoad* GetPackageLinker( UObject* InOuter, const TCHAR* Filename, DWORD LoadFlags, UPackageMap* Sandbox, FGuid* CompatibleGuid );
+	static UBOOL GetLoadedPackageGuid( UObject* Package, FGuid& OutGuid );	// ufront 2.79o: is it loaded, and from which version?
 	static void StaticShutdownAfterError();
 	static UObject* GetIndexedObject( INT Index );
 

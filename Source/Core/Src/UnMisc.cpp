@@ -1561,6 +1561,41 @@ static UBOOL appFindFileNoCase( const TCHAR* Dir, const TCHAR* In, const TCHAR* 
 //
 // Find a file.
 //
+//
+// Is this package file the one a GUID asks for? (ufront 2.79o, the v436 line.)
+//
+// The lookup below matches a package by NAME, and a network join asks for a package by name AND GUID
+// (the server's exact version). Retail took the first file with the right name and let the GUID be
+// checked later, when the linker was made -- so a player owning ANOTHER version of a server's package
+// could never join it: the server's copy was never downloaded, and the local one was refused
+// ("Package 'X' version mismatch"). Measured on a live MonsterHunt server: the player's v613 against the
+// server's v503 (the most common build), and a texture package 'Spinner' against a code package 'Spinner'.
+//
+// So when a GUID is given, a candidate must CARRY it; one that does not is skipped, the search goes
+// on, and ends at the download cache -- which is named by GUID, and which the join fills. The header
+// read is what ULinkerLoad reads first anyway. No GUID (the common case) = no read, exactly as before.
+// UT2004 does the same (CheckPotentialFileGuid), except that it never checks '.u' files; this engine
+// does, because the code packages that clash on real servers are exactly the ones a client has NOT
+// loaded yet (a loaded one is refused before any download -- UNetPendingLevel).
+//
+static UBOOL appPackageFileHasGuid( const TCHAR* Filename, const FGuid* Guid )
+{
+	guard(appPackageFileHasGuid);
+	if( !Guid )
+		return 1;
+	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
+	if( !Ar )
+		return 1;	// cannot tell: the file as found, as before
+	FPackageFileSummary Summary;
+	*Ar << Summary;
+	const UBOOL IsPackage = !Ar->IsError() && Summary.Tag==PACKAGE_FILE_TAG;
+	delete Ar;
+	if( !IsPackage )
+		return 1;	// not a package we can read: as before
+	return Summary.Guid==*Guid;
+	unguard;
+}
+
 UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 {
 	guard(appFindPackageFile);
@@ -1575,7 +1610,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 
 	// Try file as specified.
 	appStrcpy( Out, In );
-	if( GFileManager->FileSize( Out ) >= 0 )
+	if( GFileManager->FileSize( Out ) >= 0 && appPackageFileHasGuid( Out, Guid ) )
 		return 1;
 
 	// Try all of the predefined paths.
@@ -1620,7 +1655,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 
 				// Check for file.
 				UBOOL Found = 0;
-				Found = (GFileManager->FileSize(Out)>=0);
+				Found = (GFileManager->FileSize(Out)>=0 && appPackageFileHasGuid( Out, Guid ));
 				if( !Found && Ext )
 				{
 					appStrcat( Out, TEXT(".") );
@@ -1630,7 +1665,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 						appStrcat( Out, TEXT("_") );
 					}
 					appStrcat( Out, Ext+1 );
-					Found = (GFileManager->FileSize( Out )>=0);
+					Found = (GFileManager->FileSize( Out )>=0 && appPackageFileHasGuid( Out, Guid ));
 				}
 				if( Found )
 				{
@@ -1641,7 +1676,7 @@ UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out )
 			}
 			// Nothing matched exactly in this directory: try it ignoring case before moving on. Not for
 			// the cache directory (i == Paths.Num()), whose files are named after a GUID.
-			if( i<GSys->Paths.Num() && appFindFileNoCase( Temp, In, Ext, Out ) )
+			if( i<GSys->Paths.Num() && appFindFileNoCase( Temp, In, Ext, Out ) && appPackageFileHasGuid( Out, Guid ) )
 				return 1;
 		}
 	}
