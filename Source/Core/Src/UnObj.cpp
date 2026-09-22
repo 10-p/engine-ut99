@@ -3000,6 +3000,25 @@ ULinkerLoad* UObject::GetLoader( INT i )
 }
 
 //
+// Is this package LOADED (a linker is attached to it), and from a file with which GUID? (ufront 2.79o.)
+// A join uses it before any download: a package the game already holds in another version than the
+// server's cannot be swapped (a '.u' stays loaded for the session -- measured), so the join is refused
+// at once and in words instead of after a download the linker would then reject.
+//
+UBOOL UObject::GetLoadedPackageGuid( UObject* Package, FGuid& OutGuid )
+{
+	guard(UObject::GetLoadedPackageGuid);
+	for( INT i=0; i<GObjLoaders.Num(); i++ )
+		if( GetLoader(i)->LinkerRoot == Package )
+		{
+			OutGuid = GetLoader(i)->Summary.Guid;
+			return 1;
+		}
+	return 0;
+	unguard;
+}
+
+//
 // Add an object to the root array. This prevents the object and all
 // its descendents from being deleted during garbage collection.
 //
