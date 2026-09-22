@@ -259,6 +259,38 @@ static UBOOL ProxyParseIp( const ANSICHAR* S, DWORD& Out )
 	return 1;
 }
 
+// The list is UTF-8 (it is the page's own text); a GameSpy answer is 8-bit text. So each character is DECODED
+// to its Latin-1 byte, in place (never longer), rather than copied byte by byte -- which would turn a name's
+// "»" into two characters. A code point above 0xFF becomes '?', and so does a broken sequence.
+static void ProxyUtf8ToLatin1( ANSICHAR* S )
+{
+	BYTE* In = (BYTE*)S;
+	BYTE* Out = In;
+	while( *In )
+	{
+		DWORD C = *In++;
+		INT More = 0;
+		if( C >= 0x80 )
+		{
+			if( C >= 0xC0 && C < 0xE0 )			{ C &= 0x1F; More = 1; }
+			else if( C >= 0xE0 && C < 0xF0 )	{ C &= 0x0F; More = 2; }
+			else if( C >= 0xF0 && C < 0xF8 )	{ C &= 0x07; More = 3; }
+			else								C = '?';	// a stray continuation byte, or no UTF-8 lead at all
+		}
+		for( ; More > 0; More-- )
+		{
+			if( (*In & 0xC0) != 0x80 )
+			{
+				C = '?';	// cut short: the next byte starts a character of its own
+				break;
+			}
+			C = (C << 6) | (*In++ & 0x3F);
+		}
+		*Out++ = (BYTE)(C == 0 || C > 0xFF ? '?' : C);
+	}
+	*Out = 0;
+}
+
 // "#proxynet-list 1 ping=<ms>", then host TAB port TAB name TAB map TAB gametype TAB players TAB
 // maxplayers TAB version TAB minversion TAB password -- one row per line.
 static void ProxyParseList( ANSICHAR* Text )
@@ -293,7 +325,10 @@ static void ProxyParseList( ANSICHAR* Text )
 			const INT Port = N == 10 ? atoi( F[1] ) : 0;
 			if( Port > 0 && Port < 65535 && ProxyParseIp( F[0], Addr ) )
 			{
-				// A backslash would split a GameSpy field: somebody else's data, so it goes.
+				// A backslash would split a GameSpy field: somebody else's data, so it goes (after the
+				// decode: only an ASCII byte can become one).
+				for( INT f = 2; f <= 4; f++ )
+					ProxyUtf8ToLatin1( F[f] );
 				for( INT f = 2; f <= 4; f++ )
 					for( ANSICHAR* C = F[f]; *C; C++ )
 						if( *C == '\\' )
