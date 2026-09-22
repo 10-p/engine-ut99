@@ -17,6 +17,44 @@ Revision history:
 
 IMPLEMENT_CLASS(ATcpLink);
 
+#ifdef __EMSCRIPTEN__
+/*-----------------------------------------------------------------------------
+	2.79o -- connections a browser build plays itself (WebLinks.h): in Proxy networking mode, the
+	stock server browser's master query is answered from the game proxy's list. A link the table
+	turns down fails exactly as it always did on the web.
+-----------------------------------------------------------------------------*/
+#include "WebLinks.h"
+FWebLinkHooks* GWebLinks = NULL;
+
+struct FWebTcp
+{
+	ATcpLink* Link;
+	INT       Handle;
+};
+static TArray<FWebTcp> GWebTcp;
+
+static UBOOL WebLinksActive()
+{
+	return GWebLinks && GWebLinks->Active && GWebLinks->Active();
+}
+static INT WebTcpFind( ATcpLink* Link )
+{
+	for( INT i = 0; i < GWebTcp.Num(); i++ )
+		if( GWebTcp(i).Link == Link )
+			return i;
+	return INDEX_NONE;
+}
+static void WebTcpForget( ATcpLink* Link )
+{
+	INT i = WebTcpFind( Link );
+	if( i != INDEX_NONE )
+	{
+		GWebLinks->TcpClose( GWebTcp(i).Handle );
+		GWebTcp.Remove( i );
+	}
+}
+#endif
+
 //
 // Constructor.
 //
@@ -33,6 +71,10 @@ ATcpLink::ATcpLink()
 void ATcpLink::Destroy()
 {
 	guard(ATcpLink::Destroy);
+#ifdef __EMSCRIPTEN__
+	if( GWebLinks )
+		WebTcpForget( this );
+#endif
 	if( HasSocket() )
 		closesocket(GetSocket());
 	if( RemoteSocket != INVALID_SOCKET )
@@ -65,6 +107,18 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 	P_GET_UBOOL_OPTX(bUseNextAvailable,0);
 	P_FINISH;
 	LINGER ling;
+
+#ifdef __EMSCRIPTEN__
+	// 2.79o -- there is no socket to bind. In Proxy mode the link may still open a connection this
+	// build plays (Open decides which), so report it bound and let the stock script get that far.
+	if( WebLinksActive() )
+	{
+		LinkState = STATE_Ready;
+		Port = InPort ? InPort : 1;
+		*(INT*)Result = Port;
+		return;
+	}
+#endif
 
 	if( GInitialized )
 	{
@@ -122,6 +176,14 @@ void ATcpLink::execIsConnected( FFrame& Stack, RESULT_DECL )
 {
 	guard(ATcpLink::execIsConnected);
 	P_FINISH;
+
+#ifdef __EMSCRIPTEN__
+	if( WebTcpFind( this ) != INDEX_NONE )
+	{
+		*(DWORD*)Result = (LinkState == STATE_Connected);
+		return;
+	}
+#endif
 
 	fd_set SocketSet;
 	TIMEVAL SelectTime = {0, 0};
@@ -203,6 +265,48 @@ UBOOL ATcpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 {
 	guard(ATcpLink::Tick);
 	UBOOL Result = Super::Tick( DeltaTime, TickType );
+
+#ifdef __EMSCRIPTEN__
+	// 2.79o -- a connection this build plays: what the script sent goes to it, and its text comes back
+	// through the STOCK events, so the browser's own parsing runs unmodified.
+	if( WebTcpFind( this ) != INDEX_NONE )
+	{
+		const INT Handle = GWebTcp(WebTcpFind( this )).Handle;
+		if( SendFIFO.Num() )
+		{
+			TArray<ANSICHAR> Out;
+			Out.Add( SendFIFO.Num() + 1 );
+			for( INT i = 0; i < SendFIFO.Num(); i++ )
+				Out(i) = SendFIFO(i);
+			Out(SendFIFO.Num()) = 0;
+			SendFIFO.Empty();
+			GWebLinks->TcpSend( Handle, &Out(0) );
+		}
+		ANSICHAR Buffer[8192];
+		UBOOL Opened = 0, Closed = 0;
+		INT Count = GWebLinks->TcpTick( Handle, Buffer, sizeof(Buffer) - 1, &Opened, &Closed );
+		if( Opened && LinkState == STATE_Connecting )
+		{
+			LinkState = STATE_Connected;
+			eventOpened();
+		}
+		if( Count > 0 )
+		{
+			Buffer[Count] = 0;
+			if( LinkMode == MODE_Line )
+				eventReceivedLine( appFromAnsi(Buffer) );
+			else
+				eventReceivedText( appFromAnsi(Buffer) );
+		}
+		if( Closed && WebTcpFind( this ) != INDEX_NONE )	// the script may have closed it meanwhile
+		{
+			WebTcpForget( this );
+			LinkState = STATE_Initialized;
+			eventClosed();
+		}
+		return Result;
+	}
+#endif
 
 	if( HasSocket() )
 	{
@@ -465,6 +569,28 @@ void ATcpLink::execOpen( FFrame& Stack, RESULT_DECL )
 	P_GET_STRUCT( FIpAddr, Addr );
 	P_FINISH;
 
+#ifdef __EMSCRIPTEN__
+	// 2.79o -- a connection this build plays itself (a master's list port, in Proxy mode). Anything
+	// else fails, as every outbound TcpLink always did on the web.
+	if( WebLinksActive() && !HasSocket() )
+	{
+		WebTcpForget( this );
+		INT Handle = GWebLinks->TcpOpen( Addr.Addr, Addr.Port );
+		if( Handle < 0 )
+		{
+			*(DWORD*)Result = 0;
+			return;
+		}
+		INT i = GWebTcp.AddZeroed();
+		GWebTcp(i).Link   = this;
+		GWebTcp(i).Handle = Handle;
+		LinkState = STATE_Connecting;
+		SendFIFO.Empty();
+		*(DWORD*)Result = 1;
+		return;
+	}
+#endif
+
 	SOCKADDR_IN RemoteHost;
 	INT Error;
 
@@ -543,6 +669,16 @@ void ATcpLink::execClose( FFrame& Stack, RESULT_DECL )
 {
 	guard(ATcpLink::execClose);
 	P_FINISH;
+
+#ifdef __EMSCRIPTEN__
+	if( WebTcpFind( this ) != INDEX_NONE )
+	{
+		WebTcpForget( this );
+		LinkState = STATE_Initialized;
+		*(DWORD*)Result = 1;
+		return;
+	}
+#endif
 
 	if ( GInitialized && HasSocket() )
 	{
@@ -697,6 +833,20 @@ void ATcpLink::execSendText( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	*(DWORD*)Result = 0;
+#ifdef __EMSCRIPTEN__
+	if( WebTcpFind( this ) != INDEX_NONE )	// 2.79o -- queued here, handed over by Tick
+	{
+		if( LinkMode == MODE_Line )
+			Str += TEXT("\r\n");
+		const char* p = appToAnsi(*Str);
+		INT Count = Str.Len();
+		INT Index = SendFIFO.Add( Count );
+		for( INT i = 0; i < Count; i++ )
+			SendFIFO(i+Index) = p[i];
+		*(DWORD*)Result = Count;
+		return;
+	}
+#endif
 	if( GInitialized && HasSocket() )
 	{
 		if( LinkMode == MODE_Line )

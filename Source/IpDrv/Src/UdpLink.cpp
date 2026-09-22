@@ -11,6 +11,8 @@ Revision history:
 // The synthetic LAN (WebRTCDrv). Header only: the call is resolved at the final --whole-archive link, so
 // IpDrv does not link WebRTCDrv.
 #include "WebRTCLan.h"
+// 2.79o -- queries a browser build answers itself in Proxy networking mode (the table is in TcpLink.cpp).
+#include "WebLinks.h"
 
 /*-----------------------------------------------------------------------------
 	AUdpLink implementation.
@@ -37,6 +39,8 @@ void AUdpLink::Destroy()
 	guard(AUdpLink::Destroy);
 #ifdef __EMSCRIPTEN__
 	WebRTCLan_Unbind( this );   // drop any queued synthetic packets for this link
+	if( GWebLinks )
+		GWebLinks->UdpUnbind( this );
 #endif
 	if( HasSocket() )
 		closesocket(GetSocket());
@@ -132,7 +136,13 @@ void AUdpLink::execSendText( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 #ifdef __EMSCRIPTEN__
 	// Hand the datagram to the synthetic LAN: it answers the beacon sweep and the GameSpy \info\ query and
-	// swallows anything else (there is no socket to send on).
+	// swallows anything else (there is no socket to send on). In proxy mode a server from the game proxy's
+	// list is answered from that list first.
+	if( GWebLinks && GWebLinks->Active() && GWebLinks->UdpSend( this, IpAddr.Addr, IpAddr.Port, appToAnsi(*Str) ) )
+	{
+		*(DWORD*)Result = 1;
+		return;
+	}
 	WebRTCLan_Send( this, IpAddr.Addr, IpAddr.Port, *Str );
 	*(DWORD*)Result = 1;
 	return;
@@ -207,6 +217,17 @@ UBOOL AUdpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 		FString Text;
 		DWORD Addr = 0;
 		INT   Port = 0;
+		// 2.79o -- the answers to queries the game proxy's list took (UdpSend above), same stock path.
+		ANSICHAR Reply[2048];
+		while( GWebLinks && GWebLinks->UdpNextReply( this, &Addr, &Port, Reply, sizeof(Reply) ) )
+		{
+			From.Addr = Addr;
+			From.Port = Port;
+			if( LinkMode == MODE_Line )
+				eventReceivedLine( From, appFromAnsi(Reply) );
+			else
+				eventReceivedText( From, appFromAnsi(Reply) );
+		}
 		while( WebRTCLan_NextReply( this, &Addr, &Port, Text ) )
 		{
 			From.Addr = Addr;
