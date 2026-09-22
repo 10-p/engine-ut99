@@ -70,7 +70,7 @@ void UDemoPlayPendingLevel::NotifyReceivedText( UNetConnection* Connection, cons
 			TCHAR Filename[256];
 
 			FPackageInfo& Info = Connection->PackageMap->List(i);
-			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename ) )
+			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename, Info.FileSize ) )
 			{
 				debugf(TEXT("Don't have package for demo: %s"), Info.Parent->GetName() );//!!localize!!
 				return;

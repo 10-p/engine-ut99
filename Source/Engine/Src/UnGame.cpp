@@ -852,7 +852,8 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 				{
 					const TCHAR* Name = PackageMap->List(i).Parent->GetName();
 					TCHAR Found[256];
-					const UBOOL HaveFile = appFindPackageFile( Name, &PackageMap->List(i).Guid, Found );
+					// Only "is there a file of that name at all" — no GUID, so nothing is opened for a message.
+					const UBOOL HaveFile = appFindPackageFile( Name, NULL, Found );
 					Error = FString::Printf( HaveFile ? LocalizeError("PackageVersion") : LocalizeError("PackageNotFound"), Name );
 					EndLoad();
 					SetProgress( LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *Error, 6.0 );
