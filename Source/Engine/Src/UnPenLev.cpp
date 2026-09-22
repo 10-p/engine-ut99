@@ -207,21 +207,20 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		ParseUBOOL( Text, TEXT("LONE="), LonePlayer );
 		Parse( Text, TEXT("CHALLENGE="), Connection->Challenge );
 
-		// Make sure all packages we need are downloadable.
+		// ufront 2.79o -- FIRST, and before a single file is touched: a package the game has ALREADY LOADED in
+		// another version than the server's cannot be swapped for this session (a loaded '.u' is never unloaded --
+		// measured), and the version-aware lookup below would otherwise download the server's copy only for the
+		// linker to refuse it. This pass is pure memory, so the answer comes at once; the lookups that follow cost
+		// a file system walk per package, and on the web (a level ticking underneath) they cost a frame each --
+		// measured: the refusal arrived minutes late when it waited its turn in that loop.
+		// ONE message for every build (the owner): the engine says it itself, so a native player reads it in the
+		// connection-failed box exactly as a web player does -- no host page needed.
 		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
 		{
-			TCHAR Filename[256];
 			FPackageInfo& Info = Connection->PackageMap->List(i);
-			// ufront 2.79o: a package the game has ALREADY LOADED in another version than the server's
-			// cannot be swapped for this session (a loaded '.u' is never unloaded -- measured), and the
-			// version-aware lookup below would otherwise download the server's copy only for the linker to
-			// refuse it. Say so now, before anything is fetched. (A player who has NOT loaded it -- the
-			// usual case, from the menu -- gets the server's version from the download cache instead.)
 			FGuid LoadedGuid;
 			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid!=Info.Guid )
 			{
-				// ONE message for every build (the owner, 2026-09-22): the engine says it itself, so a native
-				// player reads it in the connection-failed box exactly as a web player does -- no host page needed.
 				Error = FString::Printf( TEXT("Package '%s' is already loaded. Please restart the game and join straight away"), Info.Parent->GetName() );
 				if( Connection->Channels[0] )
 					Connection->Channels[0]->Close();
@@ -230,6 +229,13 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 					Connection->State = USOCK_Closed;
 				return;
 			}
+		}
+
+		// Make sure all packages we need are downloadable.
+		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
+		{
+			TCHAR Filename[256];
+			FPackageInfo& Info = Connection->PackageMap->List(i);
 			// Info.FileSize is what the server announced: the lookup then needs no file of its own (see UnMisc.cpp).
 			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename, Info.FileSize ) )
 			{
