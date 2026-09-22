@@ -28,6 +28,9 @@
 
 #ifdef __EMSCRIPTEN__
 #include "ue_proxynet_abi.h"
+#include "WebLinks.h"
+#include <stdlib.h>	// atoi (2.79o's list parser)
+#include <string.h>	// strstr
 #else
 // A native build has real sockets and never links this package; these keep a stray build compiling.
 #define PROXYNET_STATE_INVALID    0
@@ -47,6 +50,10 @@ inline int  ue_proxynet_http_open( int, const char* ) { return -1; }
 inline int  ue_proxynet_http_poll( int, int*, int*, int* ) { return -1; }
 inline int  ue_proxynet_http_read( int, void*, int ) { return 0; }
 inline void ue_proxynet_http_close( int ) {}
+inline int  ue_proxynet_list_open() { return -1; }
+inline int  ue_proxynet_list_poll( int, int*, int* ) { return -1; }
+inline int  ue_proxynet_list_read( int, void*, int ) { return 0; }
+inline void ue_proxynet_list_close( int ) {}
 #endif
 
 // Package.
@@ -185,6 +192,336 @@ static void ProxyNetHttpClose( INT Handle )
 	ue_proxynet_http_close( Handle );
 }
 static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, ProxyNetHttpRead, ProxyNetHttpClose };
+
+#ifdef __EMSCRIPTEN__
+/*-----------------------------------------------------------------------------
+	The stock server browser, from the game proxy's list (2.79o, IpDrv's WebLinks.h).
+
+	The web build has no sockets, so UBrowser (UnrealScript, unchanged) can neither reach a GameSpy
+	master nor ping a server. In Proxy mode the game proxy already holds the public list, fetched here
+	through the four `ue_proxynet_list_*` imports, and both ends of both conversations are played from
+	it: a TcpLink to a master's list port gets the challenge and then "\ip\a.b.c.d:queryport\...\final\";
+	a UdpLink query to a listed server gets that server's "\info\", from the address that was asked
+	(436's UBrowserServerPing checks the source), after the proxy's own round trip -- so the ping the
+	browser shows is the player -> proxy leg: a floor, not the whole path.
+
+	Registered when the program starts (the browser wants its list before any connection exists);
+	Active() keeps it out of the way unless THIS launch is in Proxy mode.
+-----------------------------------------------------------------------------*/
+
+#define PROXYNET_GSPY_LIST_PORT 28900	// a GameSpy master's list port: every [UBrowserAll] factory's
+
+static UBOOL ProxyNetLinksActive()
+{
+	// Proxy networking is this launch's mode exactly when the engine's network device is this driver
+	// (Launch.cpp honours that key). Fixed for the launch -> cached.
+	static INT Active = -1;
+	if( Active < 0 && GConfig )
+		Active = appStricmp( GConfig->GetStr( TEXT("Engine.Engine"), TEXT("NetworkDevice") ),
+			TEXT("ProxyNetDrv.ProxyNetDriver") ) == 0;
+	return Active == 1;
+}
+
+// The list: dotted-IPv4 rows only (a host NAME would be "resolved" by the web build to an address no
+// ping can reach, and UBrowser drops an unanswered server).
+struct FProxyRow
+{
+	DWORD   Addr;	// host order
+	INT     Port;	// the game port; the query port is Port+1
+	FString Info;	// this server's "\info\" answer, ready to send
+};
+static TArray<FProxyRow> GProxyRows;
+static INT    GProxyListHandle = -1;
+static INT    GProxyListState  = 0;	// 0 = not asked, 1 = asking, 2 = ready, 3 = not available
+static DOUBLE GProxyListAt     = 0.0;
+static DOUBLE GProxyNextPoll   = 0.0;
+static INT    GProxyPingMs     = -1;	// the player -> proxy round trip; -1 = unknown
+static UBOOL  GProxyPingsLogged = 0;	// one line per list: the first ping the list answered
+
+static UBOOL ProxyParseIp( const ANSICHAR* S, DWORD& Out )
+{
+	DWORD A = 0;
+	for( INT Part = 0; Part < 4; Part++ )
+	{
+		if( *S < '0' || *S > '9' )
+			return 0;
+		INT V = 0;
+		while( *S >= '0' && *S <= '9' )
+			if( (V = V*10 + (*S++ - '0')) > 255 )
+				return 0;
+		A = (A << 8) | V;
+		if( Part < 3 && *S++ != '.' )
+			return 0;
+	}
+	if( *S )
+		return 0;
+	Out = A;
+	return 1;
+}
+
+// "#proxynet-list 1 ping=<ms>", then host TAB port TAB name TAB map TAB gametype TAB players TAB
+// maxplayers TAB version TAB minversion TAB password -- one row per line.
+static void ProxyParseList( ANSICHAR* Text )
+{
+	GProxyRows.Empty();
+	GProxyPingMs = -1;
+	for( ANSICHAR* Line = Text; *Line; )
+	{
+		ANSICHAR* End = Line;
+		while( *End && *End != '\n' )
+			End++;
+		UBOOL Last = (*End == 0);
+		*End = 0;
+		if( Line[0] == '#' )
+		{
+			const ANSICHAR* P = strstr( Line, "ping=" );
+			if( P )
+				GProxyPingMs = atoi( P + 5 );
+		}
+		else if( Line[0] )
+		{
+			ANSICHAR* F[10];
+			INT N = 0;
+			F[N++] = Line;
+			for( ANSICHAR* C = Line; *C && N < 10; C++ )
+				if( *C == '\t' )
+				{
+					*C = 0;
+					F[N++] = C + 1;
+				}
+			DWORD Addr = 0;
+			const INT Port = N == 10 ? atoi( F[1] ) : 0;
+			if( Port > 0 && Port < 65535 && ProxyParseIp( F[0], Addr ) )
+			{
+				// A backslash would split a GameSpy field: somebody else's data, so it goes.
+				for( INT f = 2; f <= 4; f++ )
+					for( ANSICHAR* C = F[f]; *C; C++ )
+						if( *C == '\\' )
+							*C = '/';
+				const INT Version = atoi( F[7] ), MinVersion = atoi( F[8] );
+				INT i = GProxyRows.AddZeroed();
+				GProxyRows(i).Addr = Addr;
+				GProxyRows(i).Port = Port;
+				GProxyRows(i).Info = FString::Printf(
+					TEXT("\\hostname\\%s\\hostport\\%i\\maptitle\\%s\\mapname\\%s\\gametype\\%s\\numplayers\\%i\\maxplayers\\%i\\gamemode\\openplaying\\gamever\\%i\\minnetver\\%i\\final\\"),
+					F[2][0] ? appFromAnsi(F[2]) : appFromAnsi(F[0]), Port, appFromAnsi(F[3]), appFromAnsi(F[3]),
+					appFromAnsi(F[4]), Max( atoi(F[5]), 0 ), Max( atoi(F[6]), 0 ),
+					Version > 0 ? Version : ENGINE_VERSION, MinVersion > 0 ? MinVersion : 432 );
+			}
+		}
+		if( Last )
+			break;
+		Line = End + 1;
+	}
+}
+
+// 2 = the list is here, 3 = it cannot be had (no proxy chosen, or unreachable), 1 = still asking.
+// At most four sync calls a second: a per-frame proxied import once overflowed Emscripten's proxy
+// queue (WebRTCLan.cpp). Only ever called from a link's Tick, never from inside a script call.
+static INT ProxyListPoll()
+{
+	if( GProxyListState == 2 && appSeconds() - GProxyListAt > 60.0 )
+		GProxyListState = 0;	// a new query after a minute asks again (the proxy refreshes far less often)
+	if( GProxyListState >= 2 )
+		return GProxyListState;
+	if( appSeconds() < GProxyNextPoll )
+		return 1;
+	GProxyNextPoll = appSeconds() + 0.25;
+	if( GProxyListHandle < 0 )
+	{
+		GProxyListHandle = ue_proxynet_list_open();
+		GProxyListState = GProxyListHandle >= 0 ? 1 : 3;
+		if( GProxyListState == 3 )
+			GLog->Logf( TEXT("ProxyNet: the in-game server browser's list from the game proxy: not available") );
+		return GProxyListState;
+	}
+	INT Status = PROXYNET_HTTP_PENDING, Count = 0;
+	if( ue_proxynet_list_poll( GProxyListHandle, &Status, &Count ) < 0 )
+		Status = PROXYNET_HTTP_FAILED;
+	if( Status == PROXYNET_HTTP_PENDING || Status == PROXYNET_HTTP_RECEIVING )
+		return 1;
+	UBOOL Ok = 0;
+	if( Status == PROXYNET_HTTP_DONE )
+	{
+		const INT Need = ue_proxynet_list_read( GProxyListHandle, NULL, 0 );
+		if( Need > 0 )
+		{
+			TArray<ANSICHAR> Blob;
+			Blob.Add( Need + 1 );
+			if( ue_proxynet_list_read( GProxyListHandle, &Blob(0), Need ) == Need )
+			{
+				Blob(Need) = 0;
+				ProxyParseList( &Blob(0) );
+				GProxyPingsLogged = 0;
+				Ok = 1;
+			}
+		}
+	}
+	ue_proxynet_list_close( GProxyListHandle );
+	GProxyListHandle = -1;
+	GProxyListState  = Ok ? 2 : 3;
+	GProxyListAt     = appSeconds();
+	GLog->Logf( TEXT("ProxyNet: the in-game server browser's list from the game proxy: %s, %i servers"),
+		Ok ? TEXT("ok") : TEXT("not available"), Ok ? GProxyRows.Num() : 0 );
+	return GProxyListState;
+}
+
+// --- the master: TcpLink ---
+struct FProxyMaster
+{
+	INT     Id;
+	INT     Phase;		// 0 = connecting, 1 = challenge sent, 2 = list sent (hang up once read), 3 = gone
+	UBOOL   WantList;
+	FString Out;		// what the script has yet to receive
+};
+static TArray<FProxyMaster> GProxyMasters;
+static INT GProxyNextMaster = 1;
+
+static FProxyMaster* ProxyMasterFind( INT Id )
+{
+	for( INT i = 0; i < GProxyMasters.Num(); i++ )
+		if( GProxyMasters(i).Id == Id )
+			return &GProxyMasters(i);
+	return NULL;
+}
+static INT ProxyNetTcpOpen( DWORD Addr, INT Port )
+{
+	if( Port != PROXYNET_GSPY_LIST_PORT )
+		return -1;			// the news (HTTP), IRC, anything else: fails as before
+	if( GProxyListState == 3 )
+		GProxyListState = 0;	// a new query asks again
+	INT i = GProxyMasters.AddZeroed();
+	GProxyMasters(i).Id = GProxyNextMaster++;
+	return GProxyMasters(i).Id;
+}
+static void ProxyNetTcpSend( INT Handle, const ANSICHAR* Text )
+{
+	FProxyMaster* M = ProxyMasterFind( Handle );
+	if( M && strstr( Text, "\\list\\" ) )
+		M->WantList = 1;
+}
+static INT ProxyNetTcpTick( INT Handle, ANSICHAR* Buffer, INT MaxLen, UBOOL* Opened, UBOOL* Closed )
+{
+	FProxyMaster* M = ProxyMasterFind( Handle );
+	if( !M )
+	{
+		*Closed = 1;
+		return 0;
+	}
+	if( M->Phase == 0 )
+	{
+		*Opened = 1;
+		M->Out = TEXT("\\basic\\\\secure\\ufront");	// the 6-character challenge: validated by nobody
+		M->Phase = 1;
+	}
+	else if( M->Phase == 1 && M->WantList )
+	{
+		const INT State = ProxyListPoll();
+		if( State >= 2 )
+		{
+			for( INT i = 0; State == 2 && i < GProxyRows.Num(); i++ )
+			{
+				const DWORD A = GProxyRows(i).Addr;
+				M->Out += FString::Printf( TEXT("\\ip\\%i.%i.%i.%i:%i"),
+					(A >> 24) & 255, (A >> 16) & 255, (A >> 8) & 255, A & 255, GProxyRows(i).Port + 1 );
+			}
+			M->Out += TEXT("\\final\\");
+			M->Phase = 2;
+		}
+	}
+	const INT Count = Min( M->Out.Len(), MaxLen );
+	if( Count > 0 )
+	{
+		appMemcpy( Buffer, appToAnsi(*M->Out), Count );
+		// ★ Mid( Start ) with its default Count (MAXINT) computes Start+MAXINT: a signed overflow, and under
+		// clang -O2 it asked for a 2 GB string (a null write, then the heap-at-address-zero abort). Say the count.
+		M->Out = M->Out.Mid( Count, M->Out.Len() - Count );
+	}
+	if( M->Phase == 2 && !M->Out.Len() )
+	{
+		M->Phase = 3;
+		*Closed = 1;
+	}
+	return Count;
+}
+static void ProxyNetTcpClose( INT Handle )
+{
+	for( INT i = 0; i < GProxyMasters.Num(); i++ )
+		if( GProxyMasters(i).Id == Handle )
+			GProxyMasters.Remove( i-- );
+}
+
+// --- the servers: UdpLink ---
+struct FProxyReply
+{
+	void*   Link;
+	DWORD   Addr;
+	INT     Port;
+	DOUBLE  Due;
+	FString Text;
+};
+static TArray<FProxyReply> GProxyReplies;
+
+static UBOOL ProxyNetUdpSend( void* Link, DWORD Addr, INT Port, const ANSICHAR* Text )
+{
+	if( GProxyListState != 2 )
+		return 0;
+	for( INT r = 0; r < GProxyRows.Num(); r++ )
+	{
+		if( GProxyRows(r).Addr != Addr || GProxyRows(r).Port + 1 != Port )
+			continue;
+		INT i = GProxyReplies.AddZeroed();
+		GProxyReplies(i).Link = Link;
+		GProxyReplies(i).Addr = Addr;
+		GProxyReplies(i).Port = Port;
+		GProxyReplies(i).Due  = appSeconds() + Max( GProxyPingMs, 0 ) / 1000.0;
+		// \info\ and \status\ get what the list knows; \rules\ and \players\ it does not know.
+		GProxyReplies(i).Text = (strstr( Text, "\\info\\" ) || strstr( Text, "\\status\\" ) || strstr( Text, "\\basic\\" ))
+			? GProxyRows(r).Info : FString( TEXT("\\final\\") );
+		if( !GProxyPingsLogged )
+		{
+			GProxyPingsLogged = 1;
+			GLog->Logf( TEXT("ProxyNet: the in-game browser's pings are answered from the list (first: %i.%i.%i.%i:%i)"),
+				(Addr >> 24) & 255, (Addr >> 16) & 255, (Addr >> 8) & 255, Addr & 255, Port );
+		}
+		return 1;
+	}
+	return 0;
+}
+static UBOOL ProxyNetUdpNextReply( void* Link, DWORD* Addr, INT* Port, ANSICHAR* Buffer, INT MaxLen )
+{
+	const DOUBLE Now = appSeconds();
+	for( INT i = 0; i < GProxyReplies.Num(); i++ )
+	{
+		FProxyReply& R = GProxyReplies(i);
+		if( R.Link != Link || R.Due > Now )
+			continue;
+		*Addr = R.Addr;
+		*Port = R.Port;
+		const INT Count = Min( R.Text.Len(), MaxLen - 1 );
+		appMemcpy( Buffer, appToAnsi(*R.Text), Count );
+		Buffer[Count] = 0;
+		GProxyReplies.Remove( i );
+		return 1;
+	}
+	return 0;
+}
+static void ProxyNetUdpUnbind( void* Link )
+{
+	for( INT i = 0; i < GProxyReplies.Num(); i++ )
+		if( GProxyReplies(i).Link == Link )
+			GProxyReplies.Remove( i-- );
+}
+
+static FWebLinkHooks GProxyNetLinkHooks = { ProxyNetLinksActive, ProxyNetTcpOpen, ProxyNetTcpSend, ProxyNetTcpTick,
+	ProxyNetTcpClose, ProxyNetUdpSend, ProxyNetUdpNextReply, ProxyNetUdpUnbind };
+
+// IpDrv's pointer is constant-initialised to NULL, so this dynamic initialiser always runs after it.
+static struct FRegisterProxyNetLinks
+{
+	FRegisterProxyNetLinks() { GWebLinks = &GProxyNetLinkHooks; }
+} GRegisterProxyNetLinks;
+#endif
 
 /*-----------------------------------------------------------------------------
 	UProxyNetDriver.
