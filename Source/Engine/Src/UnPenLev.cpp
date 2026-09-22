@@ -220,11 +220,9 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 			FGuid LoadedGuid;
 			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid!=Info.Guid )
 			{
-#ifdef __EMSCRIPTEN__
-				Error = FString::Printf( TEXT("Package '%s' is loaded in another version than the server's; reload the page and join again"), Info.Parent->GetName() );
-#else
-				Error = FString::Printf( TEXT("Package '%s' is loaded in another version than the server's; restart the game and join again"), Info.Parent->GetName() );
-#endif
+				// ONE message for every build (the owner, 2026-09-22): the engine says it itself, so a native
+				// player reads it in the connection-failed box exactly as a web player does -- no host page needed.
+				Error = FString::Printf( TEXT("Package '%s' is already loaded. Please restart the game and join straight away"), Info.Parent->GetName() );
 				if( Connection->Channels[0] )
 					Connection->Channels[0]->Close();
 				Connection->FlushNet();
