@@ -731,6 +731,23 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					NULL,
 					&PackageMap->List(i).Guid
 				);
+#ifdef __EMSCRIPTEN__
+			// ufront (2.79o): with catching off, a package that cannot be had comes back NULL from GetPackageLinker --
+			// not found, or found in ANOTHER VERSION than the server's ("version mismatch": a mod the player has in a
+			// different version, which aborted the whole module on a real server). Fail the join HERE with the reason
+			// the native throw carries: before VerifyLinker dereferences it, and before the live level is torn down.
+			for( i=0; i<PackageMap->List.Num(); i++ )
+				if( !PackageMap->List(i).Linker )
+				{
+					const TCHAR* Name = PackageMap->List(i).Parent->GetName();
+					TCHAR Found[256];
+					const UBOOL HaveFile = appFindPackageFile( Name, &PackageMap->List(i).Guid, Found );
+					Error = FString::Printf( HaveFile ? LocalizeError("PackageVersion") : LocalizeError("PackageNotFound"), Name );
+					EndLoad();
+					SetProgress( LocalizeError(TEXT("UrlFailed"),TEXT("Core")), *Error, 6.0 );
+					return NULL;
+				}
+#endif
 			for( i=0; i<PackageMap->List.Num(); i++ )
 				VerifyLinker( PackageMap->List(i).Linker );
 			if( PackageMap->List.Num() )

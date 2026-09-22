@@ -2113,7 +2113,20 @@ ULinkerLoad* UObject::GetPackageLinker
 
 		// Verify compatibility.
 		if( CompatibleGuid && Result->Summary.Guid!=*CompatibleGuid )
+#ifdef __EMSCRIPTEN__
+		{
+			// ufront (2.79o): the package exists -- or is already LOADED -- in ANOTHER VERSION than the one asked
+			// for (a server running a different version of a mod the player also has). Natively this throw is the
+			// join's "version mismatch" failure; with catching off it aborted the whole module. Say why, return
+			// NULL; UGameEngine::LoadMap turns a NULL linker into that same failed join.
+			// (One Localize call per statement: it answers in a shared static buffer.)
+			FString Why = FString::Printf( LocalizeError("PackageVersion"), InOuter->GetName() );
+			SafeLoadError( LoadFlags, *Why, LocalizeError("FailedLoad"), InOuter->GetName(), *Why );
+			return NULL;
+		}
+#else
 			appThrowf( LocalizeError("PackageVersion"), InOuter->GetName() );
+#endif
 	}
 	catch( const TCHAR* Error )
 	{
