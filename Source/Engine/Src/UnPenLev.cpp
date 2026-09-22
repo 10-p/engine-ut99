@@ -212,6 +212,26 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		{
 			TCHAR Filename[256];
 			FPackageInfo& Info = Connection->PackageMap->List(i);
+			// ufront 2.79o: a package the game has ALREADY LOADED in another version than the server's
+			// cannot be swapped for this session (a loaded '.u' is never unloaded -- measured), and the
+			// version-aware lookup below would otherwise download the server's copy only for the linker to
+			// refuse it. Say so now, before anything is fetched. (A player who has NOT loaded it -- the
+			// usual case, from the menu -- gets the server's version from the download cache instead.)
+			FGuid LoadedGuid;
+			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid!=Info.Guid )
+			{
+#ifdef __EMSCRIPTEN__
+				Error = FString::Printf( TEXT("Package '%s' is loaded in another version than the server's; reload the page and join again"), Info.Parent->GetName() );
+#else
+				Error = FString::Printf( TEXT("Package '%s' is loaded in another version than the server's; restart the game and join again"), Info.Parent->GetName() );
+#endif
+				if( Connection->Channels[0] )
+					Connection->Channels[0]->Close();
+				Connection->FlushNet();
+				if( Connection->RemoteVersion<=420 )
+					Connection->State = USOCK_Closed;
+				return;
+			}
 			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename ) )
 			{
 				appSprintf( Filename, TEXT("%s%s"), Info.Parent->GetName(), DLLEXT );
