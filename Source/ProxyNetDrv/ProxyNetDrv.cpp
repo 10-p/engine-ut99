@@ -333,15 +333,23 @@ static void ProxyParseList( ANSICHAR* Text )
 					for( ANSICHAR* C = F[f]; *C; C++ )
 						if( *C == '\\' )
 							*C = '/';
+				// The version fields only when the list KNOWS them (the proxy asks each server its \info\, 2.79p).
+				// Never a stand-in: our own 436 made EVERY server look compatible, and a 469-only one then turned
+				// the player away at the door. With no gamever UBrowser's "compatible" tabs leave the row out --
+				// as they do natively for a server that never answered its ping.
 				const INT Version = atoi( F[7] ), MinVersion = atoi( F[8] );
+				FString Versions;
+				if( Version > 0 )
+					Versions += FString::Printf( TEXT("\\gamever\\%i"), Version );
+				if( MinVersion > 0 )
+					Versions += FString::Printf( TEXT("\\minnetver\\%i"), MinVersion );
 				INT i = GProxyRows.AddZeroed();
 				GProxyRows(i).Addr = Addr;
 				GProxyRows(i).Port = Port;
 				GProxyRows(i).Info = FString::Printf(
-					TEXT("\\hostname\\%s\\hostport\\%i\\maptitle\\%s\\mapname\\%s\\gametype\\%s\\numplayers\\%i\\maxplayers\\%i\\gamemode\\openplaying\\gamever\\%i\\minnetver\\%i\\final\\"),
+					TEXT("\\hostname\\%s\\hostport\\%i\\maptitle\\%s\\mapname\\%s\\gametype\\%s\\numplayers\\%i\\maxplayers\\%i\\gamemode\\openplaying%s\\final\\"),
 					F[2][0] ? appFromAnsi(F[2]) : appFromAnsi(F[0]), Port, appFromAnsi(F[3]), appFromAnsi(F[3]),
-					appFromAnsi(F[4]), Max( atoi(F[5]), 0 ), Max( atoi(F[6]), 0 ),
-					Version > 0 ? Version : ENGINE_VERSION, MinVersion > 0 ? MinVersion : 432 );
+					appFromAnsi(F[4]), Max( atoi(F[5]), 0 ), Max( atoi(F[6]), 0 ), *Versions );
 			}
 		}
 		if( Last )
