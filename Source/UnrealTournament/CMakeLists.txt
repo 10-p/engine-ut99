@@ -142,6 +142,8 @@ if(EMSCRIPTEN)
     # The thin net shim: defines the ABI's ue_net_* imports and forwards them to the host's Module.UE.net.
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/net-shim.js"
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
+    # The optional pkgguid module: a package's GUID from the page's manifest (Core/Src/UnMisc.cpp).
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/pkgguid-shim.js"
     # The multisampled emulated back buffer (ufront_backbuffer_samples) for the render devices that draw into
     # framebuffer 0 (NOpenGLESDrv, OpenGLDrv/UTGLR).
     "SHELL:--js-library ${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js"
@@ -171,6 +173,7 @@ if(EMSCRIPTEN)
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/../vendor/glue/net-shim.js"
     "${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
+    "${CMAKE_SOURCE_DIR}/../vendor/glue/pkgguid-shim.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js")
   # Bare loader: SDLLaunch.js (+ .wasm/.data), no .html, into build-<cfg>/SDLLaunch/. `SDLLaunch` is the loader
   # basename the frontend expects from every engine.
