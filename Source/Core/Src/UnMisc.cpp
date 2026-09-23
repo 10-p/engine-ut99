@@ -8,6 +8,9 @@
 
 // Core includes.
 #include "CorePrivate.h"
+#ifdef __EMSCRIPTEN__
+#include "ue_pkgguid_abi.h"	// ufront 2.79p: a package's GUID from the page's manifest (appPackageFileGuid)
+#endif
 
 /*-----------------------------------------------------------------------------
 	FOutputDevice implementation.
@@ -1578,19 +1581,69 @@ static UBOOL appFindFileNoCase( const TCHAR* Dir, const TCHAR* In, const TCHAR* 
 // does, because the code packages that clash on real servers are exactly the ones a client has NOT
 // loaded yet (a loaded one is refused before any download -- UNetPendingLevel).
 //
+//
+// The GUID the package file at Filename carries, when it can be had WITHOUT reading the file where reading is
+// not free (ufront 2.79p). Natively a read is 52 bytes of a local file: the summary, exactly as the linker reads
+// it (from FileVersion 68 the GUID follows the tables' offsets; below that it is the last heritage entry). On the
+// WEB a read on the join path is a network fetch of the whole file, and from UNetPendingLevel it DEADLOCKED the
+// client (2.79o) -- so there the answer comes from the manifest the page already holds, which records every
+// package's GUID at build time (the optional "pkgguid" ABI module, vendor/glue/ue_pkgguid_abi.h). 0 = unknown.
+//
+static UBOOL appPackageFileGuid( const TCHAR* Filename, FGuid& OutGuid )
+{
+	guard(appPackageFileGuid);
+#ifdef __EMSCRIPTEN__
+	ANSICHAR Hex[33];
+	if( !ue_package_guid( appToAnsi( Filename ), Hex ) )
+		return 0;
+	DWORD* Parts[4] = { &OutGuid.A, &OutGuid.B, &OutGuid.C, &OutGuid.D };
+	for( INT i=0; i<4; i++ )
+	{
+		DWORD V = 0;
+		for( INT j=0; j<8; j++ )
+		{
+			const ANSICHAR C = Hex[i*8+j];
+			V = (V << 4) | (C>='0' && C<='9' ? C-'0' : C>='A' && C<='F' ? C-'A'+10 : 0);
+		}
+		*Parts[i] = V;
+	}
+	return 1;
+#else
+	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
+	if( !Ar )
+		return 0;
+	FPackageFileSummary Summary;
+	*Ar << Summary;
+	const UBOOL IsPackage = !Ar->IsError() && Summary.Tag==PACKAGE_FILE_TAG;
+	delete Ar;
+	if( IsPackage )
+		OutGuid = Summary.Guid;
+	return IsPackage;
+#endif
+	unguard;
+}
+
 static UBOOL appPackageFileIsTheOneAsked( const TCHAR* Filename, const FGuid* Guid, INT ExpectedSize )
 {
 	guard(appPackageFileIsTheOneAsked);
 	if( !Guid )
 		return 1;
 
-	// ★ SIZE FIRST, AND ON THE JOIN PATH SIZE ONLY (ufront 2.79o). A server's USES line carries the package's
-	// SIZE beside its GUID, and a build with another GUID is another build: a different size settles it from
-	// metadata alone. That matters beyond speed -- on the WEB a read here is a FetchFS fetch on the engine
-	// thread, and from UNetPendingLevel (a live level ticking underneath) it DEADLOCKED: measured, the client
-	// sat in WELCOME for ten minutes without a line. Callers that know the size pass it and no file is opened.
+	// ★ ON THE JOIN PATH THE SIZE IS A SHORTCUT, THE GUID DECIDES (ufront 2.79o, 2.79p). A server's USES line
+	// carries the package's SIZE beside its GUID: the same size settles it from metadata alone, with no file
+	// opened (on the WEB a read here is a network fetch, and from UNetPendingLevel it DEADLOCKED -- measured, the
+	// client sat in WELCOME for ten minutes without a line). A DIFFERENT size is NOT "another build", though:
+	// OldUnreal 469 rebuilt Botpack, Engine, UnrealShare & co keeping their GUIDs, and servers re-save texture
+	// packages smaller -- measured on a live 469 server, 20 packages the player HAD were downloaded again
+	// (153 MB) under the size-only rule. So a different size asks the file's GUID (appPackageFileGuid: the header
+	// natively, the manifest on the web); unknown = not the one asked, the old answer (the server's is fetched).
 	if( ExpectedSize > 0 )
-		return GFileManager->FileSize( Filename ) == ExpectedSize;
+	{
+		if( GFileManager->FileSize( Filename ) == ExpectedSize )
+			return 1;
+		FGuid FileGuid;
+		return appPackageFileGuid( Filename, FileGuid ) && FileGuid==*Guid;
+	}
 
 	// No size known (a load, where the linker is about to open this very file anyway): read the summary.
 	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
