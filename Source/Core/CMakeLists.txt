@@ -58,6 +58,8 @@ target_include_directories(${PROJECT_NAME}
   ${CMAKE_CURRENT_SOURCE_DIR}/Inc
   ${CMAKE_CURRENT_SOURCE_DIR}/Src
 )
+# ufront 2.79p: the OPTIONAL pkgguid ABI header (web only -- UnMisc.cpp includes it under __EMSCRIPTEN__).
+target_include_directories(${PROJECT_NAME} PRIVATE ${CMAKE_SOURCE_DIR}/../vendor/glue)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE CORE_EXPORTS UPACKAGE_NAME=${PROJECT_NAME})
 

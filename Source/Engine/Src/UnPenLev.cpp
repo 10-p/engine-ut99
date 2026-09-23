@@ -239,6 +239,13 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		{
 			TCHAR Filename[256];
 			FPackageInfo& Info = Connection->PackageMap->List(i);
+			// ufront 2.79p -- a package ALREADY LOADED with the server's own GUID needs no file at all: the loaded
+			// one is what the level will use (a package is never loaded twice). 469 rebuilt the stock packages
+			// keeping their GUIDs, so only their size differs from 436's -- measured on a live 469 server, Botpack,
+			// Core, Engine, Fire, UnrealShare, UnrealI and SoldierSkins were each downloaded again for nothing.
+			FGuid LoadedGuid;
+			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid==Info.Guid )
+				continue;
 			// Info.FileSize is what the server announced: the lookup then needs no file of its own (see UnMisc.cpp).
 			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename, Info.FileSize ) )
 			{
