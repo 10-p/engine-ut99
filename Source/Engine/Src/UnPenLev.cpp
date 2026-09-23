@@ -221,7 +221,10 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 			FGuid LoadedGuid;
 			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid!=Info.Guid )
 			{
-				Error = FString::Printf( TEXT("Package '%s' is already loaded. Please restart the game and join straight away"), Info.Parent->GetName() );
+				// ★ Not "join straight away" (the owner, 2026-09-23): OPENING THE SERVER BROWSER LOADS EVERYTHING, so the
+				// only route that still works after a restart is one that does not go through it -- an address or the
+				// command line. On the web that is the launcher's own address field, which is the same thing.
+				Error = FString::Printf( TEXT("Package '%s' is already loaded. Please restart the game and join by IP or from the command line"), Info.Parent->GetName() );
 				if( Connection->Channels[0] )
 					Connection->Channels[0]->Close();
 				Connection->FlushNet();
