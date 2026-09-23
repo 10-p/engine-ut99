@@ -812,6 +812,12 @@ public:
 	DECLARE_FUNCTION(execLeft)
 	DECLARE_FUNCTION(execRight)
 	DECLARE_FUNCTION(execCaps)
+	// ufront 2.79p: the string natives OldUnreal 469 backported from UT2004 (469-compiled mods call them).
+	DECLARE_FUNCTION(execLocs)
+	DECLARE_FUNCTION(execRepl)
+	DECLARE_FUNCTION(execConcatEqual_StrStr)
+	DECLARE_FUNCTION(execAtEqual_StrStr)
+	DECLARE_FUNCTION(execSubtractEqual_StrStr)
 	DECLARE_FUNCTION(execChr)
 	DECLARE_FUNCTION(execAsc)
 	DECLARE_FUNCTION(execEqualEqual_ObjectObject)
