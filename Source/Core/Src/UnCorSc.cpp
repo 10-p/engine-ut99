@@ -3170,6 +3170,108 @@ void UObject::execCaps( FFrame& Stack, RESULT_DECL )
 }
 IMPLEMENT_FUNCTION( UObject, 235, execCaps );
 
+//
+// ufront 2.79p -- the string natives OldUnreal 469 backported from UT2004, at 469's numbers (read from 469e's own
+// Core.u). A 469-compiled mod calls them by NUMBER (a final native is a bytecode token), and 436 had no handler:
+// measured on a live anti-cheat server, LinuxUTF8Fixv3's replicated ClientHelperActor ran `S $= ...` on the client
+// and the engine died with "Unknown code token 42" (the second byte of extended native 322). Pure string functions
+// with fixed semantics -- ported from UT2004's UnCorSc.cpp, so the result is the one a 469 client computes.
+//
+void UObject::execLocs( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execLocs);
+
+	P_GET_STR(Str);
+	P_FINISH;
+
+	*(FString*)Result = Str.Locs();
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 238, execLocs );
+
+void UObject::execRepl( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execRepl);
+
+	P_GET_STR(Src);
+	P_GET_STR(Match);
+	P_GET_STR(With);
+	P_GET_UBOOL_OPTX( bCaseSensitive, 0 );
+	P_FINISH;
+
+	FString NewSrc;
+	if( Match.Len() )
+	{
+		INT i = bCaseSensitive ? Src.InStr( Match ) : Src.Caps().InStr( Match.Caps() );
+		while( i != -1 )
+		{
+			NewSrc += Src.Left( i ) + With;
+			Src = Src.Mid( i + Match.Len(), Src.Len() );
+			i = bCaseSensitive ? Src.InStr( Match ) : Src.Caps().InStr( Match.Caps() );
+		}
+	}
+	*(FString*)Result = NewSrc + Src;
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 239, execRepl );
+
+void UObject::execConcatEqual_StrStr( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execConcatEqual_StrStr);
+
+	P_GET_STR_REF(A);
+	P_GET_STR(B);
+	P_FINISH;
+
+	*(FString*)Result = ( *A += B );
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 322, execConcatEqual_StrStr );
+
+void UObject::execAtEqual_StrStr( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execAtEqual_StrStr);
+
+	P_GET_STR_REF(A);
+	P_GET_STR(B);
+	P_FINISH;
+
+	*(FString*)Result = ( *A += FString( TEXT(" ") ) + B );
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 323, execAtEqual_StrStr );
+
+void UObject::execSubtractEqual_StrStr( FFrame& Stack, RESULT_DECL )
+{
+	guardSlow(UObject::execSubtractEqual_StrStr);
+
+	P_GET_STR_REF(A);
+	P_GET_STR(B);
+	P_FINISH;
+
+	FString Kept;
+	if( B.Len() )
+	{
+		INT Pos = A->InStr( B );
+		while( Pos != -1 )
+		{
+			Kept += A->Left( Pos );
+			*A = A->Mid( Pos + B.Len(), A->Len() );
+			Pos = A->InStr( B );
+		}
+	}
+	if( Kept.Len() )
+		*A = Kept + *A;
+	*(FString*)Result = *A;
+
+	unguardexecSlow;
+}
+IMPLEMENT_FUNCTION( UObject, 324, execSubtractEqual_StrStr );
+
 void UObject::execChr( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execChr);
