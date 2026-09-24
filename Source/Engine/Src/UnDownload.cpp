@@ -203,9 +203,10 @@ void UDownload::DownloadDone()
 
 		TCHAR Msg[256];
 		appSprintf( Msg, TEXT("Received '%s'"), Info->Parent->GetName() );
-		// ufront: LOG it too. The web host persists Cache/ to its download store when this line reaches the log
-		// (the page's print tap); NotifyProgress alone only reaches the screen, so without it every visit
-		// downloaded a server's custom files again. (Base v400 carries the same line in UnChan.cpp's file channel.)
+		// ufront: LOG it too, one line per package received. NotifyProgress alone only reaches the screen, so a
+		// log (native or the web page's console) never said which files a join downloaded. The web page does NOT
+		// key its download-cache flush on this line: it flushes once per level ("Bringing ... up"). (Base v400
+		// carries the same line in UnChan.cpp's file channel.)
 		debugf( TEXT("%s"), Msg );
 		Connection->Driver->Notify->NotifyProgress( TEXT("Success"), Msg, 4.f );
 		Connection->Driver->Notify->NotifyReceivedFile( Connection, PackageIndex, Error, 0 );
