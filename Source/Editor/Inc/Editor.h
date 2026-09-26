@@ -282,7 +282,7 @@ class EDITOR_API UEditorEngine : public UEngine, public FNotifyHook
 	FLOAT FovAngle;
 	BITFIELD GodMode:1;
 	BITFIELD AutoSave:1;
-	BYTE AutosaveTimeMinutes;
+	BYTE AutosaveTimeMinutes GCC_ALIGN(4);
 	FStringNoInit GameCommandLine;
 	TArray<FString> EditPackages;
 
