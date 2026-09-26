@@ -2797,7 +2797,12 @@ public:
 class ENGINE_API APlayerStart : public ANavigationPoint
 {
 public:
-    BYTE TeamNumber;
+    // ufront 2.80 layout fix: GCC/Itanium (native and wasm alike) would place this first member in
+    // ANavigationPoint's TAIL PADDING (its six bools use one byte of their unit: dsize 821), while UE1's
+    // UStruct::Link starts a subclass at Align(Super->PropertiesSize,4) = 824 -- measured: TeamNumber
+    // 821 vs 824 and the bools 824 vs 828. GCC_ALIGN(4), the idiom this header already uses for a BYTE
+    // after bitfields (AZoneInfo::AmbientBrightness), puts it where the script does; MSVC never reuses.
+    BYTE TeamNumber GCC_ALIGN(4);
     BITFIELD bSinglePlayerStart:1 GCC_PACK(4);
     BITFIELD bCoopStart:1;
     BITFIELD bEnabled:1;
