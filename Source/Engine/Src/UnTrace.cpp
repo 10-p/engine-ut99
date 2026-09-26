@@ -566,10 +566,11 @@ struct FBoxLineCheckInfo : public FBoxCheckInfo
 			UBOOL           FrontFirst = D0 >= D1;
 
 			// Traverse down nearest side then furthest side.
+			if( Use[FrontFirst] )
 #ifdef PLATFORM_DREAMCAST
-			BoxLineCheck( iNode, (INT)Node.iChild[FrontFirst], FrontFirst, Node.ChildOutside(FrontFirst, Outside) );
+				BoxLineCheck( iNode, (INT)Node.iChild[FrontFirst], FrontFirst, Node.ChildOutside(FrontFirst, Outside) );
 #else
-			BoxLineCheck( iNode, Node.iChild[FrontFirst], FrontFirst, Node.ChildOutside(FrontFirst, Outside) );
+				BoxLineCheck( iNode, Node.iChild[FrontFirst], FrontFirst, Node.ChildOutside(FrontFirst, Outside) );
 #endif
 			if( !Use[1-FrontFirst] )
 				return;
