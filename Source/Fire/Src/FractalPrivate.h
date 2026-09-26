@@ -484,7 +484,7 @@ class DLL_EXPORT_CLASS UIceTexture : public UFractalTexture
     BYTE        VertPanSpeed;
 	BYTE        Frequency;
 	BYTE        Amplitude;
-	BITFIELD    MoveIce:1;   // Mirrored as BOOLEAN in C++
+	BITFIELD    MoveIce:1 GCC_PACK(4);   // Mirrored as BOOLEAN in C++
 	FLOAT       MasterCount;
 	FLOAT       UDisplace;
 	FLOAT 		VDisplace;
