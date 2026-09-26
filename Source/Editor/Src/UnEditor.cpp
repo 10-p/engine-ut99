@@ -42,6 +42,7 @@ void UEditorEngine::StaticConstructor()
 // Construct the editor.
 //
 UEditorEngine::UEditorEngine()
+: EditPackages( E_NoInit )
 {}
 
 //
@@ -62,6 +63,7 @@ void UEditorEngine::InitEditor()
 	// Call base.
 	UEngine::Init();
 	InitAudio();
+
 	// Topics.
 	GTopics.Init();
 
@@ -97,24 +99,9 @@ void UEditorEngine::Init()
 
 	// Load classes for editing.
 	BeginLoad();
-
-	//maximqad: bruh fix that
-
-	if( EditPackages.Num() > 1000 || EditPackages.Num() < 0 )
-	{
-		TArray<FString> NewPackages;
-		NewPackages.AddItem(TEXT("Core"));
-		NewPackages.AddItem(TEXT("Engine"));
-		NewPackages.AddItem(TEXT("Editor"));
-		NewPackages.AddItem(TEXT("Fire"));
-		EditPackages = NewPackages;
-	}
 	for( INT i=0; i<EditPackages.Num(); i++ )
-	{
-		printf("Loading edit package %d: %s\n", i, *EditPackages(i));
 		if( !LoadPackage( NULL, *EditPackages(i), LOAD_NoWarn ) )
 				appErrorf( TEXT("Can't find edit package '%s'"), *EditPackages(i) );
-	}
 	EndLoad();
 
 	// Init the client.
