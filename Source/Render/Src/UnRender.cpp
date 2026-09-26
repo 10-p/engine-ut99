@@ -3210,46 +3210,41 @@ void URender::DrawWorld( FSceneNode* Frame )
 	&&	Actor
 	&&	(Frame->Viewport->Actor->ShowFlags & SHOW_Actors) )
 	{
-		// WORKAROUND: Skip RenderOverlays if Actor or Canvas is invalid
-		// This happens on Dreamcast due to GCC/MSVC bitfield differences
-		if( Actor && Actor->GetClass() && Frame->Viewport->Canvas && Frame->Viewport->Canvas->GetClass() )
+		GUglyHackFlags|=1;
+		// ufront 2.29 — SHOW SCRIPT THE *BASE* FOV WHILE IT PLACES THE VIEWMODEL.
+		//
+		// Inventory.uc:239 computes the first-person weapon's position as
+		//     DrawOffset = (0.9/PawnOwner.FOVAngle * PlayerViewOffset) >> ViewRotation
+		// and PlayerViewOffset's X is the FORWARD component (X=30, then *=100). So the divide does
+		// not merely scale the offset — it pulls the weapon TOWARDS THE CAMERA as the FOV widens.
+		// RenderOverlays runs inside AutoFOV's scope, so script was reading the CORRECTED angle: at
+		// 32:9 (base 90 -> effective 138.89) the gun sat 3000/138.89 = 21.6 units ahead instead of
+		// 33.3, i.e. at 65% of its distance. Measured ~1.5x larger and hard against the near plane —
+		// the "gigantic weapon that clips" report.
+		//
+		// ★ The sibling engine settles what the right value is: unreal1's Inventory.uc uses the
+		// CONSTANT 0.01, and 0.9/90 == 0.01 exactly. UT99 generalised that constant over a FOV that
+		// was never meant to move, so pinning script to the base angle reproduces the stock geometry
+		// exactly rather than approximating it. (ut2004 divides by the weapon's OWN DisplayFOV, which
+		// AutoFOV never touches — which is why this is a UT99-family fix only.)
+		//
+		// This is half the job: the weapon must still be PROJECTED with the corrected FOV so its
+		// on-screen size stays independent of screen width. UCanvas::execDrawActor does that half;
+		// together they keep the viewmodel identical to its 4:3 self at any aspect.
+		APlayerPawn* FovActor  = Frame->Viewport->Actor;
+		FLOAT        SavedFov  = FovActor->FovAngle;
+		UBOOL        bBaseSwap = Abs( SavedFov - GAutoFovFrameBase ) > 0.01f;
+		if( bBaseSwap )
+			FovActor->FovAngle = GAutoFovFrameBase;
+
+		Actor->eventRenderOverlays(Frame->Viewport->Canvas);
+
+		if( bBaseSwap )
 		{
-			GUglyHackFlags|=1;
-			// ufront 2.29 — SHOW SCRIPT THE *BASE* FOV WHILE IT PLACES THE VIEWMODEL.
-			//
-			// Inventory.uc:239 computes the first-person weapon's position as
-			//     DrawOffset = (0.9/PawnOwner.FOVAngle * PlayerViewOffset) >> ViewRotation
-			// and PlayerViewOffset's X is the FORWARD component (X=30, then *=100). So the divide does
-			// not merely scale the offset — it pulls the weapon TOWARDS THE CAMERA as the FOV widens.
-			// RenderOverlays runs inside AutoFOV's scope, so script was reading the CORRECTED angle: at
-			// 32:9 (base 90 -> effective 138.89) the gun sat 3000/138.89 = 21.6 units ahead instead of
-			// 33.3, i.e. at 65% of its distance. Measured ~1.5x larger and hard against the near plane —
-			// the "gigantic weapon that clips" report.
-			//
-			// ★ The sibling engine settles what the right value is: unreal1's Inventory.uc uses the
-			// CONSTANT 0.01, and 0.9/90 == 0.01 exactly. UT99 generalised that constant over a FOV that
-			// was never meant to move, so pinning script to the base angle reproduces the stock geometry
-			// exactly rather than approximating it. (ut2004 divides by the weapon's OWN DisplayFOV, which
-			// AutoFOV never touches — which is why this is a UT99-family fix only.)
-			//
-			// This is half the job: the weapon must still be PROJECTED with the corrected FOV so its
-			// on-screen size stays independent of screen width. UCanvas::execDrawActor does that half;
-			// together they keep the viewmodel identical to its 4:3 self at any aspect.
-			APlayerPawn* FovActor  = Frame->Viewport->Actor;
-			FLOAT        SavedFov  = FovActor->FovAngle;
-			UBOOL        bBaseSwap = Abs( SavedFov - GAutoFovFrameBase ) > 0.01f;
-			if( bBaseSwap )
-				FovActor->FovAngle = GAutoFovFrameBase;
-
-			Actor->eventRenderOverlays(Frame->Viewport->Canvas);
-
-			if( bBaseSwap )
-			{
-				FovActor->FovAngle = SavedFov;
-				Frame->ComputeRenderSize();   // leave the frame agreeing with the restored angle
-			}
-			GUglyHackFlags&=~1;
+			FovActor->FovAngle = SavedFov;
+			Frame->ComputeRenderSize();   // leave the frame agreeing with the restored angle
 		}
+		GUglyHackFlags&=~1;
 	}
 
 	}
