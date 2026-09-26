@@ -1839,7 +1839,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	UObject::StaticInit();
 
 	// Memory initalization.
-	GMem.Init( 32768 );
+	GMem.Init( 65536 );
 
 	// Cd path.
 	if( !Parse( appCmdLine(), TEXT("CDPATH="), GCdPath, 256 ) )
