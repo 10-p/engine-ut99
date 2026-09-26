@@ -434,35 +434,9 @@ CORE_API void appMemcpy( void* Dest, const void* Src, INT Count );
 //
 // C style memory allocation stubs.
 //
-// Forward declare MallocError from Core.cpp
-extern CORE_API FMalloc& GetMallocError();
-
-inline void* appMalloc( DWORD Count, const TCHAR* Tag )
-{
-	// If GMalloc is still the error allocator, use system malloc
-	if( GMalloc == &GetMallocError() )
-		return malloc(Count);
-	return GMalloc->Malloc(Count, Tag);
-}
-
-inline void appFree( void* Original )
-{
-	// If GMalloc is still the error allocator, use system free
-	if( GMalloc == &GetMallocError() )
-	{
-		if(Original) free(Original);
-		return;
-	}
-	GMalloc->Free(Original);
-}
-
-inline void* appRealloc( void* Original, DWORD Count, const TCHAR* Tag )
-{
-	// If GMalloc is still the error allocator, use system realloc
-	if( GMalloc == &GetMallocError() )
-		return realloc(Original, Count);
-	return GMalloc->Realloc(Original, Count, Tag);
-}
+#define appMalloc     GMalloc->Malloc
+#define appFree       GMalloc->Free
+#define appRealloc    GMalloc->Realloc
 
 //
 // C++ style memory allocation.

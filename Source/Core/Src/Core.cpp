@@ -30,12 +30,6 @@ class FMallocError : public FMalloc
 		{Called(TEXT("FMallocError::Exit"));}
 } MallocError;
 
-// Accessor for MallocError (used by inline appMalloc/appRealloc/appFree wrappers)
-CORE_API FMalloc& GetMallocError()
-{
-	return MallocError;
-}
-
 // Error file manager.
 class FFileManagerError : public FFileManager
 {
