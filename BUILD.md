@@ -134,6 +134,16 @@ Two ABI differences, both real:
   so the DWORD is already there and the pad overshot by 4. `DWORD`/`SIZE_T`/`BITFIELD` likewise come from
   `<minwindef.h>` on Windows and must stay *identical* types, not merely same-width — UE1 serialises
   BITFIELD members through `operator<<`'s DWORD overload.
+- **A size check is not an offset check (ufront 2.80).** GCC and clang (Itanium layout) disagree with MSVC
+  — and so with UE1's `UStruct::Link` — in three more ways: a derived class's first member reuses its
+  base's **tail padding** (`APlayerStart::TeamNumber`), a `BYTE` after bitfields is packed into the
+  bitfield unit's spare bytes (`UEditorEngine::AutosaveTimeMinutes`), and a bitfield after `BYTE`s is
+  packed into their unit (`UIceTexture::MoveIce`); a four-`BYTE` `FColor` is also 1-aligned where retail's
+  is a DWORD union (`AZoneInfo::FogColor`). Each is fixed in the header with `GCC_ALIGN(4)`/`GCC_PACK(4)`
+  (empty on MSVC; a no-op under MinGW's MS bitfields). The runtime guard missed some of them — a later
+  member can re-align the size — so check OFFSETS with **`tools/dev/layout-sweep.gdb`** (every script
+  property of every native class vs the same-named C++ member, run under `ucc-bin make`; healthy = only
+  the placeholder `EditorEngine.Pad` differs, 1,432 properties at 2.80).
 
 **Verifying without Windows** — `wine` + `Xvfb` (needs `wine32`; SoftDrv/NullDrv are CPU-only, so no GPU):
 
