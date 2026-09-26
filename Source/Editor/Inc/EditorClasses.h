@@ -26,6 +26,8 @@ struct UBrushBuilder_eventBuild_Parms
 class EDITOR_API UBrushBuilder : public UObject
 {
 public:
+    FStringNoInit BitmapFilename;  // v436: BrushBuilder.uc's two leading `var(BrushBuilder) string`s
+    FStringNoInit ToolTip;
     TArray<FVector> Vertices;
     TArray<FBuilderPoly> Polys;
     FName Group;
