@@ -2172,6 +2172,7 @@ public:
     FStringNoInit WorldStatsURL;
     FStringNoInit LocalLogDir;
     FStringNoInit WorldLogDir;
+    BITFIELD bWorldBatcherError:1 GCC_PACK(4);  // v436: StatLog.uc's trailing `globalconfig bool`
     DECLARE_FUNCTION(execGetMapFileName);
     DECLARE_FUNCTION(execGetGMTRef);
     DECLARE_FUNCTION(execGetPlayerChecksum);
