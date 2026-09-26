@@ -394,6 +394,20 @@ else()
   endif()
   add_compile_options(-ffunction-sections -fno-strict-aliasing)
   add_compile_options(-Wno-write-strings -Wno-terminate)
+  # ★ ufront 2.80 — GCC ONLY: keep the stores a destructor makes to its own object. UE1 destroys an
+  # object's native config arrays/strings TWICE -- UObject::ExitProperties (UArrayProperty/UStrProperty::
+  # DestroyValue -> ~FArray) and then the C++ destructor -- and the second pass is harmless only because
+  # ~FArray leaves `Data = NULL; ArrayNum = ArrayMax = 0` behind. GCC's lifetime dead-store elimination
+  # (-flifetime-dse, on by default since GCC 6) deletes exactly those stores: the object is dead after its
+  # destructor, so writes to it "cannot be observed". It did so as soon as appFree became the retail
+  # `GMalloc->Free` macro (2.80 item 9) -- measured: ~FArray lost all three stores, and USystem's Suppress
+  # array was freed twice at exit (AddressSanitizer: attempting double-free, ExitProperties then
+  # ~USystem) while the heap corrupted mid-run on every start (3/3; 0/3 with the stores). The Dreamcast
+  # port's inline appFree had kept the stores by accident. MSVC (what the engine was written for) has no
+  # such optimisation; clang (the web, Android) does not remove them either, so this is GNU-only.
+  if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    add_compile_options(-fno-lifetime-dse)
+  endif()
 endif()
 
 # Dependencies
