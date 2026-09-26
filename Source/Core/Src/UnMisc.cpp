@@ -35,19 +35,19 @@ void FOutputDevice::Log( enum EName Type, const FString& S )
 }
 void FOutputDevice::Logf( EName Event, const TCHAR* Fmt, ... )
 {
-	TCHAR TempStr[4096];
-	GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
 	if( !FName::SafeSuppressed(Event) )
 	{
+		TCHAR TempStr[4096];
+		GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
 		Serialize( TempStr, Event );
 	}
 }
 void FOutputDevice::Logf( const TCHAR* Fmt, ... )
 {
-	TCHAR TempStr[4096];
-	GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
 	if( !FName::SafeSuppressed(NAME_Log) )
 	{
+		TCHAR TempStr[4096];
+		GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
 		Serialize( TempStr, NAME_Log );
 	}
 }
