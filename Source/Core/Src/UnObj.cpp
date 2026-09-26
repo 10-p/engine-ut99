@@ -596,11 +596,6 @@ void UObject::ExportProperties
 void UObject::InitExecution()
 {
 	guard(UObject::InitExecution);
-	if( GetClass()==NULL )
-	{
-		printf("[ROLE DBG] InitExecution class null object=%p name=%s\n", this, TCHAR_TO_ANSI(GetName()));
-		fflush(stdout);
-	}
 	check(GetClass()!=NULL);
 
 	if( StateFrame )
@@ -726,10 +721,7 @@ UFunction* UObject::FindFunctionChecked( FName InName, UBOOL Global )
 		return NULL;
 	UFunction* Result = Cast<UFunction>( FindObjectField( InName, Global ) );
 	if( !Result )
-	{
-		debugf(TEXT("DEBUG: FindFunctionChecked: InName='%s' (%d), Global=%d, GetFullName()='%s'"), *InName, InName.GetIndex(), Global, GetFullName());
 		appErrorf( TEXT("Failed to find function %s in %s"), *InName, GetFullName() );
-	}
 	return Result;
 	unguardfSlow(( TEXT("%s (function %s)"), GetFullName(), *InName ));
 }
