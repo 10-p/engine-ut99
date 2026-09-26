@@ -368,6 +368,12 @@ DWORD appStrCrc( const TCHAR* Data )
 #if UNICODE
 		INT   CH  = (C>>8)&255;
 		CRC       = (CRC << 8) ^ GCRCTable[(CRC >> 24) ^ CH];;
+#else
+		// ufront 2.80: the retail engine is a UNICODE build, so every package's stored ScriptTextCRC hashes
+		// TWO bytes per character. This build is ANSI: hash the zero high byte a UTF-16 Latin-1 character
+		// has, or every retail class looks "changed" to the script compiler and `ucc make` recompiles all
+		// of them. Script text only (FDependency / UEditorEngine::MakeScripts); the game never compiles.
+		CRC       = (CRC << 8) ^ GCRCTable[(CRC >> 24)];
 #endif
 	}
 	return ~CRC;
