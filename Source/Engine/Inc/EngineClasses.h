@@ -2288,7 +2288,7 @@ public:
     BYTE AmbientBrightness GCC_ALIGN(4);
     BYTE AmbientHue;
     BYTE AmbientSaturation;
-    FColor FogColor;
+    FColor FogColor GCC_ALIGN(4);
     FLOAT FogDistance;
     class UTexture* EnvironmentMap;
     FLOAT TexUPanSpeed;
