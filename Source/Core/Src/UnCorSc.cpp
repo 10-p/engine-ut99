@@ -12,6 +12,10 @@ Revision history:
 
 #include "CorePrivate.h"
 
+// ufront 2.83 -- the last None-context zero-fill: where it wrote and how many bytes (see execLet).
+static BYTE* GNullContextResult = NULL;
+static INT   GNullContextSize   = 0;
+
 /*-----------------------------------------------------------------------------
 	Globals.
 -----------------------------------------------------------------------------*/
@@ -265,7 +269,11 @@ void UObject::execClassContext( FFrame& Stack, RESULT_DECL )
 		GPropAddr = NULL;
 		GProperty = NULL;
 		if( Result )
+		{
 			appMemzero( Result, bSize );
+			GNullContextResult = (BYTE*)Result;
+			GNullContextSize   = bSize;
+		}
 	}
 	unguardexec;
 }
@@ -466,8 +474,10 @@ void UObject::execSwitch( FFrame& Stack, RESULT_DECL )
 		// Get case expression.
 		Stack.Step( Stack.Object, Buffer );
 
-		// Compare.
-		if( bSize ? (appMemcmp(SwitchBuffer,Buffer,bSize)==0) : (*(FString*)SwitchBuffer==*(FString*)Buffer) )
+		// Compare. The compiled size is the 32-bit one (4 for an object), so compare at least a pointer's
+		// width (ufront 2.83): both buffers were zeroed past it above, so a smaller value's tail compares
+		// equal, and an object switch compares whole pointers.
+		if( bSize ? (appMemcmp(SwitchBuffer,Buffer,Max<INT>(bSize,sizeof(UObject*)))==0) : (*(FString*)SwitchBuffer==*(FString*)Buffer) )
 			break;
 
 		// Jump to next handler.
@@ -572,14 +582,28 @@ void UObject::execLet( FFrame& Stack, RESULT_DECL )
 	// Get variable address.
 	GPropAddr = NULL;
 	Stack.Step( Stack.Object, NULL ); // Evaluate variable.
+	UProperty* DestProperty = GProperty;
 	if( !GPropAddr )
 	{
 		Stack.Logf( NAME_ScriptWarning, TEXT("Attempt to assigned variable through None") );
 		static BYTE Crud[1024];//!!temp
 		GPropAddr = Crud;
 		appMemzero( GPropAddr, sizeof(FString) );
+		DestProperty = NULL;
 	}
+	BYTE* Dest = GPropAddr;
+	GNullContextResult = NULL;
 	Stack.Step( Stack.Object, GPropAddr ); // Evaluate expression into variable.
+
+	// ufront 2.83 -- `X = None.Y` writes zeros straight into X, but only as many as the compiler recorded:
+	// the value's size in the 32-bit retail format (4 for any object). Where the value is larger in memory
+	// (an 8-byte pointer, a struct holding one) the rest of X would keep its old bytes -- the high half of
+	// the previous pointer, a live-looking garbage reference. So when the zero-fill landed on this very
+	// variable and fell short, zero all of it. (A zero-fill that went anywhere else -- a function's
+	// parameter in `X = F(None.Y)` -- is not ours to widen; parameters start zeroed.) Never on 32-bit.
+	if( GNullContextResult==Dest && DestProperty && GNullContextSize>0 && GNullContextSize<DestProperty->ElementSize )
+		appMemzero( Dest, DestProperty->ElementSize );
+	GNullContextResult = NULL;
 
 	unguardexecSlow;
 }
@@ -646,7 +670,11 @@ void UObject::execContext( FFrame& Stack, RESULT_DECL )
 		GPropAddr = NULL;
 		GProperty = NULL;
 		if( Result )
+		{
 			appMemzero( Result, bSize );
+			GNullContextResult = (BYTE*)Result;
+			GNullContextSize   = bSize;
+		}
 	}
 	unguardexecSlow;
 }
