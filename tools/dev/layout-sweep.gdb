@@ -1,6 +1,12 @@
 # layout-sweep.gdb -- every script property of every native class vs the same-named C++ member.
 #
 #   cd <run-tree>/System && gdb -batch -x <engine-repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make -nohomedir
+#   cd <run-tree>/System && gdb -batch -x <engine-repo>/tools/dev/layout-sweep.gdb --args ./UnrealTournament -SOFTWARERENDERER
+#
+# Run BOTH hosts (ufront 2.83). Some reflected layouts exist only in one process: the input alias struct is
+# built by UInput::StaticInitInput, which only a client (or the editor) calls, so `ucc make` never saw it and
+# its 64-bit layout crashed the first key bound to an alias. The client host stops at the first game tick
+# (map loaded, viewport open); headless it runs under Xvfb (any render device will do).
 #
 # (ufront 2.80) The runtime layout guard in UStruct::Link compares only a native class's C++ sizeof with
 # its script size. It cannot see a member that moved inside a class when a later one re-aligns, and it
@@ -14,12 +20,19 @@
 # `ucc make` loads every EditPackages entry, i.e. every package with native classes; the sweep runs when
 # the editor engine is destroyed at exit. Expected result on a healthy tree:
 #     SHIFT EditorEngine.Pad (IntProperty) ...     <- a reserved placeholder on both sides, never read
-#     checked=<n> shifted=1
+#     checked=<n> shifted=1                        (the client host: shifted=0; it has no editor)
 #     structs=<n> checked=<n> shifted=0     <- script structs vs same-named C++ F<Name> (ufront 2.83)
+# A property may point at a same-named member of a nested struct rather than the class's own member
+# (UTGLR registers DCV.SinglePassFog and keeps a runtime copy SinglePassFog beside it): one level of
+# nested members is accepted as a match.
 # Needs a build with debug info (the native preset is RelWithDebInfo).
 set pagination off
 set debuginfod enabled off
-break UEditorEngine::Destroy
+python
+import gdb, os
+host = os.path.basename(gdb.current_progspace().filename)
+gdb.execute("break " + ("UEditorEngine::Destroy" if host.startswith("ucc") else "UGameEngine::Tick"))
+end
 run
 python
 import gdb
@@ -43,6 +56,7 @@ for i in range(count):
     if ctype is None:
         print("NOTYPE %s" % cname); continue
     members = {}
+    nested  = {}
     for f in ctype.fields():
         if f.is_base_class or not hasattr(f, 'bitpos'):
             continue
@@ -50,6 +64,11 @@ for i in range(count):
             members[f.name.lower()] = ((f.bitpos // 32) * 4, 1 << (f.bitpos % 32))
         else:
             members[f.name.lower()] = (f.bitpos // 8, 0)
+            ftype = f.type.strip_typedefs()
+            if ftype.code == gdb.TYPE_CODE_STRUCT:
+                for g in ftype.fields():
+                    if not g.is_base_class and hasattr(g, 'bitpos') and not g.bitsize and g.name:
+                        nested.setdefault(g.name.lower(), set()).add((f.bitpos + g.bitpos) // 8)
     size_cpp = int(gdb.parse_and_eval("GLayoutSizes[%d]" % i))
     if int(struct['PropertiesSize']) != size_cpp:
         print("SIZE %s C++=%d script=%d" % (cname, size_cpp, int(struct['PropertiesSize'])))
@@ -64,7 +83,8 @@ for i in range(count):
             checked += 1
             off  = int(field.cast(UPropertyPtr)['Offset'])
             mask = int(field.cast(UBoolPtr)['BitMask']) if pclass == 'BoolProperty' else 0
-            if cpp[0] != off or (pclass == 'BoolProperty' and cpp[1] and cpp[1] != mask):
+            if (cpp[0] != off or (pclass == 'BoolProperty' and cpp[1] and cpp[1] != mask)) \
+                    and off not in nested.get(name_of(obj).lower(), ()):
                 shifted += 1
                 print("SHIFT %s.%s (%s) C++=%d/%x script=%d/%x" % (cname, name_of(obj), pclass, cpp[0], cpp[1], off, mask))
         field = field['Next']

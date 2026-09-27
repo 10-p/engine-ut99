@@ -108,9 +108,14 @@ the runtime library and the GL link symlinks are already installed).
 tools/dev/mkrun-ut99.sh build-native64 /home/ion/native-runtrees/ut99-64      # + copy UCC/ucc-bin and libopenal.so.1
 cd /home/ion/native-runtrees/ut99-64/System
 gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make          # classes: shifted=1 (EditorEngine.Pad); structs: 0
+DISPLAY=:98 gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./UnrealTournament -SOFTWARERENDERER   # client host: 0 / 0
 ./ucc-bin server "DM-Deck16][?game=Botpack.DeathMatchPlus?mutator=U64Test.U64Mutator"   # U64 DONE passed=63 failed=0
 <repo>/tools/dev/botmatch.sh <server-tree> 300 [<client-tree>] [<map>]        # bots need MinPlayers in the ini
 ```
+
+**Sweep both hosts.** Some reflected layouts exist in only one process: the input alias struct (`UInput::StaticInitInput`)
+is built only where there is a client or the editor, so `ucc make` never saw its 64-bit layout, and every key
+bound to an alias crashed the 64-bit client (`65e2f5a`). The client host stops at the first game tick.
 
 `tools/test/U64Test` is compiled by the **32-bit** `ucc make` (link `../U64Test` into the run tree, add
 `EditPackages=U64Test`) and run on every width. On the phone: push the asset tree to `/data/local/tmp/ut99/`
