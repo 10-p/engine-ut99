@@ -305,7 +305,13 @@ UBOOL UObject::ConditionalDestroy()
 	{
 		SetFlags( RF_Destroyed );
 		ClearFlags( RF_DebugDestroy );
+		const INT SavedIndex = Index;
 		Destroy();
+		// (ufront 2.83) A Destroy may delete its own object: a net channel purged before its unreachable
+		// connection routes the Destroy to the connection (UChannel::RouteDestroy), which deletes every
+		// channel it owns, this one included. ~UObject empties the slot, so don't read `this` any more.
+		if( GObjObjects(SavedIndex)!=this )
+			return 1;
 		if( !(GetFlags()&RF_DebugDestroy) )
 			appErrorf( TEXT("%s failed to route Destroy"), GetFullName() );
 		return 1;
