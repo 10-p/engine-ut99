@@ -63,7 +63,7 @@ BYTE CORE_API GRegisterNative( INT iNative, const Native& Func );
 #define P_GET_OBJECT_REF(cls,var)     cls*  var##T=NULL; GPropAddr=0;      Stack.Step( Stack.Object, &var##T ); cls**    var = GPropAddr ? (cls   **)GPropAddr:&var##T;
 #define P_GET_ARRAY_REF(typ,var)      typ   var##T[256]; GPropAddr=0;      Stack.Step( Stack.Object,  var##T ); typ*     var = GPropAddr ? (typ    *)GPropAddr: var##T;
 #define P_GET_SKIP_OFFSET(var)        _WORD var; {checkSlow(*Stack.Code==EX_Skip); Stack.Code++; \
-	__builtin_memcpy(&var, Stack.Code, sizeof(_WORD)); \
+	appMemcpy(&var, Stack.Code, sizeof(_WORD)); \
 	Stack.Code+=2; }
 #define P_FINISH                      Stack.Code++;
 
@@ -111,6 +111,10 @@ inline FFrame::FFrame( UObject* InObject, UStruct* InNode, INT CodeOffset, void*
 ,	Code		(&InNode->Script(CodeOffset))
 ,	Locals		((BYTE*)InLocals)
 {}
+// The bytecode is a packed byte stream, so an operand can sit at any address: every multi-byte read
+// copies (ufront 2.83). A typed read of an unaligned address is undefined behaviour everywhere and a bus
+// error on 32-bit ARM (measured: execVectorConst, SIGBUS BUS_ADRALN on armeabi-v7a). A constant-size
+// copy compiles to the same single load wherever unaligned loads are legal (x86, arm64, wasm).
 inline void FFrame::Step( UObject* Context, RESULT_DECL )
 {
 	guardSlow(FFrame::Step);
@@ -120,12 +124,8 @@ inline void FFrame::Step( UObject* Context, RESULT_DECL )
 }
 inline INT FFrame::ReadInt()
 {
-#ifdef PLATFORM_DREAMCAST
 	INT Result;
-	__builtin_memcpy( &Result, Code, sizeof( Result ) );
-#else
-	INT Result = *(INT*)Code;
-#endif
+	appMemcpy( &Result, Code, sizeof(Result) );
 	Code += sizeof(INT);
 	return Result;
 }
@@ -139,34 +139,22 @@ inline UObject* FFrame::ReadObject()
 }
 inline FLOAT FFrame::ReadFloat()
 {
-#ifdef PLATFORM_DREAMCAST
 	FLOAT Result;
-	__builtin_memcpy( &Result, Code, sizeof( Result ) );
-#else
-	FLOAT Result = *(FLOAT*)Code;
-#endif
+	appMemcpy( &Result, Code, sizeof(Result) );
 	Code += sizeof(FLOAT);
 	return Result;
 }
 inline INT FFrame::ReadWord()
 {
-#ifdef PLATFORM_DREAMCAST
 	_WORD Result;
-	__builtin_memcpy( &Result, Code, sizeof( Result ) );
-#else
-	INT Result = *(_WORD*)Code;
-#endif
+	appMemcpy( &Result, Code, sizeof(Result) );
 	Code += sizeof(_WORD);
 	return Result;
 }
 inline FName FFrame::ReadName()
 {
-#ifdef PLATFORM_DREAMCAST
 	FName Result;
-	__builtin_memcpy( &Result, Code, sizeof( Result ) );
-#else
-	FName Result = *(FName*)Code;
-#endif
+	appMemcpy( &Result, Code, sizeof(Result) );
 	Code += sizeof(FName);
 	return Result;
 }

@@ -1407,19 +1407,13 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 		case EX_Case:
 		{
-#ifdef PLATFORM_DREAMCAST
-			// avoid unaligned access
-			_WORD W;
-			__builtin_memcpy( &W, &Script(iCode), sizeof( W ) );
 			XFER(_WORD); // Code offset.
+			// Read it back AFTER the transfer (loading fills it) and by copy -- the slot is unaligned
+			// (ufront 2.83; the Dreamcast branch that stood here copied it before loading).
+			_WORD W;
+			appMemcpy( &W, &Script(iCode-sizeof(_WORD)), sizeof(W) );
 			if( W != MAXWORD )
 				SerializeExpr( iCode, Ar ); // Boolean expr.
-#else
-			_WORD *W=(_WORD*)&Script(iCode);
-			XFER(_WORD);; // Code offset.
-			if( *W != MAXWORD )
-				SerializeExpr( iCode, Ar ); // Boolean expr.
-#endif
 			break;
 		}
 		case EX_LabelTable:

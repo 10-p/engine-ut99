@@ -790,9 +790,12 @@ void UObject::execUnicodeStringConst( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execStringConst);
 	*(FString*)Result = appFromUnicode((UNICHAR*)Stack.Code);
-	while( *(_WORD*)Stack.Code )
-		Stack.Code+=sizeof(_WORD);
-	Stack.Code+=sizeof(_WORD);
+	_WORD W;
+	do
+	{
+		appMemcpy( &W, Stack.Code, sizeof(W) );	// unaligned (see FFrame::Step)
+		Stack.Code += sizeof(_WORD);
+	} while( W );	// past the terminator
 	unguardexecSlow;
 }
 IMPLEMENT_FUNCTION( UObject, EX_UnicodeStringConst, execUnicodeStringConst );
@@ -2246,13 +2249,9 @@ IMPLEMENT_FUNCTION( UObject, EX_RotationConst, execRotationConst );
 void UObject::execVectorConst( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execVectorConst);
-#ifdef PLATFORM_DREAMCAST
 	FVector Temp;
-	__builtin_memcpy(&Temp, Stack.Code, sizeof(FVector));
+	appMemcpy( &Temp, Stack.Code, sizeof(FVector) );	// unaligned (see FFrame::Step)
 	*(FVector*)Result = Temp;
-#else
-	*(FVector*)Result = *(FVector*)Stack.Code;
-#endif
 	Stack.Code += sizeof(FVector);
 	unguardexecSlow;
 }
