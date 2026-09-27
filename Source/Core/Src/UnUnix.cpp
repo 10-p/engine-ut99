@@ -38,6 +38,9 @@
 #include <utime.h>
 #include <sys/time.h>
 #include <sys/stat.h>
+#ifndef PLATFORM_WIN32
+#include <sys/wait.h>	// waitpid (appCreateProc)
+#endif
 #ifndef UNREAL_STATIC
 #include <dlfcn.h>
 #endif
@@ -438,9 +441,28 @@ void appCreateProc( const TCHAR* URL, const TCHAR* Parms )
 	// ufront 2.33: _spawnv is the Windows spelling of "fork + exec and do not wait".
 	_spawnv( _P_NOWAIT, URL, argv );
 #else
+	// ufront 2.83 -- the branches were inverted (as in Epic's v400 Linux code): the PARENT called execv and
+	// the CHILD returned into the engine. The stats log starts its batcher at every match end, whose .exe
+	// does not exist here, so execv failed, the server went on -- and so did a second copy of it, sharing
+	// every open package file and its read offset. At the next map change the two moved each other's
+	// file positions: `Bad name index`, `fread failed`, a lazy-array seek past EOF (measured on i386,
+	// x86_64 and arm64; the orphaned copies were still running afterwards).
+	// Now the child only starts a grandchild, which runs the program or exits, and exits at once itself,
+	// so the server reaps it immediately and never has a zombie to collect -- start it and keep going,
+	// like _spawnv(_P_NOWAIT) above. Only _exit and execv run in the children (no stdio flush, no
+	// destructors: they own nothing). Where fork fails (the web build) nothing happens, as before.
 	pid_t pid = fork();
-	if (pid != 0)
-		INT error = execv( URL, argv );
+	if( pid == 0 )
+	{
+		if( fork() == 0 )
+		{
+			execv( URL, argv );
+			_exit( 127 );
+		}
+		_exit( 0 );
+	}
+	else if( pid > 0 )
+		waitpid( pid, NULL, 0 );
 #endif
 
 	unguard;
