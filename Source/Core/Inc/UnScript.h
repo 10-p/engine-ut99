@@ -63,7 +63,7 @@ BYTE CORE_API GRegisterNative( INT iNative, const Native& Func );
 #define P_GET_OBJECT_REF(cls,var)     cls*  var##T=NULL; GPropAddr=0;      Stack.Step( Stack.Object, &var##T ); cls**    var = GPropAddr ? (cls   **)GPropAddr:&var##T;
 #define P_GET_ARRAY_REF(typ,var)      typ   var##T[256]; GPropAddr=0;      Stack.Step( Stack.Object,  var##T ); typ*     var = GPropAddr ? (typ    *)GPropAddr: var##T;
 #define P_GET_SKIP_OFFSET(var)        _WORD var; {checkSlow(*Stack.Code==EX_Skip); Stack.Code++; \
-	appMemcpy(&var, Stack.Code, sizeof(_WORD)); \
+	var = ReadScriptOperand<_WORD>( Stack.Code ); \
 	Stack.Code+=2; }
 #define P_FINISH                      Stack.Code++;
 
@@ -122,39 +122,41 @@ inline void FFrame::Step( UObject* Context, RESULT_DECL )
 	(Context->*GNatives[B])( *this, Result );
 	unguardfSlow(( TEXT("(%s @ %s : %04X)"), Object->GetFullName(), Node->GetFullName(), Code - &Node->Script(0) ));
 }
-inline INT FFrame::ReadInt()
+// The bytecode is a packed byte stream: every multi-byte operand is read by copy (see FFrame::Step).
+template< class T > ALWAYS_INLINE T ReadScriptOperand( const BYTE* Code )
 {
-	INT Result;
-	appMemcpy( &Result, Code, sizeof(Result) );
+	T Result;
+	appUnalignedCopy( &Result, Code, sizeof(T) );
+	return Result;
+}
+ALWAYS_INLINE INT FFrame::ReadInt()
+{
+	INT Result = ReadScriptOperand<INT>( Code );
 	Code += sizeof(INT);
 	return Result;
 }
-inline UObject* FFrame::ReadObject()
+ALWAYS_INLINE UObject* FFrame::ReadObject()
 {
-	// A 4-byte object index, not a pointer (UObject::GetScriptObject). memcpy: the slot is unaligned.
-	INT Ref;
-	appMemcpy( &Ref, Code, sizeof(Ref) );
+	// A 4-byte object index, not a pointer (UObject::GetScriptObject).
+	INT Ref = ReadScriptOperand<INT>( Code );
 	Code += sizeof(INT);
 	return UObject::GetScriptObject( Ref );
 }
-inline FLOAT FFrame::ReadFloat()
+ALWAYS_INLINE FLOAT FFrame::ReadFloat()
 {
-	FLOAT Result;
-	appMemcpy( &Result, Code, sizeof(Result) );
+	FLOAT Result = ReadScriptOperand<FLOAT>( Code );
 	Code += sizeof(FLOAT);
 	return Result;
 }
-inline INT FFrame::ReadWord()
+ALWAYS_INLINE INT FFrame::ReadWord()
 {
-	_WORD Result;
-	appMemcpy( &Result, Code, sizeof(Result) );
+	INT Result = ReadScriptOperand<_WORD>( Code );
 	Code += sizeof(_WORD);
 	return Result;
 }
-inline FName FFrame::ReadName()
+ALWAYS_INLINE FName FFrame::ReadName()
 {
-	FName Result;
-	appMemcpy( &Result, Code, sizeof(Result) );
+	FName Result = ReadScriptOperand<FName>( Code );
 	Code += sizeof(FName);
 	return Result;
 }

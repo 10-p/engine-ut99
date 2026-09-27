@@ -49,6 +49,8 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define CDECL	    __cdecl					/* Standard C function */
 #define STDCALL		__stdcall				/* Standard calling convention */
 #define FORCEINLINE __forceinline			/* Force code to be inline */
+#define ALWAYS_INLINE __forceinline			/* ufront 2.83: see UnGnuG.h */
+#define appUnalignedCopy(Dest,Src,Count) memcpy(Dest,Src,Count)	/* an intrinsic for a constant count */
 #define ZEROARRAY                           /* Zero-length arrays in structs */
 
 // Variable arguments.

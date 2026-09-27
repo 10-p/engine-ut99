@@ -510,11 +510,11 @@ public:
 	// the object's index in the object table rather than its address: the stream has the same layout on
 	// every pointer width, and no code offset ever moves. UStruct::SerializeExpr converts on load and save;
 	// the VM resolves here. INDEX_NONE is None.
-	static UObject* GetScriptObject( INT Ref )
+	static ALWAYS_INLINE UObject* GetScriptObject( INT Ref )
 	{
-		return Ref!=INDEX_NONE ? GObjObjects(Ref) : NULL;
+		return Ref!=INDEX_NONE ? ((UObject**)GObjObjects.GetData())[Ref] : NULL;
 	}
-	static INT GetScriptRef( UObject* Obj )
+	static ALWAYS_INLINE INT GetScriptRef( UObject* Obj )
 	{
 		return Obj ? Obj->Index : INDEX_NONE;
 	}

@@ -107,6 +107,12 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define __cdecl
 #endif
 #define FORCEINLINE /* Force code to be inline */
+// ufront 2.83: inlined at EVERY optimisation level -- the script VM (UnCorSc.cpp) is compiled at -Og, where
+// an ordinary inline function that grows past a few instructions becomes a call per bytecode operand.
+#define ALWAYS_INLINE inline __attribute__((always_inline))
+// A copy of a small, constant number of bytes from a possibly unaligned address: one load where the CPU
+// allows unaligned loads, never a library call (the builtin expands inline at any optimisation level).
+#define appUnalignedCopy(Dest,Src,Count) __builtin_memcpy(Dest,Src,Count)
 #define ZEROARRAY 0 /* Zero-length arrays in structs */
 
 

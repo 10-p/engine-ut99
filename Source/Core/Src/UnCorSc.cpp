@@ -354,9 +354,7 @@ void UObject::execBoolVariable( FFrame& Stack, RESULT_DECL )
 	// Get bool variable.
 	BYTE B = *Stack.Code++;
 	// Peek the variable token's property without consuming it: a 4-byte object index (ufront 2.83).
-	INT PropertyRef;
-	appMemcpy( &PropertyRef, Stack.Code, sizeof(PropertyRef) );
-	UBoolProperty* Property = (UBoolProperty*)UObject::GetScriptObject( PropertyRef );
+	UBoolProperty* Property = (UBoolProperty*)UObject::GetScriptObject( ReadScriptOperand<INT>(Stack.Code) );
 	(this->*GNatives[B])( Stack, NULL );
 	GProperty = Property;
 
@@ -793,7 +791,7 @@ void UObject::execUnicodeStringConst( FFrame& Stack, RESULT_DECL )
 	_WORD W;
 	do
 	{
-		appMemcpy( &W, Stack.Code, sizeof(W) );	// unaligned (see FFrame::Step)
+		W = ReadScriptOperand<_WORD>( Stack.Code );
 		Stack.Code += sizeof(_WORD);
 	} while( W );	// past the terminator
 	unguardexecSlow;
@@ -2249,9 +2247,7 @@ IMPLEMENT_FUNCTION( UObject, EX_RotationConst, execRotationConst );
 void UObject::execVectorConst( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execVectorConst);
-	FVector Temp;
-	appMemcpy( &Temp, Stack.Code, sizeof(FVector) );	// unaligned (see FFrame::Step)
-	*(FVector*)Result = Temp;
+	*(FVector*)Result = ReadScriptOperand<FVector>( Stack.Code );
 	Stack.Code += sizeof(FVector);
 	unguardexecSlow;
 }
