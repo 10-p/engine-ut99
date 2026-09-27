@@ -82,6 +82,48 @@ static UBOOL GCheckNatives=1;
 -----------------------------------------------------------------------------*/
 
 //
+// A property's size and alignment in the compiled-script (32-bit) format -- UProperty::Link's rules
+// with the format's element sizes. See ScriptFormatStructSize in UnScrCom.h (ufront 2.83).
+//
+static INT ScriptFormatElementSize( UProperty* Property, INT& Alignment )
+{
+	Alignment = PROPERTY_ALIGNMENT;
+	if( Cast<UByteProperty>(Property) )			{ Alignment = 1; return 1; }
+	if( Cast<UObjectProperty>(Property) )		return SCRIPT_FORMAT_OBJECT_SIZE;
+	if( Cast<UStrProperty>(Property) )			return 3*4;		// FString: data pointer + ArrayNum + ArrayMax
+	if( Cast<UArrayProperty>(Property) )		return 3*4;		// FArray, likewise
+	if( Cast<UMapProperty>(Property) )			return 3*4 + 4 + 4;	// TMap: Pairs + Hash pointer + HashCount
+	if( UFixedArrayProperty* Fixed = Cast<UFixedArrayProperty>(Property) )
+	{
+		INT InnerAlignment;
+		return ScriptFormatElementSize( Fixed->Inner, InnerAlignment ) * Fixed->Count;
+	}
+	if( UStructProperty* StructProperty = Cast<UStructProperty>(Property) )
+	{
+		INT Size = ScriptFormatStructSize( StructProperty->Struct );
+		Alignment = Size==2 ? 2 : Size>=4 ? 4 : 1;
+		return Size;
+	}
+	return Property->ElementSize;	// int, float, name, bool: 4 bytes on every width
+}
+INT ScriptFormatStructSize( UStruct* Struct )
+{
+	guard(ScriptFormatStructSize);
+	INT Size = Struct->GetInheritanceSuper() ? Align( ScriptFormatStructSize(Struct->GetInheritanceSuper()), 4 ) : 0;
+	for( TFieldIterator<UProperty> It(Struct); It && It->GetOuter()==Struct; ++It )
+	{
+		UBoolProperty* Bool = Cast<UBoolProperty>(*It);
+		if( Bool && Bool->BitMask!=FIRST_BITFIELD )
+			continue;	// shares the previous bool's word
+		INT Alignment;
+		INT ElementSize = ScriptFormatElementSize( *It, Alignment );
+		Size = Align( Size, Alignment ) + ElementSize * It->ArrayDim;
+	}
+	return Align( Size, 4 );
+	unguard;
+}
+
+//
 // Get conversion token between two types.
 // Converting a type to itself has no conversion function.
 // EX_Max indicates that a conversion isn't possible.
