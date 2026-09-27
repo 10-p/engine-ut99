@@ -11,6 +11,8 @@
 #
 # Traps this handles: `timeout xvfb-run ...` kills the wrapper and leaves the game running, so the timeout
 # is inside; stdout and the engine log are 4 KB block-buffered, so every process runs under `stdbuf -oL`.
+# A sanitizer report counts as a crash marker: an ASan abort in the CLIENT otherwise looks like a player
+# leaving -- the server keeps running and the summary stayed clean (ufront 2.83).
 set -eu
 SRV=$(readlink -f "${1:?usage: botmatch.sh <server-run-tree> <seconds> [<client-run-tree>] [<map>]}")
 SECS=${2:?}
@@ -57,7 +59,7 @@ wait 2>/dev/null || true
 NG=$(ls -t "$SRV"/Logs/Unreal.ngLog.* 2>/dev/null | head -1 || true)
 KILLS=0
 [ -n "$NG" ] && KILLS=$(tr -d '\000' < "$NG" | grep -ac "	kill	" || true)
-BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]'
+BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]|ERROR: AddressSanitizer|runtime error:'
 echo "server=$(file -b "$SRV/System/ucc-bin" | cut -d, -f1-2) client=$(file -b "$CLI/System/UnrealTournament" | cut -d, -f1-2)"
 echo "last poll: $(tail -1 "$OUT/poll.txt")"
 echo "joined=$(grep -c 'Join succeeded' "$OUT/server.log") kills>=$KILLS accessed_none=$(grep -c 'Accessed None' "$OUT/server.log") warnings=$(grep -ci 'warning' "$OUT/server.log") crash_markers=$(grep -cE "$BAD" "$OUT/server.log" "$OUT/client.log" | awk -F: '{s+=$2} END{print s}')"
