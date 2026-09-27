@@ -1140,6 +1140,24 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 	#else
 	#define XFER(T) {Ar << *(T*)&Script(iCode); iCode += sizeof(T); }
 	#endif
+	// An object reference: a 4-byte slot holding the object's index (UObject::GetScriptObject), on every
+	// pointer width (ufront 2.83). The archive is handed the object itself -- loading resolves it from the
+	// package, saving writes the package's own reference, garbage collection marks it, and a reference-
+	// replacing archive may hand back another -- and the slot is rewritten from whatever comes back.
+	#define XFER_OBJ \
+	{ \
+		UObject* Obj = NULL; \
+		if( !Ar.IsLoading() ) \
+		{ \
+			INT Ref; \
+			appMemcpy( &Ref, &Script(iCode), sizeof(Ref) ); \
+			Obj = UObject::GetScriptObject( Ref ); \
+		} \
+		Ar << Obj; \
+		INT NewRef = UObject::GetScriptRef( Obj ); \
+		appMemcpy( &Script(iCode), &NewRef, sizeof(NewRef) ); \
+		iCode += sizeof(INT); \
+	}
 
 	// Get expr token.
 	XFER(BYTE);
@@ -1178,7 +1196,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		case EX_InstanceVariable:
 		case EX_DefaultVariable:
 		{
-			XFER(UProperty*);
+			XFER_OBJ;
 			break;
 		}
 		case EX_BoolVariable:
@@ -1208,7 +1226,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 		case EX_FinalFunction:
 		{
-			XFER(UStruct*); // Stack node.
+			XFER_OBJ; // Stack node.
 			while( SerializeExpr( iCode, Ar ) != EX_EndFunctionParms ); // Parms.
 			break;
 		}
@@ -1221,7 +1239,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 		case EX_NativeParm:
 		{
-			XFER(UProperty*);
+			XFER_OBJ;
 			break;
 		}
 		case EX_ClassContext:
@@ -1270,7 +1288,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 		case EX_ObjectConst:
 		{
-			XFER(UObject*);
+			XFER_OBJ;
 			break;
 		}
 		case EX_NameConst:
@@ -1296,13 +1314,13 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 		case EX_MetaCast:
 		{
-			XFER(UClass*);
+			XFER_OBJ;
 			SerializeExpr( iCode, Ar );
 			break;
 		}
 		case EX_DynamicCast:
 		{
-			XFER(UClass*);
+			XFER_OBJ;
 			SerializeExpr( iCode, Ar );
 			break;
 		}
@@ -1373,14 +1391,14 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		case EX_StructCmpEq:
 		case EX_StructCmpNe:
 		{
-			XFER(UStruct*); // Struct.
+			XFER_OBJ; // Struct.
 			SerializeExpr( iCode, Ar ); // Left expr.
 			SerializeExpr( iCode, Ar ); // Right expr.
 			break;
 		}
 		case EX_StructMember:
 		{
-			XFER(UProperty*); // Property.
+			XFER_OBJ; // Property.
 			SerializeExpr( iCode, Ar ); // Inner expr.
 			break;
 		}
@@ -1392,6 +1410,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		}
 	}
 	return Expr;
+	#undef XFER_OBJ
 	#undef XFER
 	unguardf(( TEXT("(%02X)"), Expr ));
 }

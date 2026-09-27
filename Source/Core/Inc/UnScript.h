@@ -131,14 +131,11 @@ inline INT FFrame::ReadInt()
 }
 inline UObject* FFrame::ReadObject()
 {
-#ifdef PLATFORM_DREAMCAST
-	UObject* Result;
-	__builtin_memcpy( &Result, Code, sizeof( Result ) );
-#else
-	UObject* Result = *(UObject**)Code;
-#endif
+	// A 4-byte object index, not a pointer (UObject::GetScriptObject). memcpy: the slot is unaligned.
+	INT Ref;
+	appMemcpy( &Ref, Code, sizeof(Ref) );
 	Code += sizeof(INT);
-	return Result;
+	return UObject::GetScriptObject( Ref );
 }
 inline FLOAT FFrame::ReadFloat()
 {

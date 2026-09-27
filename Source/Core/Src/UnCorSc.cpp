@@ -345,12 +345,10 @@ void UObject::execBoolVariable( FFrame& Stack, RESULT_DECL )
 
 	// Get bool variable.
 	BYTE B = *Stack.Code++;
-#ifdef PLATFORM_DREAMCAST
-	UBoolProperty* Property;
-	__builtin_memcpy( &Property, Stack.Code, sizeof( Property ) );
-#else
-	UBoolProperty* Property = *(UBoolProperty**)Stack.Code;
-#endif
+	// Peek the variable token's property without consuming it: a 4-byte object index (ufront 2.83).
+	INT PropertyRef;
+	appMemcpy( &PropertyRef, Stack.Code, sizeof(PropertyRef) );
+	UBoolProperty* Property = (UBoolProperty*)UObject::GetScriptObject( PropertyRef );
 	(this->*GNatives[B])( Stack, NULL );
 	GProperty = Property;
 

@@ -713,7 +713,7 @@ public:
 	FArchive& operator<<( class FName& N )
 		{NAME_INDEX W=N.GetIndex(); return *this << W;}
 	FArchive& operator<<( class UObject*& Res )
-		{DWORD D = (DWORD)Res; return *this << D;}
+		{INT Ref = UObject::GetScriptRef( Res ); return *this << Ref;}	// An object index (ufront 2.83).
 	FArchive& operator<<( TCHAR* S )
 		{Serialize(S,appStrlen(S)+1); return *this;}
 	FArchive& operator<<( enum EExprToken E )
