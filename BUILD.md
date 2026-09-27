@@ -65,6 +65,63 @@ it whole-archives the headless package set (Core, Engine, Render, IpDrv, UWeb, F
 `System/` with no package `.so` beside it (no `libopenal.so.1` either: it links no audio or render device).
 v400 has no `compress` commandlet (retail v400 had none either).
 
+## 64-bit (LP64) — ufront 2.83
+
+UT99 runs as a 64-bit engine on Linux x86_64 and Android arm64 (and still on every 32-bit target), with the
+**retail 32-bit `.u` packages unchanged**. The plan, the evidence and the Unreal 1 playbook are in the monorepo:
+`docs/migration/steps/2.83-64bit-ue1.md`; the portable lessons in `docs/10` §10.
+
+| Preset | Output | Notes |
+|--------|--------|-------|
+| `native64` | `build-native64/` — `UnrealTournament`, `UCC/ucc-bin` (ELF 64-bit) | `UT_ALLOW_64BIT=ON`; needs the amd64 `libsdl2-dev` (see below) |
+| `native64-asan` | `build-native64-asan/` | AddressSanitizer; run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0:verify_asan_link_order=0` (the second because `stdbuf` preloads a library) |
+| `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` (aarch64, bionic) | headless server + commandlets only; `ANDROID_NDK_HOME=~/Android/Sdk/ndk/30.0.14904198` |
+| `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the 32-bit control on the same ARM device |
+
+**What makes it work** (each is a commit on `main`; the mechanisms are general, not `#if`-guarded):
+
+- **Script object references are 4-byte object indices** in memory (`UObject::GetScriptObject`), so the bytecode
+  keeps the layout the 32-bit compiler gave it: no jump, label, replication or saved-state offset moves.
+  The readers are `ALWAYS_INLINE` (the VM file is compiled at `-Og`): the index costs nothing measurable
+  (`U64Bench`, 9M iterations, i386: 0.68 s vs 0.69 s before 2.83).
+- **Every bytecode operand is read by copy** (`ReadScriptOperand<T>`): the stream is packed bytes, and 32-bit ARM
+  faults on an unaligned multi-word load (`execVectorConst`, SIGBUS).
+- **The mirror contract:** every header declaring a scripted native class or a script-mirrored struct is
+  `#pragma pack(push,4)`; object properties align to 4; `NativePlaceholderSize` (UnClass.cpp) gives the script
+  `int` stand-ins for C++ pointers (`ObjectInternal`, secondary vtables, private pointers, UWeb's TMaps) their
+  C++ size. A C++/script size mismatch is now **fatal** (`appErrorf`), not a warning.
+- **A None context clears its whole destination** (`execLet`): the compiler recorded 4 bytes for an object, and
+  `X = None.Y` left the high half of X's old pointer behind.
+- **The compiler writes the format's 32-bit value sizes on every host** (`ScriptFormatStructSize`): a 64-bit
+  `ucc make` produces a package byte-identical to the 32-bit one but for the GUID.
+- Registration stashes live in pointer-sized fields; `PTRINT`/`UPTRINT` wherever a pointer passes through an
+  integer; a POSIX build without SDL keeps time with `CLOCK_MONOTONIC`; ARM gets `-fsigned-char`.
+
+**Host prerequisite.** The amd64 SDL2 headers: `sudo apt install libsdl2-dev` (the i386 package stays). Without
+root, `apt-get download libsdl2-dev:amd64 && dpkg -x` into a local folder and configure with
+`-DCMAKE_CXX_FLAGS="-isystem <folder>/usr/include/x86_64-linux-gnu"` (only `_real_SDL_config.h` is missing;
+the runtime library and the GL link symlinks are already installed).
+
+**Test loops** (all headless):
+
+```bash
+tools/dev/mkrun-ut99.sh build-native64 /home/ion/native-runtrees/ut99-64      # + copy UCC/ucc-bin and libopenal.so.1
+cd /home/ion/native-runtrees/ut99-64/System
+gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make          # classes: shifted=1 (EditorEngine.Pad); structs: 0
+./ucc-bin server "DM-Deck16][?game=Botpack.DeathMatchPlus?mutator=U64Test.U64Mutator"   # U64 DONE passed=63 failed=0
+<repo>/tools/dev/botmatch.sh <server-tree> 300 [<client-tree>] [<map>]        # bots need MinPlayers in the ini
+```
+
+`tools/test/U64Test` is compiled by the **32-bit** `ucc make` (link `../U64Test` into the run tree, add
+`EditPackages=U64Test`) and run on every width. On the phone: push the asset tree to `/data/local/tmp/ut99/`
+(`adb push` per folder, ~16 s for 850 MB), push `ucc-bin`, run it from `adb shell`; a desktop client joins over
+Wi-Fi by the phone's address (UDP cannot be `adb forward`ed).
+
+⚠ **Open, and NOT a 64-bit defect:** a dedicated server crashes on the second or third map change
+(`Bad name index N/M` or `fread failed` while loading an object for the first time from a package that stayed
+loaded across the travel). It reproduces on i386 with the pre-2.83 engine too, is not a use-after-free ASan can
+see, and not a descriptor closed under a live `FILE*`. Reproduce: `botmatch.sh <tree> 150 "" "DM-Deck16][?FragLimit=2"`.
+
 ## Render drivers — fetched, not vendored
 
 The two shared HW render drivers are **pulled from their own GitHub repos at configure time** (CMake
@@ -99,8 +156,9 @@ One self-contained 32-bit `.exe`: `BUILD_STATIC` links every package in, so `app
 through the internal registry and there is **no `Core.dll`/`Engine.dll` and no `LoadLibrary`** — the same
 mechanism the web and Dreamcast builds use. `objdump -p` shows only stock system DLLs.
 
-⚠ **32-bit only.** `Source/CMakeLists.txt` demotes an x86_64 compiler to `-m32` and `FATAL_ERROR`s if it
-cannot. The toolchain file targets `i686-w64-mingw32`; it supplies only what a *cross* build cannot infer,
+⚠ **32-bit only on Windows.** LLP64 (Windows x64) has never been built, so `Source/CMakeLists.txt` refuses a 64-bit
+MSVC and the toolchain file targets `i686-w64-mingw32` (64-bit Linux and Android are the `native64` and
+`android-*` presets, ufront 2.83); it supplies only what a *cross* build cannot infer,
 and is the same MinGW-w64 GCC that MSYS2's `MINGW32` environment ships, so the preset also works from an
 MSYS2 prompt (where pacman's SDL2 answers instead of the fetched one).
 
