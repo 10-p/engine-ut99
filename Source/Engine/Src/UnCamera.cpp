@@ -772,16 +772,13 @@ UBOOL UViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 				IH.biClrImportant	= 0;
 				Ar->Serialize( &IH, sizeof(IH) );
 
-				// Colors.
-				#if _MSC_VER
+				// Colors, bottom row first.
+				// (ufront 2.83: one loop for every compiler. The non-MSVC branch ran i=SizeY..1, which read a
+				// whole row past the end of Buf and never wrote row 0: SIGSEGV when Buf ends on a page boundary
+				// -- the 64-bit XOpenGL census hit it on `shot` -- and a garbage row everywhere else.)
 				for( INT i=SizeY-1; i>=0; i-- )
 					for( INT j=0; j<SizeX; j++ )
 						Ar->Serialize( &Buf[i*SizeX+j], 3 );
-				#else
-				for( INT i=SizeY; i>0; i-- )
-					for( INT j=0; j<SizeX; j++ )
-						Ar->Serialize( &Buf[i*SizeX+j], 3 );
-				#endif
 
 				// Success.
 				delete Ar;
