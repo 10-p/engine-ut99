@@ -501,7 +501,7 @@ void UNOpenALAudioSubsystem::RegisterSound( USound* Sound )
 
 	alBufferData( Buf, Format, (const void*)WaveInfo.SampleDataStart, WaveInfo.SampleDataSize, *WaveInfo.pSamplesPerSec );
 
-	Sound->Handle = (void*)Buf;
+	Sound->Handle = (void*)(UPTRINT)Buf; // An AL buffer id parked in the engine's pointer-sized handle.
 	// v400 USound has no Looping field (v200 did). Looping is decided per-voice by sound slot at PlaySound
 	// time (ambient sounds loop), matching UT99's UGenericAudioSubsystem — see PlaySound below.
 
@@ -519,7 +519,7 @@ void UNOpenALAudioSubsystem::UnregisterSound( USound* Sound )
 
 	if( Sound->Handle )
 	{
-		ALuint Buf = (ALuint)Sound->Handle;
+		ALuint Buf = (ALuint)(UPTRINT)Sound->Handle;
 		check( alIsBuffer( Buf ) );
 
 		for( INT i = 0; i < MAX_SOURCES; ++i )
@@ -662,7 +662,7 @@ UBOOL UNOpenALAudioSubsystem::PlaySound( AActor* Actor, INT Id, USound* Sound, F
 	if( !Voice || !Sound || !Sound->Handle )
 		return false;
 
-	ALuint Buf = (ALuint)Sound->Handle;
+	ALuint Buf = (ALuint)(UPTRINT)Sound->Handle;
 	check( alIsBuffer( Buf ) );
 
 	Voice->Id = Id;

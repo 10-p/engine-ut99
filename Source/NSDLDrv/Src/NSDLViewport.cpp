@@ -306,7 +306,7 @@ void UNSDLViewport::UpdateWindowFrame()
 //
 // Open a viewport window.
 //
-void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY )
+void UNSDLViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY )
 {
 	guard(UNSDLViewport::OpenWindow);
 	check(Actor);
@@ -389,7 +389,7 @@ void UNSDLViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX,
 	{
 		QWORD ParentPtr;
 		Parse( appCmdLine(), TEXT("HWND="), ParentPtr );
-		InParentWindow = (DWORD)ParentPtr;
+		InParentWindow = (PTRINT)ParentPtr;
 	}
 
 	if( Temporary )

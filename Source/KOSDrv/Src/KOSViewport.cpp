@@ -173,7 +173,7 @@ void UKOSViewport::UpdateWindowFrame()
 //
 // Open a viewport window.
 //
-void UKOSViewport::OpenWindow( DWORD InParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY )
+void UKOSViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY )
 {
 	guard(UKOSViewport::OpenWindow);
 	check(Actor);

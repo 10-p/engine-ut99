@@ -42,7 +42,7 @@ class KOSDRV_API UKOSViewport : public UViewport
 	virtual void Repaint( UBOOL Blit );
 	virtual void SetModeCursor();
 	virtual void UpdateWindowFrame();
-	virtual void OpenWindow( DWORD ParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY );
+	virtual void OpenWindow( PTRINT ParentWindow, UBOOL Temporary, INT NewX, INT NewY, INT OpenX, INT OpenY );
 	virtual void CloseWindow();
 	virtual void UpdateInput( UBOOL Reset );
 	virtual void* GetWindow();
