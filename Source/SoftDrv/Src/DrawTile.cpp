@@ -3224,7 +3224,10 @@ void USoftwareRenderDevice::DrawTile( FSceneNode* Frame, FTextureInfo& Texture, 
 	{
 		// Allocate a new Spritepalet, including the (colordepth specific) palette memory.
 		SpritePalet = (LitPalette*)GCache.Create( CacheID, Item, sizeof( LitPalette ) +  NewPaletteSize );
-		SpritePalet->OutPalette.PtrVOID =  ((BYTE*)&SpritePalet->OutPalette + 4) ; // point to allocated palette 
+		// The palette memory follows the struct (ufront 2.83: it was `&OutPalette + 4`, which assumed a 4-byte
+		// pointer -- on LP64 the palette overwrote the pointer's own high half, and the next write went
+		// through it: SIGSEGV in the first translucent sprite). The same address on every 32-bit target.
+		SpritePalet->OutPalette.PtrVOID = (BYTE*)(SpritePalet + 1); // point to allocated palette
 		RemakeColors = 1;
 	}
 
