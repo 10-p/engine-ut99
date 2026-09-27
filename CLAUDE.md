@@ -2,7 +2,7 @@
 
 **What this is:** the **private** engine repo for **UnrealTournament (1999), Unreal Engine 1 v400**, web
 port. It holds engine source only and produces a **WASM artifact** (+ native binaries). It is **not** the
-product on its own — the public monorepo `ufront` (`/home/ion/ufrontend`) consumes this engine's WASM
+product on its own — the public monorepo `ufront` (`10-p/unreal-frontend-arch-private`) consumes this engine's WASM
 artifact, owns the host page / UI / build assembly, and owns the browser glue behind a thin **ABI shim**.
 
 Created by **step 2.7** of the ufront re-architecture — the **second UE1 target** (after `engine-unreal1`,
@@ -13,18 +13,18 @@ UT99 v400 C++ engine — the hard fresh-toolchain work (ASM off, static package 
 struct-packing fix, socket shims) was already done there; **step 2.7 adds the web (Emscripten) layer**.
 
 ## Map of the world
-| Thing | Path | Role |
+| Thing | Where | Role |
 |-------|------|------|
-| This engine repo (private) | `/home/ion/engines/engine-ut99` | UT99 v400 source → WASM/native artifacts |
-| The WASM template (sibling) | `/home/ion/engines/engine-unreal1` | the UE1-v200 web port — the pattern the web layer mirrors |
-| Other sibling | `/home/ion/engines/engine-ut2004` | the UE2.5 port — origin of the exception-safe-loading patterns |
-| Public monorepo | `/home/ion/ufrontend` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
-| Game assets (never in git) | `/home/ion/ut99-assets` | retail UT99 v400, `$UT99_ASSETS_DIR`; 16 packages + 64 maps |
+| This engine repo (private) | `10-p/engine-ut99` | UT99 v400 source → WASM/native artifacts |
+| The WASM template (sibling) | `10-p/engine-unreal1` | the UE1-v200 web port — the pattern the web layer mirrors |
+| Other sibling | `10-p/engine-ut2004` | the UE2.5 port — origin of the exception-safe-loading patterns |
+| Public monorepo | `10-p/unreal-frontend-arch-private` | consumes the artifact; host/UI/glue/build; **migration state lives here** |
+| Game assets (never in git) | any local folder | retail UT99 v400; 16 packages + 64 maps; not read by any build |
 | Base-import reference | [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) | Dreamcast/desktop UT99 port = the `upstream` remote |
-| Android reference (ideas) | `/home/ion/UTA` | `Andiweli/UT99-Android` — vendors ut99dc; SDL2 glue ideas only |
+| Android reference (ideas) | [Andiweli/UT99-Android](https://github.com/Andiweli/UT99-Android) | `Andiweli/UT99-Android` — vendors ut99dc; SDL2 glue ideas only |
 
 > **Migration plan & durable state are in the monorepo**, not here:
-> `/home/ion/ufrontend/docs/migration/STATE.md` (read first if continuing the migration),
+> `docs/migration/STATE.md` (read first if continuing the migration),
 > `ROADMAP.md`, `steps/2.7-engine-ut99.md` (this step's spec + decisions).
 
 ## Status (Phase 2, step 2.7 — IN PROGRESS)

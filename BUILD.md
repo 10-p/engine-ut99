@@ -2,10 +2,10 @@
 
 The **private engine repo** for the **UnrealTournament (1999), Unreal Engine 1 v400** web port — engine
 source only. Game assets (retail UT99 v400: maps/textures/music/sounds + the `.u`/`.int` packages) live
-**out of tree** at `$UT99_ASSETS_DIR` (default `/home/ion/ut99-assets`) and are never tracked here. Base
+**out of tree** and are never tracked here; no build reads them. Base
 import: [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) (kept as the `upstream` remote).
 
-The public monorepo `ufront` (`/home/ion/ufrontend`) consumes this repo's WASM artifact, owns the host page
+The public monorepo `ufront` ([10-p/unreal-frontend-arch-private](https://github.com/10-p/unreal-frontend-arch-private)) consumes this repo's WASM artifact, owns the host page
 / UI / glue / assembly, and injects the heavy glue behind the thin ABI shim. **Migration state lives in the
 monorepo** (`docs/migration/STATE.md`), not here.
 
@@ -13,17 +13,17 @@ monorepo** (`docs/migration/STATE.md`), not here.
 
 | Preset | Output | Purpose |
 |--------|--------|---------|
-| `native` | `build-native/UnrealTournament/UnrealTournament` + `*.so` | 32-bit native SDL2/GLES2 twin (the **compat oracle**; needs `libsdl2-dev:i386`) |
-| `wasm` | `build-wasm/…/Launch.{js,wasm,data}` + `meta.json` | Emscripten **dev** (assertions + debug) — *wired in step 2.7b* |
-| `wasm-perf` | `build-wasm-perf/…` | Emscripten **product** (`-O3`) — what `ufront` consumes — *wired in step 2.7b* |
-| `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` | 32-bit **Windows** binary via MinGW-w64 — *step 2.33, see below* |
+| `native` | `build-native/UnrealTournament/UnrealTournament` + `libopenal.so.1` | 32-bit native SDL2/GLES2 twin (the **compat oracle**; needs a 32-bit SDL2, see README) |
+| `wasm` | `build-wasm/SDLLaunch/SDLLaunch.{js,wasm,data}` + `meta.json` | Emscripten **dev** (assertions + debug) |
+| `wasm-perf` | `build-wasm-perf/SDLLaunch/…` | Emscripten **product** (`-O3`) — what `ufront` consumes |
+| `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` + `OpenAL32.dll` | 32-bit **Windows** binary via MinGW-w64 — *step 2.33, see below* |
 
 ```bash
 cd Source
 cmake --preset native && cmake --build --preset native -j"$(nproc)"        # the native twin / oracle
-# (2.7b+) source ~/emsdk/emsdk_env.sh   # sets $EMSDK for the toolchain file
-# (2.7b+) cmake --preset wasm-perf && cmake --build --preset wasm-perf -j"$(nproc)"
-# (2.33)  cmake --preset windows   && cmake --build --preset windows   -j"$(nproc)"
+cmake --preset windows   && cmake --build --preset windows   -j"$(nproc)"        # the Windows exe
+source <emsdk>/emsdk_env.sh   # emsdk 5.0.7; sets $EMSDK for the toolchain file
+cmake --preset wasm-perf && cmake --build --preset wasm-perf -j"$(nproc)"        # the web build
 ```
 
 ### `meta.json` records what was fetched (ufront 2.70)
@@ -44,8 +44,8 @@ module, generalised — `ufront_openal_soft(PLATFORM WEB|NATIVE …)`) FetchCont
 (`10-p/openal-soft-web` `ufront/web`) and builds it SHARED for the `native` preset. The launcher links it
 (`DT_NEEDED libopenal.so.1`), carries `$ORIGIN` in its rpath and copies `libopenal.so.1` beside itself, so
 **a run tree that takes the binary must take `libopenal.so.1` with it** (the loader stops before `main`
-otherwise). Backends are whatever this host's headers allowed at configure time — PulseAudio, ALSA, OSS on
-this box, each dlopen'd at run time — and the configure log says which
+otherwise). Backends are whatever this host's headers allowed at configure time — e.g. PulseAudio, ALSA,
+OSS, each dlopen'd at run time — and the configure log says which
 (`Building OpenAL with support for the following backends`). `-DUT_BUNDLED_OPENAL=OFF` restores the system
 library. Why: the system library is whatever the distro built, so the native binary carries the fork to play
 what the web plays.
@@ -104,8 +104,8 @@ package shows up as). `ucc-bin` needs neither.
 **Test loops** (all headless):
 
 ```bash
-tools/dev/mkrun-ut99.sh build-native64 /home/ion/native-runtrees/ut99-64      # + copy UCC/ucc-bin and libopenal.so.1
-cd /home/ion/native-runtrees/ut99-64/System
+tools/dev/mkrun-ut99.sh build-native64 <run-tree>      # + copy UCC/ucc-bin and libopenal.so.1
+cd <run-tree>/System
 gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make          # classes: shifted=1 (EditorEngine.Pad); structs: 0
 DISPLAY=:98 gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./UnrealTournament -SOFTWARERENDERER   # client host: 0 / 0
 ./ucc-bin server "DM-Deck16][?game=Botpack.DeathMatchPlus?mutator=U64Test.U64Mutator"   # U64 DONE passed=63 failed=0
@@ -169,8 +169,8 @@ its repo, then bumping the pinned ref here (`XOPENGL_GIT_TAG` / `UTGLR_GIT_TAG`;
 reproducibility). To build against a **local checkout** without pushing (edit → build → push → bump ref):
 
 ```bash
-cmake --preset native -DFETCHCONTENT_SOURCE_DIR_XOPENGLDRV=/home/ion/engines/XOpenGLDrv
-cmake --preset native -DFETCHCONTENT_SOURCE_DIR_UTGLR=/home/ion/engines/utglr-copy
+cmake --preset native -DFETCHCONTENT_SOURCE_DIR_XOPENGLDRV=<path>/XOpenGLDrv
+cmake --preset native -DFETCHCONTENT_SOURCE_DIR_UTGLR=<path>/utglr-copy
 ```
 
 The first configure of a fresh build dir needs network (the fetch); subsequent configures reuse `_deps/`.
@@ -182,9 +182,10 @@ cd Source
 cmake --preset windows && cmake --build --preset windows -j"$(nproc)"   # -> build-windows/UnrealTournament/UnrealTournament.exe
 ```
 
-One self-contained 32-bit `.exe`: `BUILD_STATIC` links every package in, so `appGetDllHandle` resolves
+One 32-bit `.exe` (plus `OpenAL32.dll` beside it): `BUILD_STATIC` links every package in, so `appGetDllHandle` resolves
 through the internal registry and there is **no `Core.dll`/`Engine.dll` and no `LoadLibrary`** — the same
-mechanism the web and Dreamcast builds use. `objdump -p` shows only stock system DLLs.
+mechanism the web and Dreamcast builds use. `objdump -p` shows only stock system DLLs and `OpenAL32.dll`; libgcc, libstdc++ and winpthread are linked
+statically (a posix-thread-model MinGW such as MSYS2's or Arch's otherwise adds `libwinpthread-1.dll`).
 
 ⚠ **32-bit only on Windows.** LLP64 (Windows x64) has never been built, so `Source/CMakeLists.txt` refuses a 64-bit
 MSVC and the toolchain file targets `i686-w64-mingw32` (64-bit Linux and Android are the `native64` and
@@ -237,8 +238,9 @@ Two ABI differences, both real:
 
 ```bash
 Xvfb :99 -screen 0 1024x768x24 &
-DISPLAY=:99 WINEPREFIX=~/.wine-u1 wine UnrealTournament.exe -SOFTWARERENDERER   # or -NULLRENDERER
-WINEPREFIX=~/.wine-u1 wineserver -k          # ⚠ always; wine leaves processes behind
+export WINEDLLOVERRIDES="mscoree,mshtml="   # a new prefix otherwise waits on the Mono/Gecko installer dialogs
+DISPLAY=:99 WINEPREFIX=<prefix> wine UnrealTournament.exe -SOFTWARERENDERER   # or -NULLRENDERER
+WINEPREFIX=<prefix> wineserver -k          # ⚠ always; wine leaves processes behind
 ```
 
 Assert on **milestones in `System/UnrealTournament.log`**, not on a window appearing. Run-tree traps: copy
@@ -263,13 +265,12 @@ ut99dc already builds native/desktop; two gaps had to be filled for a fresh gcc-
   doesn't commit them. Vendored glad 0.1.36 (gles2, with `APPLE/EXT_texture_format_BGRA8888` + `MESA_bgra` +
   `EXT_depth_clamp` — exactly the extensions `NOpenGLESDrv.cpp` references) + glm, from engine-unreal1.
 
-The `native` preset builds the minimal client (`BUILD_EDITOR=OFF`, `BUILD_DCUTIL=OFF`): Core, Engine,
-Render, IpDrv, Fire, NSDLDrv, NOpenGLESDrv, SoundDrv, UnrealTournament.
+At step 2.7a the `native` preset was the minimal client; it now links the full static set (Editor, every
+renderer, OpenAL — see `Source/CMakePresets.json`).
 
-## The web port (WASM) — step 2.7b+
+## The web port (WASM)
 
-Mirrors engine-unreal1's web layer (the portable UE1→web lessons, monorepo `docs/10`). To be filled in as
-each slice lands:
+Mirrors engine-unreal1's web layer (the portable UE1→web lessons, monorepo `docs/10`):
 - **`if(EMSCRIPTEN)` CMake branch** — `BUILD_STATIC`, `ASM=0`, exceptions-off, `-fpack-struct=4`, the
   web-only `WebRTCDrv`, GLES2→WebGL, POSIX/socket guards. *(2.7b)*
 - **Main-loop inversion** (`Source/UnrealTournament/Src/Launch.cpp`) — the blocking `MainLoop` yields each

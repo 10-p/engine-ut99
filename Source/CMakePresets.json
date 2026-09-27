@@ -5,7 +5,7 @@
     {
       "name": "native",
       "displayName": "Native (SDL2, all 5 renderers) -- the WASM twin / compat oracle, one binary",
-      "description": "32-bit native build (needs libsdl2-dev:i386). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). BUILD_STATIC links every package into ONE UnrealTournament -- no Core.so/Engine.so beside it, and appGetDllHandle resolves through the internal UNREAL_STATIC registry instead of dlopen (ufront 2.34; system libs SDL2/OpenAL/libGL stay dynamic). NOpenGLES and XOpenGL co-link in that single binary because Thirdparty/glad_es now carries a private symbol prefix -- keeping the compat oracle intact through the switch. Builds in build-native/.",
+      "description": "32-bit native build (needs a 32-bit SDL2). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). BUILD_STATIC links every package into ONE UnrealTournament -- no Core.so/Engine.so beside it, and appGetDllHandle resolves through the internal UNREAL_STATIC registry instead of dlopen (ufront 2.34; system libs SDL2/OpenAL/libGL stay dynamic). NOpenGLES and XOpenGL co-link in that single binary because Thirdparty/glad_es now carries a private symbol prefix -- keeping the compat oracle intact through the switch. Builds in build-native/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-native",
       "cacheVariables": {
@@ -86,7 +86,7 @@
     {
       "name": "wasm",
       "displayName": "Web (Emscripten/WASM) -- dev default",
-      "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
+      "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
@@ -110,7 +110,7 @@
     },
     {
       "name": "windows",
-      "displayName": "Windows x86 (MinGW-w64) -- one self-contained .exe",
+      "displayName": "Windows x86 (MinGW-w64) -- one .exe + OpenAL32.dll",
       "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the SAME preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe — no Core.dll/Engine.dll, and appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers: UTGLR (OpenGLDrv) + XOpenGLDrv, both hardware GL through the system opengl32 (they resolve every entry point via SDL_GL_GetProcAddress, so nothing GL ships beside the exe), plus SoftDrv + NullDrv (CPU-only, so the build still verifies headless under wine+Xvfb). NOpenGLESDrv is OFF here: it and XOpenGL vendor clashing glad globals in a non-Emscripten static link. Audio is the REAL NOpenALDrv (OpenAL Soft + libxmp), whose OpenAL32.dll the build copies next to the exe — a silent binary is not a usable default. [ufront 2.33, renderers + audio 2.34] BUILD_EDITOR is ON for the same reason the web build sets it: UT99 loads bot meshes/skins through Editor classes, so standalone bot matches abort without it. Builds in build-windows/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-windows",
