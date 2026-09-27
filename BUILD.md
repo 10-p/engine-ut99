@@ -117,10 +117,10 @@ gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make          #
 (`adb push` per folder, ~16 s for 850 MB), push `ucc-bin`, run it from `adb shell`; a desktop client joins over
 Wi-Fi by the phone's address (UDP cannot be `adb forward`ed).
 
-⚠ **Open, and NOT a 64-bit defect:** a dedicated server crashes on the second or third map change
-(`Bad name index N/M` or `fread failed` while loading an object for the first time from a package that stayed
-loaded across the travel). It reproduces on i386 with the pre-2.83 engine too, is not a use-after-free ASan can
-see, and not a descriptor closed under a live `FILE*`. Reproduce: `botmatch.sh <tree> 150 "" "DM-Deck16][?FragLimit=2"`.
+**Fixed on the way (not 64-bit): a dedicated server died at the 2nd or 3rd map change** (`Bad name index`,
+`fread failed`). `appCreateProc` had its fork branches inverted (as in Epic's v400 Linux code), so the stats
+log's batcher launch at every match end left a full copy of the server running on the same open package files.
+`6a74d44`; `botmatch.sh <tree> 300 "" "DM-Deck16][?FragLimit=2"` now plays five or six maps.
 
 ## Render drivers — fetched, not vendored
 
