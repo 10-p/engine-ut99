@@ -14,3 +14,8 @@ build/
 /build-windows/
 __smoke.html
 /build-soft/
+# ufront 2.83: the 64-bit trees, and a script package compiled from tools/test (a build product)
+/build-native64/
+/build-native64-asan/
+/build-android-*/
+*.u

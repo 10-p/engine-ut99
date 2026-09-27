@@ -21,6 +21,35 @@
       }
     },
     {
+      "name": "native64",
+      "displayName": "Native x86_64 (LP64) -- the 64-bit twin of `native` (ufront 2.83)",
+      "description": "64-bit (LP64) native build: the same one-binary package set as `native`, compiled for x86_64 instead of -m32. Needs the amd64 SDL2 development files (libsdl2-dev) for the client; ucc-bin needs no SDL, GL or audio. Retail 32-bit .u packages run unchanged: script object references stay 4-byte slots holding the object index, and the reflected-class headers are pack(4) (ufront docs/migration/steps/2.83-64bit-ue1.md). Builds in build-native64/.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-native64",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "UT_ALLOW_64BIT": "ON",
+        "BUILD_EDITOR": "ON",
+        "BUILD_DCUTIL": "OFF",
+        "BUILD_XOPENGLDRV": "ON",
+        "BUILD_NOPENGLDRV": "ON",
+        "BUILD_NOPENALDRV": "ON",
+        "BUILD_STATIC": "ON"
+      }
+    },
+    {
+      "name": "native64-asan",
+      "inherits": "native64",
+      "displayName": "Native x86_64 + AddressSanitizer (ufront 2.83)",
+      "description": "native64 with -fsanitize=address. Run with ASAN_OPTIONS=alloc_dealloc_mismatch=0 (UE1's sized operator delete pairing is reported but benign). Put the binary in the run tree's System/ itself: the engine takes its base dir from the executable path. Builds in build-native64-asan/.",
+      "binaryDir": "${sourceDir}/../build-native64-asan",
+      "cacheVariables": {
+        "CMAKE_C_FLAGS": "-fsanitize=address -fno-omit-frame-pointer",
+        "CMAKE_CXX_FLAGS": "-fsanitize=address -fno-omit-frame-pointer",
+        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address"
+      }
+    },
+    {
       "name": "wasm",
       "displayName": "Web (Emscripten/WASM) -- dev default",
       "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
@@ -70,6 +99,8 @@
   ],
   "buildPresets": [
     { "name": "native", "configurePreset": "native" },
+    { "name": "native64", "configurePreset": "native64" },
+    { "name": "native64-asan", "configurePreset": "native64-asan" },
     { "name": "wasm", "configurePreset": "wasm" },
     { "name": "wasm-debug", "configurePreset": "wasm-debug" },
     { "name": "wasm-perf", "configurePreset": "wasm-perf" },
