@@ -52,8 +52,8 @@ sleep 1
 # window -- the capture comes out pure white with the engine happily rendering behind it.
 ( cd "$RUN/System" && DISPLAY="$DISP" SDL_VIDEODRIVER=x11 SDL_RENDER_DRIVER=software \
     LD_LIBRARY_PATH="$RUN/System:${LD_LIBRARY_PATH:-}" \
-    ./UnrealTournament "$MAP" -log $DEVARG "$@" >/tmp/ut99run.log 2>&1 ) &
-GPID=$!
+    exec ./UnrealTournament "$MAP" -log $DEVARG "$@" >/tmp/ut99run.log 2>&1 ) &
+GPID=$!	# exec: the subshell BECOMES the game, so this kill below reaches it (it used to leave every game running)
 
 sleep "$SECS"
 
@@ -64,7 +64,7 @@ kill "$XPID" 2>/dev/null; wait "$XPID" 2>/dev/null
 
 [ -f "$LOG" ] && cp -f "$LOG" "$OUT.log"
 
-SEL=$(grep -oiE 'default render device [A-Za-z.]+' "$OUT.log" 2>/dev/null | tail -1)
+SEL=$(grep -oiE '(selects|persisted user-selected|default) render device [A-Za-z.]+' "$OUT.log" 2>/dev/null | tail -1)
 [ -z "$SEL" ] && SEL=$(grep -oiE 'RenderDevice: [A-Za-z.]+' "$OUT.log" 2>/dev/null | tail -1)
 
 if [ -s "$XWD" ]; then
