@@ -2262,7 +2262,7 @@ UBOOL UEditorEngine::Exec( const TCHAR* Stream, FOutputDevice& Ar )
 				if( Cast<ATeleporter>(Level->Actors(i)) )
 				{
 					ATeleporter& Teleporter = *(ATeleporter *)Level->Actors(i);
-					Results->Logf( TEXT("   %s\r\n"), Teleporter.URL );
+					Results->Logf( TEXT("   %s\r\n"), *Teleporter.URL );
 					if( appStrchr(*Teleporter.URL,'//') )
 						External++;
 					else

@@ -263,12 +263,12 @@ UObject* UClassFactoryUC::FactoryCreateText
 	// Handle failure.
 	if( ClassName==TEXT("") || (BaseClassName==TEXT("") && ClassName!=TEXT("Object")) )
 	{
-		Warn->Logf( TEXT("Bad class definition '%s'/'%s'/%i/%i"), ClassName, BaseClassName, BufferEnd-InBuffer, appStrlen(InBuffer) );
+		Warn->Logf( TEXT("Bad class definition '%s'/'%s'/%i/%i"), *ClassName, *BaseClassName, (INT)(BufferEnd-InBuffer), appStrlen(InBuffer) );
 		return NULL;
 	}
 	else if( ClassName!=*Name )
 	{
-		Warn->Logf( TEXT("Script vs. class name mismatch (%s/%s)"), *Name, ClassName );		
+		Warn->Logf( TEXT("Script vs. class name mismatch (%s/%s)"), *Name, *ClassName );		
 	}
 
 	UClass* ResultClass = FindObject<UClass>( InParent, *ClassName );
