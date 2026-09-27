@@ -432,11 +432,15 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 				{
 					if( GLayoutSizes[li] != PropertiesSize )
 					{
+						// ufront 2.83: FATAL. C++ and script read the same object through two layouts; when
+						// they disagree every access past the first difference is silent corruption, and an
+						// object allocated at the script size is smaller than the class C++ writes through.
+						// The .u packages are fixed, so a mismatch is always our header or the placeholder
+						// table (NativePlaceholderSize): run tools/dev/layout-sweep.gdb to find the member.
 						debugf( NAME_Warning, TEXT("[layout] native %s: C++ sizeof=%i but script layout=%i -- member-offset shift risk"),
 							GetName(), GLayoutSizes[li], PropertiesSize );
-						// ufront 2.83 bring-up: objects are allocated at PropertiesSize, so never let it be
-						// smaller than the C++ class that native code writes through.
-						PropertiesSize = Max( PropertiesSize, GLayoutSizes[li] );
+						appErrorf( TEXT("Native class %s: C++ sizeof=%i but script layout=%i. The C++ header and the package disagree (tools/dev/layout-sweep.gdb names the member)."),
+							GetName(), GLayoutSizes[li], PropertiesSize );
 					}
 					break;
 				}
