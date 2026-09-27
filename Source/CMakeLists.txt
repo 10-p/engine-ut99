@@ -144,6 +144,10 @@ if(EMSCRIPTEN)
   # -> InvalidStateError (Emscripten #24792). It also gives every object — including the FetchContent'd
   # gl4es, XOpenGL and utglr trees — the atomics/bulk-memory features a shared-memory link expects.
   add_compile_options(-pthread)
+  # The SDL2 port must be requested at COMPILE time too: Core/NSDLDrv include <SDL2/SDL.h>, which only
+  # exists in the Emscripten cache once the port is installed. As a link-only flag a fresh emsdk fails
+  # with "'SDL2/SDL.h' file not found".
+  add_compile_options(-sUSE_SDL=2)
   # ufront 2.7c: UE1 assumes Win32 /Zp4 struct packing — the reflected C++ class sizes must equal the
   # UnrealScript-declared property sizes (checked: sizeof(UFireTexture)==GetPropertiesSize()). On native
   # x86-32 the default layout happens to match, but wasm32 (like Android ARM32) does not — force it, per
@@ -309,6 +313,9 @@ if(TARGET_IS_WINDOWS)
     # the binary runs on the build machine and dies with "not found" everywhere else. With it, the only
     # imports left are stock system DLLs, so the static build really is a single self-contained file.
     add_link_options(-static-libgcc -static-libstdc++)
+    # A posix-thread-model MinGW (MSYS2, Arch/Fedora packages) also pulls in libwinpthread-1.dll through
+    # libstdc++; link it statically too, or the exe does not start outside the build machine.
+    add_link_options(-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic)
     # ufront 2.33 — UE1 assumes Win32 /Zp4 struct packing: every reflected C++ class size must equal the
     # UnrealScript-declared property size. Native x86-32 Linux happens to match because its ABI aligns
     # double/int64 to 4; MinGW follows the MSVC ABI and aligns them to 8, so every class with a double
