@@ -16,7 +16,7 @@
 #elif defined(PLATFORM_DREAMCAST)
 #include <kos.h>
 #include <dirent.h>
-#else
+#elif !defined(PLATFORM_POSIX)
 #error "Unsupported platform."
 #endif
 
@@ -55,6 +55,18 @@
 // Core includes.
 #include "CorePrivate.h"
 #include "UnUnix.h"
+
+// ufront 2.83 -- a POSIX build without SDL (the headless Android ucc-bin) times itself with the monotonic
+// clock. Before, appSeconds() and appCycles() returned 0 there: engine time never advanced.
+#if defined(PLATFORM_POSIX) && !defined(PLATFORM_SDL) && !defined(PLATFORM_DREAMCAST)
+#define UT_POSIX_CLOCK 1
+static QWORD PosixMonotonicNs()
+{
+	timespec Now;
+	clock_gettime( CLOCK_MONOTONIC, &Now );
+	return (QWORD)Now.tv_sec * 1000000000ull + (QWORD)Now.tv_nsec;
+}
+#endif
 /*-----------------------------------------------------------------------------
 	Globals
 -----------------------------------------------------------------------------*/
@@ -679,6 +691,19 @@ CORE_API const char* appBaseDir()
 		char* BasePath = SDL_GetBasePath();
 		appStrncpy( BaseDir, BasePath, sizeof(BaseDir) );
 		SDL_free( BasePath );
+#elif defined(UT_POSIX_CLOCK)
+		// What SDL_GetBasePath() does on Linux and Android: the executable's own directory (ufront 2.83).
+		char Exe[1024];
+		ssize_t Len = readlink( "/proc/self/exe", Exe, sizeof(Exe)-1 );
+		if( Len > 0 )
+		{
+			Exe[Len] = 0;
+			if( char* Slash = strrchr( Exe, '/' ) )
+			{
+				Slash[1] = 0;
+				appStrncpy( BaseDir, Exe, sizeof(BaseDir) );
+			}
+		}
 #elif defined(PLATFORM_DREAMCAST)
 		// try PC/SD/HDD first, then CD
 		static const char* Paths[] =
@@ -813,6 +838,17 @@ void appPlatformInit()
 	// Get CPU info.
 	GPageSize = 4096; // TODO: sysconf?
 	GProcessorCount = SDL_GetCPUCount();
+#elif defined(UT_POSIX_CLOCK)
+	debugf( NAME_Init, TEXT("Detected: POSIX") );
+
+	// CPU speed: the monotonic clock counts nanoseconds (ufront 2.83).
+	DOUBLE Frequency = 1000000000.0;
+	GSecondsPerCycle = 1.0 / Frequency;
+	debugf( NAME_Init, TEXT("CPU Timer Freq=%f Hz"), (FLOAT)Frequency );
+
+	// Get CPU info.
+	GPageSize = sysconf( _SC_PAGESIZE );
+	GProcessorCount = sysconf( _SC_NPROCESSORS_ONLN );
 #endif // PLATFORM_
 	unguard;
 }
@@ -904,6 +940,8 @@ CORE_API DOUBLE appSeconds()
 	return (DOUBLE)SDL_GetPerformanceCounter() * GSecondsPerCycle;
 #elif defined(PLATFORM_DREAMCAST)
 	return (DOUBLE)timer_us_gettime64() * GSecondsPerCycle;
+#elif defined(UT_POSIX_CLOCK)
+	return (DOUBLE)PosixMonotonicNs() * GSecondsPerCycle;
 #else
 	return 0;
 #endif
@@ -919,6 +957,8 @@ CORE_API DWORD appCycles()
 	return SDL_GetPerformanceCounter();
 #elif defined(PLATFORM_DREAMCAST)
 	return (DOUBLE)timer_us_gettime64();
+#elif defined(UT_POSIX_CLOCK)
+	return (DWORD)PosixMonotonicNs();
 #else
 	return 0;
 #endif
