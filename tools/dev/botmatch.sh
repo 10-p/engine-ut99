@@ -47,9 +47,11 @@ while [ $((SECONDS-T0)) -lt "$SECS" ]; do
     echo "$((SECONDS-T0))s time=$(q '\level_property\TimeSeconds\') bots=$(q '\game_property\NumBots\') humans=$(q '\game_property\NumPlayers\') ended=$(q '\game_property\bGameEnded\')" >> "$OUT/poll.txt"
     sleep 15
 done
-kill "$CPID" "$SPID" 2>/dev/null || true
-pkill -f "^./UnrealTournament 127.0.0.1:$PORT" 2>/dev/null || true
-pkill -f "^./ucc-bin server $MAP" 2>/dev/null || true
+# Stop the GAME, not the xvfb-run wrapper: xvfb-run then shuts its own X server down (killing the wrapper
+# orphans Xvfb). The server's `timeout` forwards SIGTERM to ucc-bin. (No `pkill -f` on the map: it is a
+# regex and a map like DM-Deck16][ is not a valid one.)
+pkill -f "^./UnrealTournament 127.0.0.1:$PORT " 2>/dev/null || true
+kill "$SPID" 2>/dev/null || true
 wait 2>/dev/null || true
 
 NG=$(ls -t "$SRV"/Logs/Unreal.ngLog.* 2>/dev/null | head -1 || true)
