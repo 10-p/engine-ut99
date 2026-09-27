@@ -97,10 +97,9 @@ UT99 runs as a 64-bit engine on Linux x86_64 and Android arm64 (and still on eve
 - Registration stashes live in pointer-sized fields; `PTRINT`/`UPTRINT` wherever a pointer passes through an
   integer; a POSIX build without SDL keeps time with `CLOCK_MONOTONIC`; ARM gets `-fsigned-char`.
 
-**Host prerequisite.** The amd64 SDL2 headers: `sudo apt install libsdl2-dev` (the i386 package stays). Without
-root, `apt-get download libsdl2-dev:amd64 && dpkg -x` into a local folder and configure with
-`-DCMAKE_CXX_FLAGS="-isystem <folder>/usr/include/x86_64-linux-gnu"` (only `_real_SDL_config.h` is missing;
-the runtime library and the GL link symlinks are already installed).
+**Host prerequisite.** The amd64 SDL2 development package, `libsdl2-dev:amd64`, installed beside the i386 one
+(`dpkg -l libsdl2-dev:amd64`; `/usr/include/x86_64-linux-gnu/SDL2/_real_SDL_config.h` is the file a missing
+package shows up as). `ucc-bin` needs neither.
 
 **Test loops** (all headless):
 
