@@ -859,8 +859,8 @@ void UClass::Register()
 	Super::Register();
 
 	// Get stashed registration info.
-	const TCHAR* InClassConfigName = *(TCHAR**)&ClassConfigName;
-	ClassConfigName = InClassConfigName;
+	ClassConfigName = NativeConfigNameStash;
+	NativeConfigNameStash = NULL;
 
 	// Init default object.
 	Defaults.Empty( GetPropertiesSize() );
@@ -1117,9 +1117,8 @@ UClass::UClass
 ,	NetFields				()
 ,	ClassConstructor		( InClassConstructor )
 ,	ClassStaticConstructor	( InClassStaticConstructor )
-{
-	*(const TCHAR**)&ClassConfigName = InConfigName;
-}
+,	NativeConfigNameStash	( InConfigName )
+{}
 
 IMPLEMENT_CLASS(UClass);
 
