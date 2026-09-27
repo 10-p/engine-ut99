@@ -6,6 +6,16 @@
 		* Created by Tim Sweeney
 =============================================================================*/
 
+// ufront 2.83 -- the UnrealScript mirror contract. A native class is laid out twice: by the C++ compiler
+// from its header, and by UStruct::Link from the property list in the .u package, which puts every
+// member on a 4-byte boundary (Win32 /Zp4, what Epic compiled with). The two must agree member for
+// member. On 32-bit targets they do by construction (i386 aligns nothing past 4, and the web and MinGW
+// builds pass -fpack-struct=4). On LP64 a pointer, TArray or FString would align to 8, so every header
+// that declares a scripted native class, or a struct the script mirrors, packs its declarations to 4
+// explicitly. That is a no-op on every 32-bit target. -fpack-struct=4 cannot do this job at 64-bit: it
+// would also repack every system and library struct the engine includes.
+#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+
 /*-----------------------------------------------------------------------------
 	Core enumerations.
 -----------------------------------------------------------------------------*/
@@ -984,3 +994,5 @@ public:
 /*----------------------------------------------------------------------------
 	The End.
 ----------------------------------------------------------------------------*/
+
+#pragma pack (pop)

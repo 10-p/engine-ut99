@@ -12,6 +12,9 @@
 
 #include "Engine.h"
 
+#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+
+// FBuilderPoly is the script struct BrushBuilder.BuilderPoly, and TArray<FBuilderPoly> strides by its size.
 struct EDITOR_API FBuilderPoly
 {
 	TArray<INT> VertexIndices;
@@ -502,4 +505,6 @@ EDITOR_API UBOOL GetFSCALE( const TCHAR* Stream, FScale& Scale );
 /*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/
+#pragma pack (pop)
+
 #endif

@@ -8,6 +8,8 @@ Revision history:
 
 #include "Engine.h"
 
+#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+
 #if !_MSC_VER
 #define UWEB_API 
 #endif
@@ -91,3 +93,5 @@ public:
 /*-----------------------------------------------------------------------------
 	The End.
 -----------------------------------------------------------------------------*/
+
+#pragma pack (pop)

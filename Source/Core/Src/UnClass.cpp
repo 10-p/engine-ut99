@@ -332,6 +332,58 @@ void UStruct::Register()
 }
 
 //
+// Native placeholders (ufront 2.83). A few script variables stand in for C++ data that script never
+// touches: the object header, the vtable pointer of a secondary C++ base, a private pointer. The retail
+// packages declare them as ints -- sized for 32-bit pointers -- so on LP64 the C++ data is larger than
+// its script stand-in and every later member would sit at a different offset in C++ than in script.
+// Link gives each one the size of its C++ counterpart on this target instead. Sizes come from the C++
+// types wherever Core can see them; on every 32-bit target each entry equals the script's own size, so
+// nothing changes there. The layout guard below and tools/dev/layout-sweep.gdb verify the result.
+//
+static INT NativePlaceholderSize( UStruct* Owner, UProperty* Property )
+{
+	// Every placeholder is an int member of a class; nothing else is looked up. The lookup is by string on
+	// purpose: FNames made once and cached here would be purged by garbage collection when unreferenced and
+	// their index reused for another name (measured: a cached ReplacementMap had become TcpNetDriver0 by
+	// the time UWeb loaded), so no cached name could be trusted to still mean what it meant.
+	if( !Cast<UIntProperty>(Property) || !Cast<UClass>(Owner) || !Owner->GetOuter() )
+		return 0;
+	static const struct { const TCHAR* Package; const TCHAR* Struct; const TCHAR* Property; INT Size; } Placeholders[] =
+	{
+		// vtable, Index, HashNext, StateFrame, _Linker, _LinkerIndex: everything before Outer.
+		{ TEXT("Core"),   TEXT("Object"),          TEXT("ObjectInternal"),     (INT)(sizeof(UObject) - sizeof(UObject*) - sizeof(DWORD) - sizeof(FName) - sizeof(UClass*)) },
+		{ TEXT("Core"),   TEXT("Subsystem"),       TEXT("ExecVtbl"),           (INT)sizeof(FExec) },
+		{ TEXT("Engine"), TEXT("Console"),         TEXT("vtblOut"),            (INT)sizeof(FOutputDevice) },
+		{ TEXT("Engine"), TEXT("Player"),          TEXT("vfOut"),              (INT)sizeof(FOutputDevice) },
+		{ TEXT("Engine"), TEXT("Player"),          TEXT("vfExec"),             (INT)sizeof(FExec) },
+		{ TEXT("Engine"), TEXT("Canvas"),          TEXT("FramePtr"),           (INT)sizeof(void*) },	// FSceneNode*
+		{ TEXT("Engine"), TEXT("Canvas"),          TEXT("RenderPtr"),          (INT)sizeof(void*) },	// URenderBase*
+		{ TEXT("Engine"), TEXT("ScriptedTexture"), TEXT("Junk1"),              (INT)sizeof(void*) },	// UTexture* OldSourceTex
+		{ TEXT("Engine"), TEXT("ScriptedTexture"), TEXT("Junk2"),              (INT)sizeof(void*) },	// BYTE* LocalSourceBitmap
+		{ TEXT("Engine"), TEXT("ScriptedTexture"), TEXT("Junk3"),              (INT)sizeof(void*) },	// TMap<...>* PaletteMap
+		{ TEXT("Engine"), TEXT("StatLog"),         TEXT("Context"),            (INT)sizeof(void*) },	// FMD5Context*
+		{ TEXT("Engine"), TEXT("StatLogFile"),     TEXT("LogAr"),              (INT)sizeof(void*) },	// FArchive*
+		{ TEXT("Editor"), TEXT("EditorEngine"),    TEXT("NotifyVtbl"),         (INT)sizeof(FNotifyHook) },
+		{ TEXT("Editor"), TEXT("EditorEngine"),    TEXT("Pad"),                (INT)(4*sizeof(void*) + 4*sizeof(INT)) },	// 4 W* + AutosaveCounter + Pad[3]
+		{ TEXT("Editor"), TEXT("EditorEngine"),    TEXT("ConstraintsVtbl"),    (INT)sizeof(void*) },	// FEditorConstraints' vtable
+		{ TEXT("Fire"),   TEXT("WaterTexture"),    TEXT("SourceFields"),       (INT)sizeof(void*) },	// BYTE*
+		{ TEXT("Fire"),   TEXT("WetTexture"),      TEXT("LocalSourceBitmap"),  (INT)sizeof(void*) },	// BYTE*
+		{ TEXT("Fire"),   TEXT("IceTexture"),      TEXT("LocalSource"),        (INT)sizeof(void*) },	// BYTE*
+		{ TEXT("IpDrv"),  TEXT("InternetLink"),    TEXT("PrivateResolveInfo"), (INT)sizeof(void*) },	// FResolveInfo*
+		{ TEXT("UWeb"),   TEXT("WebResponse"),     TEXT("ReplacementMap"),     (INT)sizeof(TMap<FString,FString>) },
+		{ TEXT("UWeb"),   TEXT("WebRequest"),      TEXT("VariableMap"),        (INT)sizeof(TMultiMap<FString,FString>) },
+	};
+	const TCHAR* StructName = Owner->GetName();
+	for( INT i=0; i<ARRAY_COUNT(Placeholders); i++ )
+		if
+		(	appStricmp( StructName, Placeholders[i].Struct )==0
+		&&	appStricmp( Property->GetName(), Placeholders[i].Property )==0
+		&&	appStricmp( Owner->GetOuter()->GetName(), Placeholders[i].Package )==0 )
+			return Placeholders[i].Size;
+	return 0;
+}
+
+//
 // Link offsets.
 //
 void UStruct::Link( FArchive& Ar, UBOOL Props )
@@ -358,7 +410,8 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 			if( Property )
 			{
 				Property->Link( Ar, Prev );
-				PropertiesSize = Property->Offset + Property->GetSize();
+				INT NativeSize = NativePlaceholderSize( this, Property );
+				PropertiesSize = Property->Offset + (NativeSize ? NativeSize : Property->GetSize());
 				Prev = Property;
 			}
 		}
@@ -378,8 +431,13 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 				if( GLayoutStructs[li]==this )
 				{
 					if( GLayoutSizes[li] != PropertiesSize )
+					{
 						debugf( NAME_Warning, TEXT("[layout] native %s: C++ sizeof=%i but script layout=%i -- member-offset shift risk"),
 							GetName(), GLayoutSizes[li], PropertiesSize );
+						// ufront 2.83 bring-up: objects are allocated at PropertiesSize, so never let it be
+						// smaller than the C++ class that native code writes through.
+						PropertiesSize = Max( PropertiesSize, GLayoutSizes[li] );
+					}
 					break;
 				}
 		}
