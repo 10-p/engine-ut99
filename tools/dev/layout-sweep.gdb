@@ -15,6 +15,7 @@
 # the editor engine is destroyed at exit. Expected result on a healthy tree:
 #     SHIFT EditorEngine.Pad (IntProperty) ...     <- a reserved placeholder on both sides, never read
 #     checked=<n> shifted=1
+#     structs=<n> checked=<n> shifted=0     <- script structs vs same-named C++ F<Name> (ufront 2.83)
 # Needs a build with debug info (the native preset is RelWithDebInfo).
 set pagination off
 set debuginfod enabled off
@@ -68,6 +69,51 @@ for i in range(count):
                 print("SHIFT %s.%s (%s) C++=%d/%x script=%d/%x" % (cname, name_of(obj), pclass, cpp[0], cpp[1], off, mask))
         field = field['Next']
 print("checked=%d shifted=%d" % (checked, shifted))
+
+# (ufront 2.83) Script STRUCTS mirrored by a C++ struct F<Name>. The runtime guard only knows native
+# classes, but a struct's size is also a stride (TArray<FBuilderPoly>) and its members are read by C++ at
+# its own offsets, so every script struct with a same-named C++ type is compared too: size, then each
+# property. A name can match an unrelated C++ type -- read a report before acting on it.
+UStructPtr = gdb.lookup_type('UStruct').pointer()
+objs = gdb.parse_and_eval("UObject::GObjObjects")
+data = objs['Data'].cast(UObjectPtr.pointer())
+s_checked = s_shifted = s_structs = 0
+for k in range(int(objs['ArrayNum'])):
+    o = data[k]
+    if int(o) == 0 or name_of(o['Class']) != 'Struct':
+        continue
+    sname = name_of(o)
+    try:
+        ctype = gdb.lookup_type('F' + sname).strip_typedefs()
+    except gdb.error:
+        continue
+    if ctype.code != gdb.TYPE_CODE_STRUCT:
+        continue
+    s_structs += 1
+    st = o.cast(UStructPtr)
+    outer = name_of(o['Outer'])
+    if int(st['PropertiesSize']) != ctype.sizeof:
+        print("SSIZE %s.%s C++ F%s=%d script=%d" % (outer, sname, sname, ctype.sizeof, int(st['PropertiesSize'])))
+    members = {}
+    for f in ctype.fields():
+        if f.is_base_class or not hasattr(f, 'bitpos'):
+            continue
+        members[f.name.lower()] = f.bitpos // 8
+    field = st['Children']
+    while int(field) != 0:
+        fo = field.cast(UObjectPtr)
+        if int(fo['Outer']) != int(o):
+            break
+        pclass = name_of(fo['Class'])
+        cpp = members.get(name_of(fo).lower())
+        if pclass.endswith('Property') and cpp is not None:
+            s_checked += 1
+            off = int(field.cast(UPropertyPtr)['Offset'])
+            if cpp != off:
+                s_shifted += 1
+                print("SSHIFT %s.%s.%s (%s) C++=%d script=%d" % (outer, sname, name_of(fo), pclass, cpp, off))
+        field = field['Next']
+print("structs=%d checked=%d shifted=%d" % (s_structs, s_checked, s_shifted))
 end
 kill
 quit
