@@ -209,6 +209,11 @@ if(PLATFORM_DREAMCAST)
   set(TARGET_ARCH "sh4")
 endif()
 
+# ufront 2.83 -- UE1 needs a signed char (UnGnuG.h static_asserts it), and ARM's default is unsigned.
+if(TARGET_IS_ARM)
+  add_compile_options(-fsigned-char)
+endif()
+
 message(STATUS "Target arch: ${TARGET_ARCH}")
 message(STATUS "64-bit: ${TARGET_IS_64BIT}")
 

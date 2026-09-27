@@ -50,6 +50,40 @@
       }
     },
     {
+      "name": "android-arm64-ucc",
+      "displayName": "Android arm64 -- headless ucc-bin only (ufront 2.83)",
+      "description": "The dedicated server and commandlets as one Android executable (no SDL, no renderer, no audio, no APK): the 64-bit engine on an ARM device, run from adb shell. Needs ANDROID_NDK_HOME (e.g. ~/Android/Sdk/ndk/30.0.14904198). Builds in build-android-arm64/.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-android-arm64",
+      "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-24",
+        "ANDROID_STL": "c++_static",
+        "BUILD_STATIC": "ON",
+        "USE_SDL": "OFF",
+        "BUILD_UNREALTOURNAMENT": "OFF",
+        "BUILD_EDITOR": "ON",
+        "BUILD_DCUTIL": "OFF",
+        "BUILD_NOPENGLESDRV": "OFF",
+        "BUILD_XOPENGLDRV": "OFF",
+        "BUILD_NOPENGLDRV": "OFF",
+        "BUILD_SOFTDRV": "OFF",
+        "BUILD_NULLDRV": "OFF",
+        "BUILD_NULLSOUNDDRV": "OFF",
+        "BUILD_NOPENALDRV": "OFF"
+      }
+    },
+    {
+      "name": "android-armv7-ucc",
+      "inherits": "android-arm64-ucc",
+      "displayName": "Android armv7 -- headless ucc-bin only, the 32-bit control (ufront 2.83)",
+      "description": "The same headless ucc-bin for armeabi-v7a: the 32-bit width control on the same ARM device. Builds in build-android-armv7/.",
+      "binaryDir": "${sourceDir}/../build-android-armv7",
+      "cacheVariables": { "ANDROID_ABI": "armeabi-v7a" }
+    },
+    {
       "name": "wasm",
       "displayName": "Web (Emscripten/WASM) -- dev default",
       "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source ~/emsdk/emsdk_env.sh` first (sets EMSDK). [wired in step 2.7b]",
@@ -101,6 +135,8 @@
     { "name": "native", "configurePreset": "native" },
     { "name": "native64", "configurePreset": "native64" },
     { "name": "native64-asan", "configurePreset": "native64-asan" },
+    { "name": "android-arm64-ucc", "configurePreset": "android-arm64-ucc" },
+    { "name": "android-armv7-ucc", "configurePreset": "android-armv7-ucc" },
     { "name": "wasm", "configurePreset": "wasm" },
     { "name": "wasm-debug", "configurePreset": "wasm-debug" },
     { "name": "wasm-perf", "configurePreset": "wasm-perf" },
