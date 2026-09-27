@@ -55,7 +55,8 @@ kill "$SPID" 2>/dev/null || true
 wait 2>/dev/null || true
 
 NG=$(ls -t "$SRV"/Logs/Unreal.ngLog.* 2>/dev/null | head -1 || true)
-KILLS=$( [ -n "$NG" ] && tr -d '\000' < "$NG" | grep -ac "	kill	" || echo 0)
+KILLS=0
+[ -n "$NG" ] && KILLS=$(tr -d '\000' < "$NG" | grep -ac "	kill	" || true)
 BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]'
 echo "server=$(file -b "$SRV/System/ucc-bin" | cut -d, -f1-2) client=$(file -b "$CLI/System/UnrealTournament" | cut -d, -f1-2)"
 echo "last poll: $(tail -1 "$OUT/poll.txt")"
