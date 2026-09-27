@@ -911,9 +911,9 @@ char* appUnixPath( const TCHAR* Path )
 	Networking.
 -----------------------------------------------------------------------------*/
 
-unsigned long appGetLocalIP( void )
+unsigned int appGetLocalIP( void )
 {
-	static unsigned long LocalIP = 0;
+	static unsigned int LocalIP = 0;
 
 	if( LocalIP==0 )
 	{
@@ -941,8 +941,8 @@ unsigned long appGetLocalIP( void )
 #endif
 		gethostname( Hostname, sizeof(Hostname) );
 		Hostinfo = gethostbyname( Hostname );
-		if( Hostinfo && Hostinfo->h_addr_list[0] )
-			LocalIP = *(unsigned long*)Hostinfo->h_addr_list[0];
+		if( Hostinfo && Hostinfo->h_addr_list[0] && Hostinfo->h_length==sizeof(LocalIP) )
+			memcpy( &LocalIP, Hostinfo->h_addr_list[0], sizeof(LocalIP) );	// the address is 4 bytes, not a long
 #endif
 	}
 	

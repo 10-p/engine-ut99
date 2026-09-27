@@ -12,8 +12,9 @@
 #define PATH(s) appUnixPath( s )
 char* appUnixPath( const char* Path );
 
-// Networking.
-unsigned long appGetLocalIP( void );
+// Networking. The IPv4 address in network byte order: 32 bits on every target (ufront 2.83: it was an
+// unsigned long, which is 8 bytes on LP64).
+unsigned int appGetLocalIP( void );
 
 // String functions.
 int stricmp( const char* s, const char* t );
