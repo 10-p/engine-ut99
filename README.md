@@ -10,12 +10,13 @@ Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Design notes a
 * GLES2 (NOpenGLESDrv), OldUnreal XOpenGLDrv and UTGLR OpenGLDrv renderers, plus SoftDrv and NullDrv.
 * OpenAL + libxmp audio driver (NOpenALDrv).
 * GCC/MinGW support, including the Win32 struct-layout fixes.
+* 64-bit (x86_64) Linux build that still runs the retail 32-bit packages.
 * A WebAssembly build and a WebRTC net driver (WebRTCDrv) for the browser.
 * Editor UI is not supported.
 
 ## Building
 
-All builds are 32-bit and use the CMake presets in `Source/`, so run every `cmake` command from `Source/`.
+Builds are 32-bit unless noted and use the CMake presets in `Source/`, so run every `cmake` command from `Source/`.
 The first configure of each preset needs network access: the XOpenGLDrv and UTGLR renderers, OpenAL Soft, libxmp, gl4es and (Windows) SDL2 are fetched.
 
 ### Linux x86
@@ -33,6 +34,8 @@ The first configure of each preset needs network access: the XOpenGLDrv and UTGL
    ```
 3. The result is `build-native/UnrealTournament/UnrealTournament` plus `libopenal.so.1`, which must stay next to it.
    A dedicated server, `build-native/UCC/ucc-bin`, is built too.
+
+**64-bit (x86_64):** use the `native64` preset instead of `native`, with the regular 64-bit libraries in place of the i386/lib32 ones. The result lands in `build-native64/UnrealTournament/`.
 
 **32-bit SDL2 from source** (when your distro has no package): build it into any prefix and point the preset at it.
 ```

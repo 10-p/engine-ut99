@@ -75,7 +75,7 @@ UT99 runs as a 64-bit engine on Linux x86_64 and Android arm64 (and still on eve
 |--------|--------|-------|
 | `native64` | `build-native64/` — `UnrealTournament`, `UCC/ucc-bin` (ELF 64-bit) | `UT_ALLOW_64BIT=ON`; needs the amd64 `libsdl2-dev` (see below) |
 | `native64-asan` | `build-native64-asan/` | AddressSanitizer; run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0:verify_asan_link_order=0` (the second because `stdbuf` preloads a library) |
-| `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` (aarch64, bionic) | headless server + commandlets only; `ANDROID_NDK_HOME=~/Android/Sdk/ndk/30.0.14904198` |
+| `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` (aarch64, bionic) | headless server + commandlets only; `ANDROID_NDK_HOME=<android-sdk>/ndk/30.0.14904198` |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the 32-bit control on the same ARM device |
 
 **What makes it work** (each is a commit on `main`; the mechanisms are general, not `#if`-guarded):
@@ -97,9 +97,9 @@ UT99 runs as a 64-bit engine on Linux x86_64 and Android arm64 (and still on eve
 - Registration stashes live in pointer-sized fields; `PTRINT`/`UPTRINT` wherever a pointer passes through an
   integer; a POSIX build without SDL keeps time with `CLOCK_MONOTONIC`; ARM gets `-fsigned-char`.
 
-**Host prerequisite.** The amd64 SDL2 development package, `libsdl2-dev:amd64`, installed beside the i386 one
-(`dpkg -l libsdl2-dev:amd64`; `/usr/include/x86_64-linux-gnu/SDL2/_real_SDL_config.h` is the file a missing
-package shows up as). `ucc-bin` needs neither.
+**Host prerequisite.** The 64-bit SDL2 development files beside the 32-bit ones (Debian: `libsdl2-dev:amd64`,
+whose missing `/usr/include/x86_64-linux-gnu/SDL2/_real_SDL_config.h` is how its absence shows up; Arch:
+`sdl2-compat`). `ucc-bin` needs neither.
 
 **Test loops** (all headless):
 

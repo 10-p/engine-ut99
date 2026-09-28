@@ -27,7 +27,7 @@ struct-packing fix, socket shims) was already done there; **step 2.7 adds the we
 > `docs/migration/STATE.md` (read first if continuing the migration),
 > `ROADMAP.md`, `steps/2.7-engine-ut99.md` (this step's spec + decisions).
 
-## Status (Phase 2, step 2.7 — IN PROGRESS)
+## Status (Phase 2, step 2.7 — done)
 - **2.7a DONE** — repo standup + **native-Linux build (the compat oracle)**. Native compiles clean on
   gcc-15 (`cmake --preset native`, 32-bit SDL2/GLES2) and the client **runs**: it loads the v400 engine and
   **all v68 retail packages + a real DM map** (`DM-Deck16][`, incl. BotPack/UnrealShare/UnrealI), proving
@@ -45,25 +45,22 @@ validates + assembles into `serve-web/`.
 - **Version: UT99 v400, `PACKAGE_FILE_VERSION 68`** (`Source/Core/Inc/UnObjVer.h`; reads v60–68). The
   engine natively reads the retail v68 maps/packages — unlike engine-unreal1 (v200, ceiling ~v63), **there
   is no map-version ceiling here**.
-- **Base = ut99dc.** CMake ≥3.15 / C++17, `-m32`, static single binary (`BUILD_STATIC`→`UNREAL_STATIC` +
+- **Base = ut99dc.** CMake ≥3.15 / C++17, `-m32` by default (`native64` builds LP64, `BUILD.md` § 64-bit), static single binary (`BUILD_STATIC`→`UNREAL_STATIC` +
   `--whole-archive` + `Core/…/UnStaticExports`), ASM off via `Core/Inc/UnGnuG.h`, POSIX platform in
   `Core/Src/UnUnix.cpp`, `-fpack-struct=4` (reflected class sizes), WinSock→BSD socket shims. **Do not
   re-derive these** — they are inherited from ut99dc.
-- **Renderer (D-D):** default **`NOpenGLESDrv.NOpenGLESRenderDevice` (GLES2 → WebGL)** + windowing/input
-  **`NSDLDrv.NSDLClient`** (SDL2). ut99dc ships **no software render *device*** (`Render/Src/UnSoftLn.cpp`
-  is the rasterizer core, not a `URenderDevice`); a Null-render E2E discriminator is used instead. GLES2
-  loads via `gladLoadGLES2Loader(SDL_GL_GetProcAddress)` (vendored `Thirdparty/glad_es`, glad 0.1.36).
-- **Audio = null (`SoundDrv.NullAudioSubsystem`).** ut99dc's inis reference it but never shipped the
-  package; `Source/SoundDrv/Null.cpp` (added step 2.7a) is the silent subsystem — matches engine-unreal1.
-  ut99dc's `Audio` subsystem is OSS `/dev/dsp` (unusable on native-Linux/WASM); real SDL2/OpenAL audio is a
-  documented **future** enhancement.
+- **Renderers:** `NOpenGLESDrv` (GLES2 → WebGL), the fetched `XOpenGLDrv` and `OpenGLDrv`/UTGLR, `SoftDrv` and
+  `NullDrv`, windowing/input via **`NSDLDrv.NSDLClient`** (SDL2); the engine picks a working device at startup.
+  GLES2 loads via `gladLoadGLES2Loader(SDL_GL_GetProcAddress)` (vendored `Thirdparty/glad_es`, glad 0.1.36).
+- **Audio = `NOpenALDrv`** (OpenAL Soft + libxmp, as engine-unreal1); `SoundDrv.NullAudioSubsystem`
+  (`Source/SoundDrv/Null.cpp`, step 2.7a) stays as the silent fallback. ut99dc's OSS `Audio` subsystem is unused.
 - **File layer is POSIX — untouched.** UT99 bottoms out at libc `fopen` / `FFileManagerLinux` +
   `opendir`/`readdir`; FetchFS (injected glue) intercepts **below** it at the Emscripten FS layer. **Do
   not** write an engine-side web file manager. `appBaseDir()` = `getcwd` (the launcher chdir's to `System`).
-- **The web (WASM) layer mirrors engine-unreal1** (step 2.7b+): the `if(EMSCRIPTEN)` CMake branch, Asyncify
+- **The web (WASM) layer mirrors engine-unreal1** (steps 2.7b–2.7e): the `if(EMSCRIPTEN)` CMake branch, Asyncify
   main-loop inversion in `Source/UnrealTournament/Src/Launch.cpp`, exceptions-off with load failures
   resolving to **NULL** patched one site at a time, the Editor package linked (bot meshes/skins),
-  GLog→console, and the engine-local `WebRTCDrv`. See `BUILD.md` for the per-site detail as it lands.
+  GLog→console, and the engine-local `WebRTCDrv`. See `BUILD.md` for the per-site detail.
 
 ## Do NOT
 - **Do NOT** push to `upstream` (it's maximqaxd/ut99dc). This repo stays **private, local-only**.
