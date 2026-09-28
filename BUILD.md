@@ -121,10 +121,36 @@ bound to an alias crashed the 64-bit client (`65e2f5a`). The client host stops a
 (`adb push` per folder, ~16 s for 850 MB), push `ucc-bin`, run it from `adb shell`; a desktop client joins over
 Wi-Fi by the phone's address (UDP cannot be `adb forward`ed).
 
+**Coverage census — what has never run at 64-bit** (`tools/dev/census/`). The gates above are bots, a
+headless client and a compile; three defects found after 2.83 closed were all on paths only a player
+reaches (the alias key, the SoftDrv lit palette, `shot`). A `--coverage` build, run through everything, says
+which functions never executed; read those, or drive them.
+
+```bash
+cc -c -O2 -fPIC tools/dev/census/gcovdump.c -o /tmp/gcovdump.o     # writes counters on SIGTERM and on a crash
+cd Source && cmake --preset native64 -B ../build-native64-cov -DCMAKE_C_FLAGS=--coverage -DCMAKE_CXX_FLAGS=--coverage \
+    "-DCMAKE_EXE_LINKER_FLAGS=--coverage /tmp/gcovdump.o" -DCMAKE_SHARED_LINKER_FLAGS=--coverage && cmake --build ../build-native64-cov
+tools/dev/mkrun-ut99.sh build-native64-cov <tree>                    # + ucc-bin, libopenal.so.1; the objects' .gcda merge across runs
+# run the gates against <tree>, then player sessions with every render device (Xvfb :98, loopback only):
+unshare -rn tools/dev/census/play.sh <tree> -XOPENGLRENDERER "DM-Morpheus?game=Botpack.DeathMatchPlus" /tmp/p shot "stat global" "rmode 1"
+python3 tools/dev/census/census.py build-native64-cov Source build-native64-cov/_deps/{utglr,xopengldrv}-src   # -> census.json
+tools/dev/census/exports.sh <32-bit tree> /tmp/e32; tools/dev/census/exports.sh <64-bit tree> /tmp/e64; diff -r /tmp/e32 /tmp/e64
+```
+
+2.83: 3,578 of 5,008 functions ran at x86_64 (gates alone: 3,272). The 1,430 that never ran were read for LP64
+defects (none open: editor GUI, the 15/16-bit and MMX SoftDrv variants, Windows-only code, the unused SoundDrv).
+Traps: a run tree copied from the reference one puts XOpenGL in its `ES_WEBGL` profile (delete `OpenGLVersion` to
+reach the desktop Core paths); the renderers, UWeb, TcpLink, ice/scripted textures and downloads only run when a
+session asks for them (web admin `[UWeb.WebServer] bEnabled=True`, a client without a `ServerPackages` entry).
+
 **Fixed on the way (not 64-bit): a dedicated server died at the 2nd or 3rd map change** (`Bad name index`,
 `fread failed`). `appCreateProc` had its fork branches inverted (as in Epic's v400 Linux code), so the stats
 log's batcher launch at every match end left a full copy of the server running on the same open package files.
 `6a74d44`; `botmatch.sh <tree> 300 "" "DM-Deck16][?FragLimit=2"` now plays five or six maps.
+Two more, found by the census and the ASan gate (Epic's code, every width including the web): a client's
+travel read a freed net channel in `UObject::ConditionalDestroy` (`3d78837`; `botmatch.sh` now counts sanitizer
+reports, `d4e148e` — an ASan abort in the client used to look like a player leaving), and `shot` (F9) read a
+row past its buffer on every non-MSVC build (`9d74a86`).
 
 ## Render drivers — fetched, not vendored
 
