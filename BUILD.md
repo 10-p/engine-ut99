@@ -287,6 +287,13 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
 - **The command line holds 4,096 characters** (launcher, UCC, Core's `GCmdLine`): a token that does not fit is
   dropped whole, with a warning once the log is up. It was a `TCHAR[1024]` filled with `strcat`, which the web's
   argv (the URL plus every `-ini:` seed) could overrun.
+- **`FindFiles` matches like Windows' `FindFirstFile`** (`Core/Inc/FFileManagerLinux.h`, engine-hp2's fix of the
+  same code): `*`/`?` anywhere, case-insensitive (`*.INT` finds `Core.int`), `*.*` = everything, and the
+  Files/Directories flags honoured (no `.`/`..`). It was case-sensitive and took `*.ext` as a substring test (`*.u`
+  also returned `.uax/.umx/.utx/.unr`), and a Tree `DeleteDirectory` failed on the `.` it got back.
+- **`ucc make` saves are deterministic** (`Core/Src/UnObj.cpp`, engine-uc2's S2): `SavePackage` sorts names,
+  imports and exports with a stable merge sort (the C library's qsort left equal keys in a library-dependent
+  order), and `CacheDrivers` reads the `.int` files in Windows' (NTFS) order, not `readdir()`'s.
 
 ## The web port (WASM)
 

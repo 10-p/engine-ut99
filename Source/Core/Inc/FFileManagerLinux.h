@@ -10,6 +10,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <cerrno>
+#include <climits>	// ufront: PATH_MAX (FindFiles)
 #include "FFileManagerGeneric.h"
 
 /*-----------------------------------------------------------------------------
@@ -212,6 +213,39 @@ protected:
 
 class FFileManagerLinux : public FFileManagerGeneric
 {
+	// ufront (from engine-hp2, the same file fixed there): FindFiles' wildcard match and directory test.
+	static UBOOL WildcardMatch( const ANSICHAR* Pattern, const ANSICHAR* Name )
+	{
+		// Iterative '*'/'?' glob with single-star backtracking; case-insensitive.
+		const ANSICHAR *Star=NULL, *Resume=NULL;
+		while( *Name )
+		{
+			if( *Pattern=='*' )
+			{
+				Star = Pattern++;
+				Resume = Name;
+			}
+			else if( *Pattern=='?' || (*Pattern && appToUpper(*Pattern)==appToUpper(*Name)) )
+			{
+				Pattern++;
+				Name++;
+			}
+			else if( Star )
+			{
+				Pattern = Star+1;
+				Name = ++Resume;
+			}
+			else return 0;
+		}
+		while( *Pattern=='*' )
+			Pattern++;
+		return *Pattern==0;
+	}
+	static UBOOL IsDirectory( const ANSICHAR* Path )
+	{
+		struct stat St;
+		return stat( Path, &St )==0 && S_ISDIR(St.st_mode);
+	}
 public:
 	FArchive* CreateFileReader( const TCHAR* Filename, DWORD Flags, FOutputDevice* Error )
 	{
@@ -308,14 +342,14 @@ public:
 	
 		DIR *Dirp;
 		struct dirent* Direntp;
-		char Path[256];
-		char File[256];
+		char Path[PATH_MAX];
+		char File[PATH_MAX];
 		char *Filestart;
 		char *Cur;
 		UBOOL Match;
 
-		// Initialize Path to Filename.
-		appStrcpy( Path, Filename );
+		// Initialize Path to Filename (bounded: it was a char[256] filled by appStrcpy).
+		appStrncpy( Path, Filename, ARRAY_COUNT(Path) );
 
 		// Convert MS "\" to Unix "/".
 		for( Cur = Path; *Cur != '\0'; Cur++ )
@@ -329,7 +363,7 @@ public:
 				Filestart = Cur + 1;
 
 		// Store filename and remove it from Path.
-		appStrcpy( File, Filestart );
+		appStrncpy( File, Filestart, ARRAY_COUNT(File) );
 		*Filestart = '\0';
 
 		// Check for empty path.
@@ -345,55 +379,23 @@ public:
 		// Check each entry.
 		while( Direntp != NULL )
 		{
-			Match = false;
+			// ufront (engine-hp2's fix of this same code): a real wildcard match ('*' and '?' anywhere,
+			// case-insensitive, "*.*" = everything), the semantics of the Win32 FindFirstFile the game was written
+			// for. The stock matcher knew a few shapes, compared case-sensitively ("*.INT" found no "Core.int") and
+			// took "*.ext" as a substring test ("*.u" also returned .uax/.umx/.utx/.unr).
+			Match = appStrcmp( File, "*.*" ) == 0 || WildcardMatch( File, Direntp->d_name );
 
-			if( appStrcmp( File, "*" ) == 0 )
+			// Honour the Files/Directories flags (the stock body returned both, and "." / ".."; a Tree
+			// DeleteDirectory then tried to Delete(".") and failed).
+			if( Match && (!appStrcmp(Direntp->d_name,".") || !appStrcmp(Direntp->d_name,"..")) )
+				Match = false;
+			if( Match && !(Files && Directories) )
 			{
-				// Any filename.
-				Match = true;
-			}
-			else if( appStrcmp( File, "*.*" ) == 0 )
-			{
-				// Any filename with a '.'.
-				if( appStrchr( Direntp->d_name, '.' ) != NULL )
-					Match = true;
-			}
-			else if( File[0] == '*' )
-			{
-				// "*.ext" filename.
-				if( appStrstr( Direntp->d_name, (File + 1) ) != NULL )
-					Match = true;
-			}
-			else if( File[appStrlen( File ) - 1] == '*' )
-			{
-				// "name.*" filename.
-				if( appStrncmp( Direntp->d_name, File, appStrlen( File ) - 1 ) == 
-					0 )
-					Match = true;
-			}
-			else if( appStrstr( File, "*" ) != NULL )
-			{
-				// single str.*.str match.
-				TCHAR* star = appStrstr( File, "*" );
-				INT filelen = appStrlen( File );
-				INT starlen = appStrlen( star );
-				INT starpos = filelen - (starlen - 1);
-				TCHAR prefix[256];
-				appStrncpy( prefix, File, starpos );
-				star++;
-				if( appStrncmp( Direntp->d_name, prefix, starpos - 1 ) == 0 )
-				{
-					// part before * matches
-					TCHAR* postfix = Direntp->d_name + (appStrlen(Direntp->d_name) - starlen) + 1;
-					if ( appStrcmp( postfix, star ) == 0 )
-						Match = true;
-				}
-			}
-			else
-			{
-				// Literal filename.
-				if( appStrcmp( Direntp->d_name, File ) == 0 )
-					Match = true;
+				char Full[PATH_MAX];
+				appStrncpy( Full, Path, ARRAY_COUNT(Full) );
+				appStrncat( Full, Direntp->d_name, ARRAY_COUNT(Full) );
+				const UBOOL Dir = IsDirectory( Full );
+				Match = Dir ? Directories : Files;
 			}
 
 			// Does this entry match the Filename?
