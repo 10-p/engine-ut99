@@ -268,6 +268,21 @@ ut99dc already builds native/desktop; two gaps had to be filled for a fresh gcc-
 At step 2.7a the `native` preset was the minimal client; it now links the full static set (Editor, every
 renderer, OpenAL — see `Source/CMakePresets.json`).
 
+## Shared with the other engines of the frontend (2026-10-11, from engine-uc2)
+
+The same commands, settings and log lines in every engine (ufront's UC2 merge; engine-uc2's
+`docs/CHEAT-COMMANDS.md` is the reference for the cheats):
+
+- **`WHEREAMI`** prints `<x> <y> <z> <yaw> <pitch>` (the pawn's location, one decimal; the view's yaw 0..65535 and
+  pitch -32768..32767) on the console, on screen and in the log; **`TELEPORT <x> <y> <z> [<yaw> [<pitch>]]`** puts the
+  local player there (WHEREAMI's output pasted back gives the same place and view). Cheats: allowed in a standalone
+  game and for a listen server's host, refused (logged) on a network client; `[Engine.GameEngine] AllowNetCheats=True`
+  opens them for test harnesses only (`-ini:`), never in a shipped ini. Every use logs a `Cheat: ` line.
+  `Source/Engine/Src/UnCheats.cpp`, first in `UGameEngine::Exec` (the web's `ue_exec_command` reaches the engine
+  only, and the typed console ends there too).
+- **`[Engine.GameEngine] FpsLogSeconds=<s>`** (0 = off) / console **`FPSLOG <s>`**: an `FPS:` log line every `<s>`
+  seconds (frames, fps, frame ms avg/min/max/p99, the 1% low, the viewport size). `Source/Engine/Src/UnFpsLog.cpp`.
+
 ## The web port (WASM)
 
 Mirrors engine-unreal1's web layer (the portable UE1→web lessons, monorepo `docs/10`):
