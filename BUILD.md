@@ -294,6 +294,13 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
 - **`ucc make` saves are deterministic** (`Core/Src/UnObj.cpp`, engine-uc2's S2): `SavePackage` sorts names,
   imports and exports with a stable merge sort (the C library's qsort left equal keys in a library-dependent
   order), and `CacheDrivers` reads the `.int` files in Windows' (NTFS) order, not `readdir()`'s.
+- **Game pads** (`Source/NSDLDrv`, one pad: the first connected): `[NSDLDrv.NSDLClient] UseJoystick` decides
+  whether pads are used at all (it was registered and read by nothing); a pad connected after start opens on
+  `SDL_CONTROLLERDEVICEADDED` and closes on `REMOVED`, releasing every pad key (there was no hot-plug, so on the web,
+  where a browser lists a pad only at its first press, a pad practically never worked); and on the web the press
+  that made the browser list the pad, which SDL's Emscripten driver never reports, is read from
+  `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). Log lines: `NSDLClient:
+  game pad connected: <name>` / `disconnected` / `buttons held at the connect given to the game: 0x<mask>`.
 
 ## The web port (WASM)
 

@@ -2,6 +2,9 @@
 #include <ctype.h>
 
 #include "NSDLDrv.h"
+#ifdef __EMSCRIPTEN__
+#include <emscripten/em_asm.h>
+#endif
 #include "UnRender.h"
 
 IMPLEMENT_CLASS( UNSDLClient );
@@ -128,7 +131,8 @@ void UNSDLClient::Init( UEngine* InEngine )
 
 	Controller = NULL;
 
-	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER ) < 0 )
+	// ufront: UseJoystick (registered, never read before) decides whether pads are used at all.
+	if ( SDL_Init( SDL_INIT_VIDEO | (UseJoystick ? SDL_INIT_GAMECONTROLLER : 0) ) < 0 )
 	{
 		appErrorf( "SDL_Init failed: %s", SDL_GetError() );
 		appExit();
@@ -136,10 +140,16 @@ void UNSDLClient::Init( UEngine* InEngine )
 
 	atexit( SDL_Quit );
 
-	if( SDL_NumJoysticks() > 0 )
-		Controller = SDL_GameControllerOpen( 0 );
-
-	SDL_GameControllerEventState( SDL_ENABLE );
+	// A pad already connected (on the web: one pressed on the launcher page). Later ones arrive through
+	// SDL_CONTROLLERDEVICEADDED (UNSDLViewport::UpdateInput): there was no hot-plug before, so on the web, where a
+	// browser lists a pad only once a button is pressed on it, a pad practically never worked.
+	if( UseJoystick )
+	{
+		for( INT i=0; i<SDL_NumJoysticks() && !Controller; i++ )
+			OpenPad( i, NULL );
+		SDL_GameControllerEventState( SDL_ENABLE );
+	}
+	else debugf( NAME_Init, TEXT("NSDLClient: UseJoystick=False: no game pads") );
 
 	// Not calling SDL_StartTextInput because that pops up on-screen keyboards sometimes.
 	SDL_EventState( SDL_TEXTINPUT, SDL_ENABLE );
@@ -465,5 +475,73 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 			Engine->Audio->SetViewport( Viewport );
 	}
 
+	unguard;
+}
+
+/*-----------------------------------------------------------------------------
+	ufront: game pads (from the UC2 port's SDL2Drv/Src/SDL2Pads.cpp, one pad here).
+-----------------------------------------------------------------------------*/
+
+#ifdef __EMSCRIPTEN__
+//
+// H-3: the buttons pressed right now on the browser's first listed pad named Id (bit i = Gamepad.buttons[i].pressed,
+// the W3C "standard" layout), 0 if none. A browser lists a pad only at its first press, and that press is already
+// down in the snapshot SDL's Emscripten driver keeps as the pad's starting state (it reports CHANGES only), so SDL
+// never reports it: read it once here. Runs on the page's main thread (the engine is on a worker).
+// (In the EM_ASM block: no top-level commas and no // comments.)
+//
+static DWORD WebPadPressed( const char* Id )
+{
+	return (DWORD)MAIN_THREAD_EM_ASM_INT({
+		if (typeof navigator === 'undefined' || !navigator.getGamepads) return 0;
+		var id = UTF8ToString($0);
+		var pads = navigator.getGamepads();
+		for (var i = 0; i < pads.length; i++) {
+			var g = pads[i];
+			if (!g || g.id !== id || !g.buttons) continue;
+			var m = 0;
+			for (var b = 0; b < g.buttons.length && b < 31; b++)
+				if (g.buttons[b] && g.buttons[b].pressed) m = m | (1 << b);
+			return m;
+		}
+		return 0;
+	}, Id );
+}
+#endif
+
+UBOOL UNSDLClient::OpenPad( INT DeviceIndex, DWORD* Held )
+{
+	guard(UNSDLClient::OpenPad);
+	if( Held )
+		*Held = 0;
+	if( !UseJoystick || Controller || !SDL_IsGameController( DeviceIndex ) )
+		return 0;
+	Controller = SDL_GameControllerOpen( DeviceIndex );
+	if( !Controller )
+	{
+		debugf( NAME_Init, TEXT("NSDLClient: game pad %i could not be opened: %s"), DeviceIndex, ANSI_TO_TCHAR(SDL_GetError()) );
+		return 0;
+	}
+	const char* Name = SDL_GameControllerName( Controller );
+	debugf( NAME_Init, TEXT("NSDLClient: game pad connected: %s"), Name ? ANSI_TO_TCHAR(Name) : TEXT("(no name)") );
+#ifdef __EMSCRIPTEN__
+	// SDL names the joystick by the browser's Gamepad.id.
+	const char* Id = SDL_JoystickName( SDL_GameControllerGetJoystick( Controller ) );
+	if( Held && Id )
+		*Held = WebPadPressed( Id );
+#endif
+	return 1;
+	unguard;
+}
+
+UBOOL UNSDLClient::ClosePad( INT InstanceId )
+{
+	guard(UNSDLClient::ClosePad);
+	if( !Controller || SDL_JoystickInstanceID( SDL_GameControllerGetJoystick( Controller ) ) != InstanceId )
+		return 0;
+	SDL_GameControllerClose( Controller );
+	Controller = NULL;
+	debugf( NAME_Init, TEXT("NSDLClient: game pad disconnected") );
+	return 1;
 	unguard;
 }

@@ -146,6 +146,11 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 	void TryRenderDevice( UViewport* Viewport, const char* ClassName, UBOOL Fullscreen );
 	const TArray<SDL_Rect>& GetDisplayResolutions();
 	inline SDL_GameController* GetController() { return Controller; }
+	// ufront (the UC2 port's pads, one pad here): open the pad at SDL device index DeviceIndex when none is open and
+	// UseJoystick is on; Held gets the buttons already down at the connect (W3C indices, the web's H-3: the press
+	// that made the browser list the pad, which SDL never reports). ClosePad closes it when InstanceId is ours.
+	UBOOL OpenPad( INT DeviceIndex, DWORD* Held );
+	UBOOL ClosePad( INT InstanceId );
 	inline const SDL_DisplayMode& GetDefaultDisplayMode() const { return DefaultDisplayMode; }
 
 private:
