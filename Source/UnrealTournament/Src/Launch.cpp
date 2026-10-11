@@ -840,11 +840,20 @@ int main( int argc, char* argv[] )
 	// Set the package name.
 	appStrcpy( THIS_PACKAGE, appPackage() );	
 #endif
-	// Get the command line.
-	TCHAR CmdLine[1024], *CmdLinePtr=CmdLine;
+	// Get the command line. ufront (from engine-uc2's launcher): 4096 characters, the size of Core's GCmdLine, and a
+	// token that does not fit is dropped whole, with a warning once the log is up. It was a TCHAR[1024] filled with
+	// appStrcat (strcat): the web's argv (the URL plus every -ini: seed) can pass 1023 characters, and that overran
+	// the stack buffer instead of stopping.
+	TCHAR CmdLine[4096], *CmdLinePtr=CmdLine;
 	*CmdLinePtr = 0;
+	UBOOL CmdLineCut = 0;
 	for( INT i=1; i<argc; i++ )
 	{
+		if( appStrlen(CmdLine) + appStrlen(argv[i]) + 2 >= ARRAY_COUNT(CmdLine) )
+		{
+			CmdLineCut = 1;
+			break;
+		}
 		if( i>1 )
 			appStrcat( CmdLine, " " );
 		appStrcat( CmdLine, argv[i] );
@@ -881,6 +890,8 @@ int main( int argc, char* argv[] )
 	chdir( "/System" );
 #endif
 	appInit( TEXT("UnrealTournament"), CmdLine, &Malloc, &Log, &Error, &Warn, &FileManager, FConfigCacheIni::Factory, 1 );
+	if( CmdLineCut )
+		debugf( NAME_Warning, TEXT("The command line is longer than %i characters: the arguments after '%s' were dropped"), ARRAY_COUNT(CmdLine), CmdLine + Max(0, appStrlen(CmdLine) - 40) );
 
 	// Init mode.
 	GIsServer		= 1;

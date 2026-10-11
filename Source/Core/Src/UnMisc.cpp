@@ -1722,7 +1722,7 @@ static UBOOL IsReadOnly( const TCHAR* Filename )
 	return 0;
 	unguard;
 }*/
-static TCHAR GCmdLine[1024]=TEXT("");
+static TCHAR GCmdLine[4096]=TEXT("");	// ufront: 4096, as the launchers' buffer (was 1024, filled by appStrcpy)
 CORE_API const TCHAR* appCmdLine()
 {
 	return GCmdLine;
@@ -1759,7 +1759,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 		if( *InCmdLine )
 			InCmdLine++;
 	#endif
-	appStrcpy( GCmdLine, InCmdLine );
+	appStrncpy( GCmdLine, InCmdLine, ARRAY_COUNT(GCmdLine) );	// ufront: bounded (an unbounded strcpy before)
 
 	// Error history.
 	appStrcpy( GErrorHist, TEXT("General protection fault!\r\n\r\nHistory: ") );
@@ -1840,6 +1840,9 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 	TCHAR Temp[256];
 	if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("Language"), Temp, ARRAY_COUNT(Temp) ) )
 		UObject::SetLanguage( Temp );
+	// ufront (the launcher's Language, G-4 of the UC2 port): say which language this run uses, so a log alone tells
+	// which localisation the menus come from (the -ini: override above is logged as such, not whether it took).
+	debugf( NAME_Init, TEXT("Language: %s"), UObject::GetLanguage() );
 
 	// Object initialization.
 	UObject::StaticInit();

@@ -282,6 +282,11 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
   only, and the typed console ends there too).
 - **`[Engine.GameEngine] FpsLogSeconds=<s>`** (0 = off) / console **`FPSLOG <s>`**: an `FPS:` log line every `<s>`
   seconds (frames, fps, frame ms avg/min/max/p99, the 1% low, the viewport size). `Source/Engine/Src/UnFpsLog.cpp`.
+- **`Init: Language: <ext>`** in the log at start-up: the language this run took (`[Engine.Engine] Language`, read
+  after the `-ini:` overrides; the frontend's Language setting).
+- **The command line holds 4,096 characters** (launcher, UCC, Core's `GCmdLine`): a token that does not fit is
+  dropped whole, with a warning once the log is up. It was a `TCHAR[1024]` filled with `strcat`, which the web's
+  argv (the URL plus every `-ini:` seed) could overrun.
 
 ## The web port (WASM)
 

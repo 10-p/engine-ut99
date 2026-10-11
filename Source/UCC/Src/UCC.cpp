@@ -102,8 +102,10 @@ int main( int argc, char* argv[] )
 		#endif
 		
 		// Parse command line.
-		TCHAR CmdLine[1024], *CmdLinePtr=CmdLine;
+		// ufront: 4096 (Core's GCmdLine), a token that does not fit dropped whole (it overran a TCHAR[1024]).
+		TCHAR CmdLine[4096], *CmdLinePtr=CmdLine;
 		*CmdLinePtr = 0;
+		UBOOL CmdLineCut = 0;
 		#if WIN32
 			ANSICHAR* Ch = GetCommandLineA();
 			while( *Ch && *Ch!=' ' )
@@ -116,6 +118,11 @@ int main( int argc, char* argv[] )
 		#else
 			for( INT i=2; i<argc; i++ )
 			{
+				if( appStrlen(CmdLine) + appStrlen(argv[i]) + 2 >= ARRAY_COUNT(CmdLine) )
+				{
+					CmdLineCut = 1;
+					break;
+				}
 				if( i>2 )
 					appStrcat( CmdLine, " " );
 				appStrcat( CmdLine, argv[i] );
@@ -124,6 +131,8 @@ int main( int argc, char* argv[] )
 
 		// Init.
 		appInit( TEXT("UnrealTournament"), CmdLine, &Malloc, &Log, &Error, &Warn, &FileManager, FConfigCacheIni::Factory, 1 );
+		if( CmdLineCut )
+			debugf( NAME_Warning, TEXT("The command line is longer than %i characters: the arguments after '%s' were dropped"), ARRAY_COUNT(CmdLine), CmdLine + Max(0, appStrlen(CmdLine) - 40) );
 		UObject::SetLanguage(TEXT("int"));
 		FString Token = argc>1 ? appFromAnsi(argv[1]) : TEXT("");
 		TArray<FRegistryObjectInfo> List;
