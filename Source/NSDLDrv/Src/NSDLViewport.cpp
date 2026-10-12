@@ -1145,14 +1145,56 @@ UBOOL UNSDLViewport::CauseInputEvent( INT iKey, EInputAction Action, FLOAT Delta
 	unguard;
 }
 
+//
+// One stick or trigger value (SDL's -32768..32767; a trigger 0..32767). A trigger is a button with a threshold, a
+// stick has its dead zone applied and is sent every tick while it is off centre (TickInput).
+//
+void UNSDLViewport::UpdatePadAxis( INT Axis, INT NewValue )
+{
+	const BYTE Key = JoyAxisMap[Axis];
+	const INT PrevValue = JoyAxis[Axis];
+	INT DeadZone = 0;
+	if ( Key < IK_JoyX )
+	{
+		// Treat the axis like a trigger.
+		if ( PrevValue < JoyAxisPressThreshold && NewValue >= JoyAxisPressThreshold )
+			CauseInputEvent( Key, IST_Press );
+		else if ( PrevValue >= JoyAxisPressThreshold && NewValue < JoyAxisPressThreshold )
+			CauseInputEvent( Key, IST_Release );
+	}
+	else
+	{
+		// Apply deadzone.
+		if ( Key >= IK_JoyX && Key <= IK_JoyZ )
+			DeadZone = Client->DeadZoneXYZ * 32767.f;
+		else if ( Key == IK_JoyR || Key == IK_JoyU || Key == IK_JoyV )
+			DeadZone = Client->DeadZoneRUV * 32767.f;
+		if ( Abs(NewValue) < DeadZone )
+			NewValue = 0;
+	}
+	JoyAxis[Axis] = NewValue;
+}
+
+// H-3: the keys a pad's held-at-connect press gave the game. SDL never reports their release (it never saw them go
+// down), so they are a tap: released at the next tick, as engine-uc2's SDL2Pads.cpp does.
+static BYTE GHeldTap[32];
+static INT GHeldTapNum = 0;
+
 UBOOL UNSDLViewport::TickInput()
 {
 	guard(UNSDLViewport::TickInput);
 
 	SDL_Event Ev;
 	INT Tmp;
-	const FLOAT CurTime = appSeconds();
-	const FLOAT DeltaTime = CurTime - InputUpdateTime;
+	// ufront: DOUBLE. appSeconds() is not a small number: on the threaded web build it counts from the epoch
+	// (emscripten_get_now() is timeOrigin + now there, so that every worker agrees), natively from the boot. A FLOAT
+	// that size moves in steps of up to 128 s, so DeltaTime was 0 on nearly every frame and a held stick, which is
+	// scaled by it below, moved nothing. The first call has no previous time, and a long hitch is not one big step.
+	const DOUBLE CurTime = appSeconds();
+	const FLOAT DeltaTime = InputUpdateTime > 0.0 ? (FLOAT)Clamp( CurTime - InputUpdateTime, 0.0, 0.25 ) : 0.f;
+	for( INT k = 0; k < GHeldTapNum; k++ )
+		CauseInputEvent( GHeldTap[k], IST_Release );
+	GHeldTapNum = 0;
 
 	while( SDL_PollEvent( &Ev ) )
 	{
@@ -1221,12 +1263,17 @@ UBOOL UNSDLViewport::TickInput()
 							{
 								// The triggers are buttons in the browser's layout and axes in SDL's.
 								const INT Axis = b==6 ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
-								JoyAxis[Axis] = 32767;
 								if( JoyAxisMap[Axis] )
+								{
 									CauseInputEvent( JoyAxisMap[Axis], IST_Press );
+									GHeldTap[GHeldTapNum++] = JoyAxisMap[Axis];	// released next tick (a tap)
+								}
 							}
 							else if( JoyButtonMap[W3CToSDL[b]] )
+							{
 								CauseInputEvent( JoyButtonMap[W3CToSDL[b]], IST_Press );
+								GHeldTap[GHeldTapNum++] = JoyButtonMap[W3CToSDL[b]];	// released next tick (a tap)
+							}
 						}
 						debugf( NAME_Init, TEXT("NSDLClient: buttons held at the connect given to the game: 0x%x"), Held );
 					}
@@ -1258,31 +1305,7 @@ UBOOL UNSDLViewport::TickInput()
 				}
 				break;
 			case SDL_CONTROLLERAXISMOTION:
-				{
-					const BYTE Key = JoyAxisMap[Ev.caxis.axis];
-					const INT PrevValue = JoyAxis[Ev.caxis.axis];
-					INT NewValue = Ev.caxis.value;
-					INT DeadZone = 0;
-					if ( Key < IK_JoyX )
-					{
-						// Treat the axis like a trigger.
-						if ( PrevValue < JoyAxisPressThreshold && NewValue >= JoyAxisPressThreshold )
-							CauseInputEvent( Key, IST_Press );
-						else if ( PrevValue >= JoyAxisPressThreshold && NewValue < JoyAxisPressThreshold )
-							CauseInputEvent( Key, IST_Release );
-					}
-					else
-					{
-						// Apply deadzone.
-						if ( Key >= IK_JoyX && Key <= IK_JoyZ )
-							DeadZone = Client->DeadZoneXYZ * 32767.f;
-						else if ( Key == IK_JoyR || Key == IK_JoyU || Key == IK_JoyV )
-							DeadZone = Client->DeadZoneRUV * 32767.f;
-						if ( Abs(NewValue) < DeadZone )
-							NewValue = 0;
-					}
-					JoyAxis[Ev.caxis.axis] = NewValue;
-				}
+				// ufront: the sticks and triggers are read from the pad's state every tick (below), not from these.
 				break;
 			case SDL_MOUSEMOTION:
 				if( !SDL_GetRelativeMouseMode() )
@@ -1345,6 +1368,15 @@ UBOOL UNSDLViewport::TickInput()
 				break;
 		}
 	}
+
+	// ufront: the sticks and triggers come from the pad's STATE every tick, not from SDL_CONTROLLERAXISMOTION. SDL's
+	// Emscripten joystick driver reports no axis values when a pad is opened, so SDL takes the first value an axis
+	// reports as its resting point and posts no event for it (SDL_PrivateJoystickAxis): the first push of a stick
+	// after the pad appeared was lost, and SDL then took the held stick for the centre. The state is always right
+	// (engine-uc2's SDL2Pads.cpp reads it the same way).
+	if( SDL_GameController* GC = Client->GetController() )
+		for( INT a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++ )
+			UpdatePadAxis( a, SDL_GameControllerGetAxis( GC, (SDL_GameControllerAxis)a ) );
 
 	// Constantly hammer the input system with axis events for axes that are not zero.
 	for ( INT i = 0; i < SDL_CONTROLLER_AXIS_MAX; ++i )

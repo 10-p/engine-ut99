@@ -301,6 +301,14 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
   that made the browser list the pad, which SDL's Emscripten driver never reports, is read from
   `navigator.getGamepads()` once at the connect and given to the game (engine-uc2's H-3). Log lines: `NSDLClient:
   game pad connected: <name>` / `disconnected` / `buttons held at the connect given to the game: 0x<mask>`.
+  That press is a tap (released at the next tick: SDL never saw it go down, so it never reports its release). The
+  sticks and triggers are read from the pad's STATE every tick, not from axis events: SDL's Emscripten driver reports
+  no axis values when a pad is opened, so SDL took a stick's first push for its resting point and posted no event for
+  it (`SDL_PrivateJoystickAxis`); the state is right (engine-uc2 reads pads the same way). Found by the cross-engine
+  E2E (`wasm-shared.spec.js` connect-and-move), with: a stick's step is scaled by the frame time, which was a `FLOAT`
+  copy of `appSeconds()`. On the threaded web build that is an epoch-sized number (`emscripten_get_now()` is
+  `timeOrigin + now` there, so that every worker agrees), which a `FLOAT` holds in 128-second steps: the time step was
+  0 on nearly every frame and a held stick moved nothing. `TickInput` keeps the time in a `DOUBLE` now.
 
 ## The web port (WASM)
 
