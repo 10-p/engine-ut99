@@ -294,8 +294,18 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
 - **`ucc make` saves are deterministic** (`Core/Src/UnObj.cpp`, engine-uc2's S2): `SavePackage` sorts names,
   imports and exports with a stable merge sort (the C library's qsort left equal keys in a library-dependent
   order), and `CacheDrivers` reads the `.int` files in Windows' (NTFS) order, not `readdir()`'s.
-- **Game pads** (`Source/NSDLDrv`, one pad: the first connected): `[NSDLDrv.NSDLClient] UseJoystick` decides
-  whether pads are used at all (it was registered and read by nothing); a pad connected after start opens on
+- **Game pads** (`Source/NSDLDrv`, one pad: the first connected): `[NSDLDrv.NSDLClient] UseJoystick` (on by default) is a
+  real switch (ufront 2.91, the owner: "on by default, but it can still be disabled"): the game-controller subsystem
+  is always up and the viewport reads the key every tick, so the game's own option (`set ini:Engine.Engine.
+  ViewportManager UseJoystick …`) closes the pad (every key released) or opens the first one present at once,
+  logged `NSDLClient: game pads on|off (UseJoystick)`; ⚠ the `UNSDLClient()` instance constructor used to set
+  `UseJoystick`, `ScaleXYZ/RUV` and the dead zones AFTER the ini had filled the object (v400 constructs on the loaded
+  defaults), so `UseJoystick=False` still connected the pad and the Scale keys never applied (measured 2026-10-14); the
+  compiled defaults live in `StaticConstructor` only now. **The layout (2.91) is Unreal 1's**, shared with UT2004
+  (`web/DefUser.ini`): A Jump, B Duck, X InventoryActivate, Y Walking, Back ShowScores, Start ShowMenu, left-stick
+  click Duck, bumpers and triggers Fire / AltFire, D-pad left/right PrevWeapon / NextWeapon, up/down InventoryPrevious /
+  InventoryNext, sticks `speed=1` (with the ini's `ScaleXYZ=200 / ScaleRUV=500`, Unreal 1's turn rate; a player's
+  existing `User.ini` keeps its own bindings); a pad connected after start opens on
   `SDL_CONTROLLERDEVICEADDED` and closes on `REMOVED`, releasing every pad key (there was no hot-plug, so on the web,
   where a browser lists a pad only at its first press, a pad practically never worked); and on the web the press
   that made the browser list the pad, which SDL's Emscripten driver never reports, is read from

@@ -1179,6 +1179,26 @@ void UNSDLViewport::UpdatePadAxis( INT Axis, INT NewValue )
 // down), so they are a tap: released at the next tick, as engine-uc2's SDL2Pads.cpp does.
 static BYTE GHeldTap[32];
 static INT GHeldTapNum = 0;
+static INT GPadsOn = -1;	// UseJoystick as last seen (-1: not yet; the client's Init said it)
+
+//
+// ufront 2.91: nothing may stay held when the pad goes (removed, or UseJoystick off): every pad key is released and
+// the axes the frame loop re-sends are zeroed.
+//
+void UNSDLViewport::ReleasePad()
+{
+	guard(UNSDLViewport::ReleasePad);
+	for( INT b=0; b<SDL_CONTROLLER_BUTTON_MAX; b++ )
+		if( JoyButtonMap[b] )
+			CauseInputEvent( JoyButtonMap[b], IST_Release );
+	for( INT a=0; a<SDL_CONTROLLER_AXIS_MAX; a++ )
+	{
+		if( JoyAxisMap[a] && JoyAxisMap[a] < IK_JoyX && JoyAxis[a] >= JoyAxisPressThreshold )
+			CauseInputEvent( JoyAxisMap[a], IST_Release );
+		JoyAxis[a] = 0;
+	}
+	unguard;
+}
 
 UBOOL UNSDLViewport::TickInput()
 {
@@ -1195,6 +1215,28 @@ UBOOL UNSDLViewport::TickInput()
 	for( INT k = 0; k < GHeldTapNum; k++ )
 		CauseInputEvent( GHeldTap[k], IST_Release );
 	GHeldTapNum = 0;
+
+	// ufront 2.91: UseJoystick, every tick. The game's own "Use Joystick" option (`set ini:Engine.Engine.ViewportManager
+	// UseJoystick ...`) sets it on this live client, so it takes effect at once: off closes the pad (keys released),
+	// back on opens the first one present (one connected while it was off sent its ADDED event then).
+	{
+		UNSDLClient* PadClient = Client;
+		const INT On = PadClient->UseJoystick ? 1 : 0;
+		if( GPadsOn >= 0 && On != GPadsOn )
+		{
+			debugf( NAME_Init, TEXT("NSDLClient: game pads %s (UseJoystick)"), On ? TEXT("on") : TEXT("off") );
+			if( !On )
+			{
+				if( SDL_GameController* GC = PadClient->GetController() )
+					if( PadClient->ClosePad( SDL_JoystickInstanceID( SDL_GameControllerGetJoystick( GC ) ) ) )
+						ReleasePad();
+			}
+			else
+				for( INT i=0; i<SDL_NumJoysticks() && !PadClient->GetController(); i++ )
+					PadClient->OpenPad( i, NULL );
+		}
+		GPadsOn = On;
+	}
 
 	while( SDL_PollEvent( &Ev ) )
 	{
@@ -1281,18 +1323,7 @@ UBOOL UNSDLViewport::TickInput()
 				break;
 			case SDL_CONTROLLERDEVICEREMOVED:
 				if( Client->ClosePad( Ev.cdevice.which ) )
-				{
-					// Nothing may stay held: release every pad key and zero the axes the frame loop re-sends.
-					for( INT b=0; b<SDL_CONTROLLER_BUTTON_MAX; b++ )
-						if( JoyButtonMap[b] )
-							CauseInputEvent( JoyButtonMap[b], IST_Release );
-					for( INT a=0; a<SDL_CONTROLLER_AXIS_MAX; a++ )
-					{
-						if( JoyAxisMap[a] && JoyAxisMap[a] < IK_JoyX && JoyAxis[a] >= JoyAxisPressThreshold )
-							CauseInputEvent( JoyAxisMap[a], IST_Release );
-						JoyAxis[a] = 0;
-					}
-				}
+					ReleasePad();	// nothing may stay held
 				break;
 			case SDL_CONTROLLERBUTTONDOWN:
 			case SDL_CONTROLLERBUTTONUP:

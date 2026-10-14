@@ -98,13 +98,12 @@ void UNSDLClient::StaticConstructor()
 UNSDLClient::UNSDLClient()
 {
 	guard(UNSDLClient::UWindowsClient);
+	// ufront 2.91: nothing configurable is assigned here. This v400 engine runs the C++ constructor on an object
+	// whose config the ini has ALREADY filled (StaticAllocateObject copies the class defaults, which LoadConfig set),
+	// so the assignments this held (UseJoystick=true, ScaleXYZ/RUV=100, the dead zones, DefaultDisplay) overwrote the
+	// ini every time: `UseJoystick=False` connected the pad anyway (measured 2026-10-14) and the Scale keys never
+	// applied. The compiled defaults live in StaticConstructor, where the ini can override them.
 	Controller = NULL;
-	DefaultDisplay = 0;
-	UseJoystick = true;
-	ScaleXYZ = 100.f;
-	ScaleRUV = 100.f;
-	DeadZoneXYZ = 0.1f;
-	DeadZoneRUV = 0.1f;
 	unguard;
 }
 
@@ -131,8 +130,9 @@ void UNSDLClient::Init( UEngine* InEngine )
 
 	Controller = NULL;
 
-	// ufront: UseJoystick (registered, never read before) decides whether pads are used at all.
-	if ( SDL_Init( SDL_INIT_VIDEO | (UseJoystick ? SDL_INIT_GAMECONTROLLER : 0) ) < 0 )
+	// ufront 2.91: the game-controller subsystem is always up; whether a pad is USED is UseJoystick, which the
+	// viewport reads every tick (UNSDLViewport::TickInput), so the game's own option takes effect at once.
+	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER ) < 0 )
 	{
 		appErrorf( "SDL_Init failed: %s", SDL_GetError() );
 		appExit();
@@ -143,11 +143,11 @@ void UNSDLClient::Init( UEngine* InEngine )
 	// A pad already connected (on the web: one pressed on the launcher page). Later ones arrive through
 	// SDL_CONTROLLERDEVICEADDED (UNSDLViewport::UpdateInput): there was no hot-plug before, so on the web, where a
 	// browser lists a pad only once a button is pressed on it, a pad practically never worked.
+	SDL_GameControllerEventState( SDL_ENABLE );
 	if( UseJoystick )
 	{
 		for( INT i=0; i<SDL_NumJoysticks() && !Controller; i++ )
 			OpenPad( i, NULL );
-		SDL_GameControllerEventState( SDL_ENABLE );
 	}
 	else debugf( NAME_Init, TEXT("NSDLClient: UseJoystick=False: no game pads") );
 

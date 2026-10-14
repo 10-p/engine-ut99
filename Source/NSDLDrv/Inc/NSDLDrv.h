@@ -84,6 +84,7 @@ private:
 	SDL_Rect DisplaySize;
 	SWORD JoyAxis[SDL_CONTROLLER_AXIS_MAX];
 	void UpdatePadAxis( INT Axis, INT NewValue );	// ufront: one stick or trigger value, read from the pad's state
+	void ReleasePad();	// ufront 2.91: every pad key up and the axes zeroed (the pad went, or UseJoystick went off)
 	UBOOL QuitRequested;
 	DOUBLE InputUpdateTime;	// ufront: DOUBLE, see TickInput
 public:
