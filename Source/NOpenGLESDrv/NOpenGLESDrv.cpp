@@ -609,7 +609,11 @@ void UNOpenGLESRenderDevice::ReadPixels( FColor* Pixels )
 {
 	guard(UNOpenGLESRenderDevice::ReadPixels);
 
-	glPixelStorei( GL_UNPACK_ALIGNMENT, 0 );
+	// ufront 2.91: was glPixelStorei( GL_UNPACK_ALIGNMENT, 0 ) -- the wrong parameter AND an invalid value, which
+	// Emscripten caches as given (libwebgl.js glPixelStorei) and then sizes every later texture upload AND this read
+	// from: (x + 0 - 1) & -0 = 0 bytes, so after one SHOT no texture uploaded and the shot itself read nothing. A
+	// read packs rows; RGBA rows are 4-byte aligned already, 1 just says so.
+	glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 	glReadPixels( 0, 0, Viewport->SizeX, Viewport->SizeY, GL_RGBA, GL_UNSIGNED_BYTE, (void*)Pixels );
 
 	// Swap RGBA -> BGRA.
