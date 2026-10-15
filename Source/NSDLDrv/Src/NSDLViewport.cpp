@@ -315,11 +315,12 @@ void UNSDLViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX
 	UBOOL DoOpenGL=0;
 	UBOOL NoHard=ParseParam( appCmdLine(), "nohard" );
 	SDL_GLprofile GLProfile = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY;
-	// ufront 2.9: on Emscripten the GL context version is chosen by the selected render-device NAME —
-	// XOpenGLDrv targets WebGL2/GLES3 (major 3); every other device (NOpenGLESDrv, OpenGLDrv/UTGLR via
-	// gl4es) targets WebGL1/GLES2 (major 2). Set from the resolved device name below; used in the
-	// __EMSCRIPTEN__ context block. One viewport hosts all devices — no second NSDL package needed.
+	// ufront 2.9: on Emscripten the GL context version is chosen by the selected render-device NAME, as a GLES major
+	// (2 = WebGL 1, 3 = WebGL 2). Since 2.92 every GL device gets WebGL 2 (NOpenGLESDrv and OpenGLDrv/UTGLR may ask
+	// for WebGL 1 with -WEBGL=1 or fall back to it; XOpenGLDrv needs 2). Set from the resolved device name below; used
+	// in the __EMSCRIPTEN__ context block. One viewport hosts all devices — no second NSDL package needed.
 	INT WebGLESMajor = 2;
+	UBOOL XOpenGLDevice = 0; // ufront 2.92: it needs WebGL 2, so it never falls back to WebGL 1
 
 	// Clamp invalid sizes – SDL textures can't be 0x0
 	// If no size specified, try to read from config
@@ -379,9 +380,19 @@ void UNSDLViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX
 		if( DoOpenGL && Temp.InStr(TEXT("GLES")) != INDEX_NONE )
 			GLProfile = SDL_GL_CONTEXT_PROFILE_COMPATIBILITY;
 		// ufront 2.9: XOpenGLDrv wants a WebGL2/GLES3 context (its name has no "GLES", so the compat line
-		// above skips it). Every other OPENGL device stays WebGL1/GLES2 (major 2).
+		// above skips it). On the web, 2.92 below gives every GL device one.
 		if( DoOpenGL && Temp.InStr(TEXT("XOPENGL")) != INDEX_NONE )
 			WebGLESMajor = 3;
+#ifdef __EMSCRIPTEN__
+		// ufront 2.92: WebGL 2 for every GL device. NOpenGLESDrv's GLES2 calls and gl4es's (OpenGLDrv/UTGLR) run on it
+		// unchanged, and it is what their antialiasing needs (msaa-backbuffer.js: multisampled renderbuffers);
+		// benchmarked against WebGL 1 at no cost (docs: steps/2.92). -WEBGL=1 asks for WebGL 1 for those two (the
+		// benchmark's A/B switch), and a browser without WebGL 2 gets it (below). XOpenGLDrv needs WebGL 2.
+		INT AskWebGL = 2;
+		XOpenGLDevice = DoOpenGL && Temp.InStr(TEXT("XOPENGL")) != INDEX_NONE;
+		if( DoOpenGL )
+			WebGLESMajor = ( !XOpenGLDevice && Parse( appCmdLine(), TEXT("WEBGL="), AskWebGL ) && AskWebGL == 1 ) ? 2 : 3;
+#endif
 	}
 
 	// User window of launcher if no parent window was specified.
@@ -527,6 +538,14 @@ void UNSDLViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX
 				Attrs.explicitSwapControl       = 1;
 				Attrs.renderViaOffscreenBackBuffer = 1;
 				EMSCRIPTEN_WEBGL_CONTEXT_HANDLE WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
+				if( WebGLCtx <= 0 && Attrs.majorVersion == 2 && !XOpenGLDevice )
+				{
+					// ufront 2.92: a browser without WebGL 2 still runs NOpenGLESDrv and UTGLR, without antialiasing.
+					debugf( NAME_Init, "No WebGL 2 context (handle %i): WebGL 1, without antialiasing", (INT)WebGLCtx );
+					Attrs.majorVersion = 1;
+					WebGLESMajor = 2;
+					WebGLCtx = emscripten_webgl_create_context( "#canvas", &Attrs );
+				}
 				if( WebGLCtx <= 0 )
 				{
 					appErrorf( "Could not create WebGL context on the worker (handle %i)", (INT)WebGLCtx );

@@ -195,6 +195,9 @@ if(EMSCRIPTEN)
     # Module.UE.net.*). Heavy glue is NOT baked. Dead-stripped until the WebRTC net driver lands (2.7d).
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
+    # ufront 2.92: the multisampled emulated back buffer (ufront_backbuffer_samples) for the render devices that
+    # draw into framebuffer 0 (NOpenGLESDrv, OpenGLDrv/UTGLR); see the file.
+    "SHELL:--js-library ${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js"
   )
   if(UT_WEB_PERF)
     # ufront 2.57 -- --emit-symbol-map costs the SHIPPED build NOTHING: the map is a SIDE FILE
@@ -236,7 +239,8 @@ if(EMSCRIPTEN)
   # class of trap as the preloaded inis above, same fix.
   set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
     "${CMAKE_SOURCE_DIR}/../vendor/glue/webrtc-shim.js"
-    "${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js")
+    "${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
+    "${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js")
   # Bare loader: SDLLaunch.js (+ .wasm/.data), no .html, into build-<cfg>/SDLLaunch/. `SDLLaunch` is the
   # frozen cross-engine served-loader basename the monorepo host + packages/build assume (boot.ts loads
   # `SDLLaunch.js`; engine-unreal1/engine-ut2004 use it too) — engine differences are DATA, so the generic

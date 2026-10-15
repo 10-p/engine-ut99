@@ -319,6 +319,21 @@ The same commands, settings and log lines in every engine (ufront's UC2 merge; e
   copy of `appSeconds()`. On the threaded web build that is an epoch-sized number (`emscripten_get_now()` is
   `timeOrigin + now` there, so that every worker agrees), which a `FLOAT` holds in 128-second steps: the time step was
   0 on nearly every frame and a held stick moved nothing. `TickInput` keeps the time in a `DOUBLE` now.
+- **Antialiasing on the web** (ufront 2.92; the launcher's Advanced "Antialiasing" sets every renderer's key): every GL
+  device draws on **WebGL 2** (`NSDLViewport.cpp`; NOpenGLESDrv's GLES2 calls and gl4es's run on it unchanged).
+  XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`) and OpenGLDrv/UTGLR
+  (`UseAA`, `NumAASamples`) draw into framebuffer 0, which under `-sOFFSCREEN_FRAMEBUFFER` is Emscripten's emulated,
+  single-sample framebuffer (the context's `antialias` never reaches it): `Source/UnrealTournament/msaa-backbuffer.js`
+  (`ufront_backbuffer_samples(n)`, a `--js-library`) swaps it for a multisampled one (RGBA8 + DEPTH24_STENCIL8),
+  resolved at the present and before any read of framebuffer 0 (`SHOT`, `copyTex[Sub]Image2D`); each of the two
+  devices asks for it at Init (UTGLR in the `10-p/utglr-copy` fork) or gives it back. Log lines: `GLES2: antialiasing
+  4x (multisampled back buffer)` / `GLES2: antialiasing off`; UTGLR `AA: 4x multisampled back buffer` / `AA: off`.
+  `-WEBGL=1` gives those two WebGL 1 (no antialiasing: no multisampled renderbuffers), and a browser without WebGL 2
+  falls back to it (`No WebGL 2 context …`). Benchmarked (the frontend's opt-in `renderer-benchmark`, steps/2.92):
+  WebGL 2 costs nothing (the same frame rate, 2-7% less CPU a frame, the same GPU time); 4x costs 10-20% more GPU
+  time a frame. ⚠ NOpenGLESDrv's constructor used to assign its config defaults after the ini had filled the object
+  (the `UNSDLClient` defect of 2.91): every `[NOpenGLESDrv.NOpenGLESRenderDevice]` key was ignored, and it always ran
+  `NumAASamples=4`; the defaults live in `StaticConstructor` now.
 
 ## The web port (WASM)
 
