@@ -565,9 +565,13 @@ void URender::DrawLodMesh
 			appQsort( &FacePool(0), FacePool.Num(), sizeof(FacePool(0)), (QSORT_COMPARE)CompareFaceKey );
 		}
 
-		// Lock the textures.
+		// Lock the textures, each for the flags its materials are drawn with (UTexture::LockForDraw).
 		UTexture* EnvironmentMap = NULL;
 		check(Mesh->Textures.Num()<=ARRAY_COUNT(TextureInfo));
+		appMemzero( SkinFlags, sizeof(SkinFlags) );
+		for( INT m=0; m<Mesh->Materials.Num(); m++ )
+			if( Mesh->Materials(m).TextureIndex<ARRAY_COUNT(SkinFlags) )
+				SkinFlags[Mesh->Materials(m).TextureIndex] |= ExtraFlags | Mesh->Materials(m).PolyFlags;
 		for( INT i=0; i<Mesh->Textures.Num(); i++ )
 		{
 			Textures[i] = Mesh->GetTexture( i, Owner );
@@ -575,7 +579,7 @@ void URender::DrawLodMesh
 			{
 				Textures[i] = Textures[i]->Get( Frame->Viewport->CurrentTime );
 				INT ThisLOD = -1;//Mesh->TextureLOD.Num() ? Clamp<INT>( appCeilLogTwo(1+appFloor(256.f/(Detail*Mesh->TextureLOD(i)*Textures[i]->USize))), 0, 3 ) : 0;
-				Textures[i]->Lock( TextureInfo[i], Frame->Viewport->CurrentTime, ThisLOD, Frame->Viewport->RenDev );
+				Textures[i]->LockForDraw( TextureInfo[i], Frame->Viewport->CurrentTime, ThisLOD, Frame->Viewport->RenDev, SkinFlags[i] );
 				EnvironmentMap = Textures[i];								
 			}
 		}

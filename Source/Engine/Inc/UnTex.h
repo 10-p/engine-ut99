@@ -350,6 +350,10 @@ class ENGINE_API UTexture : public UBitmap
 	void Lock( FTextureInfo& TextureInfo, DOUBLE Time, INT LOD, URenderDevice* RenDev );
 	void Unlock( FTextureInfo& TextureInfo );
 
+	// Lock for a draw with these PolyFlags: a PF_Masked draw is given the P8 mips, never the S3TC copy (UnTex.cpp).
+	void LockForDraw( FTextureInfo& TextureInfo, DOUBLE Time, INT LOD, URenderDevice* RenDev, DWORD PolyFlags );
+	void LockMips( FTextureInfo& TextureInfo, DOUBLE Time, INT LOD, URenderDevice* RenDev, UBOOL UseComp );
+
 	// UTexture interface.
 	virtual void Clear( DWORD ClearFlags );
 	virtual void Init( INT InUSize, INT InVSize );

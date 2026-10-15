@@ -2784,7 +2784,7 @@ void URender::DrawFrame( FSceneNode* Frame )
 
 			// Make TextureMap.
 			FTextureInfo TextureMap;
-			Texture->Lock( TextureMap, Viewport->CurrentTime, TextureLOD, Viewport->RenDev );
+			Texture->LockForDraw( TextureMap, Viewport->CurrentTime, TextureLOD, Viewport->RenDev, Surface.PolyFlags );
 			TextureMap.Pan			= FVector( -PanU, -PanV, 0 );
 			Surface.Texture			= &TextureMap;
 

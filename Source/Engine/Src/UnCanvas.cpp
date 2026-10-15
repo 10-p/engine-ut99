@@ -60,10 +60,11 @@ void UCanvas::DrawTile
 	FTextureInfo Info;
 	if( !GIsEditor )
 		Texture = Texture->Get( Viewport->CurrentTime );
-	Texture->Lock( Info, Viewport->CurrentTime, -1, Viewport->RenDev );
+	PolyFlags |= Texture->PolyFlags & PF_Masked;
+	Texture->LockForDraw( Info, Viewport->CurrentTime, -1, Viewport->RenDev, PolyFlags );
 	FLOAT UF = Info.UScale * Info.USize / Texture->USize; U *= UF; UL *= UF;
 	FLOAT VF = Info.VScale * Info.VSize / Texture->VSize; V *= VF; VL *= VF;
-	Viewport->RenDev->DrawTile( Frame, Info, X, Y, XL, YL, U, V, UL, VL, SpanBuffer, Z, Color, Fog, PolyFlags | (Texture->PolyFlags&PF_Masked) );
+	Viewport->RenDev->DrawTile( Frame, Info, X, Y, XL, YL, U, V, UL, VL, SpanBuffer, Z, Color, Fog, PolyFlags );
 	Texture->Unlock( Info );
 
 	unguard;
@@ -244,7 +245,7 @@ static inline INT DrawString
 				{
 					if( Info.Texture )
 						Info.Texture->Unlock( Info );
-					Tex->Lock( Info, Canvas->Viewport->CurrentTime, 0, Canvas->Viewport->RenDev );
+					Tex->LockForDraw( Info, Canvas->Viewport->CurrentTime, 0, Canvas->Viewport->RenDev, Flags );
 				}
 				FFontCharacter& Char = PageInfo.Characters(Index);
 
