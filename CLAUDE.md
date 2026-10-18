@@ -1,10 +1,11 @@
 # engine-ut99 — agent guide
 
-**What this is:** the private engine repo for **Unreal Tournament (1999), Unreal Engine 1 v400**
-(`PACKAGE_FILE_VERSION` 68; it reads the retail packages and maps): engine source only. It builds a WebAssembly
-artifact (and native Linux, Android and Windows binaries). The frontend repo `10-p/unreal-frontend-arch-private`
-consumes the artifact and owns the host page, the UI, the build assembly and the browser glue behind a thin ABI.
-Building, options and test tools: `BUILD.md`.
+**What this is:** the private engine repo for **Unreal Tournament (1999), Unreal Engine 1 v400**: engine source
+only. This branch, `feat/v436-compat` (cloned as `engine-ut99-436-compat`), runs the retail **v436** packages, maps
+and v436-era mods (`ENGINE_VERSION` 436, `PACKAGE_FILE_VERSION` 69). It builds a WebAssembly artifact, the frontend's
+`ut99-436-compat` target (and native Linux, Android and Windows binaries). The frontend repo
+`10-p/unreal-frontend-arch-private` consumes the artifact and owns the host page, the UI, the build assembly and the
+browser glue behind a thin ABI. Building, options and test tools: `BUILD.md`.
 
 **Lineage:** Epic's v400 drop, ported by [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) up to `820b25c`; our
 work is everything after that commit. The baseline is the Epic drop in `~/WorkUnreal/epic-sources/` (`ut99-v400/`,
@@ -12,11 +13,11 @@ see its README). No `upstream` remote is configured: compare against `820b25c` o
 
 **Features** are listed in the frontend's `docs/14-change-inventory.md`; a new feature adds its line there.
 
-**`feat/v436-compat`** (cloned as `engine-ut99-436-compat`) is this engine for retail v436 content and holds
-v436-specific changes only. A general engine change goes to `main`, and the 436 branch is then rebased on top
-(`git fetch origin && git rebase --onto origin/main <old-base>`; a rebase is agreed before it is made, since it
-rewrites a pushed branch). Never commit a general change directly to it. Keep general and v436-specific work in
-separate commits.
+**`feat/v436-compat` holds v436-specific changes only.** A general engine change goes to base `engine-ut99` `main`,
+and this branch is then rebased on top (`git fetch origin && git rebase --onto origin/main <old-base>`; a rebase is
+agreed before it is made, since it rewrites a pushed branch). A general change committed here directly is a parallel
+copy that the next fix to one side misses. General and v436-specific work stay in separate commits so a rebase stays
+cheap. The frontend's `publish-all` refuses this branch when it does not contain `origin/main`.
 
 ## Map
 | Thing | Where | Role |
@@ -72,6 +73,42 @@ separate commits.
 - **Render device at startup:** a `-*RENDERER` switch, else the persisted choice when it is a hardware default or
   the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES (on Android
   NOpenGLES, then XOpenGL).
+
+## This branch: v436 compatibility
+- **Version.** `Core/Inc/UnObjVer.h`: `ENGINE_VERSION` 436 (behind `#ifndef`, so a translation unit may override it),
+  `ENGINE_MIN_NET_VERSION` 400, `PACKAGE_FILE_VERSION` 69 with a licensee half (`ArLicenseeVer`); loading accepts
+  file version 60 upward. The fetched XOpenGLDrv compiles with `ENGINE_VERSION=400`
+  (`Source/XOpenGLDrv/CMakeLists.txt`): its render-header paths key on 400 and the render structs it uses are not
+  version-gated.
+- **Layouts and natives follow the retail v436 packages.** A C++ class or struct that a script class mirrors must
+  match v436's `Engine.u`/`Editor.u`/`IpDrv.u` (the layout guard is fatal at load); a native function keeps v436's
+  number. At compile time `CHECK_NATIVE_REPLICATION` (`Engine/Src/UnActor.cpp`) ties `CLASS_NativeReplication` to
+  declaring `GetOptimizedRepList`, and at load `UClass::Serialize` warns `[netrep]` for a `nativereplication` script
+  class without one.
+- **Net behaviour is retail v436's** (replication lists, priorities, the login handshake with its 432 floor, the
+  float-to-int rounding sites through `appRound`): a change there decides whether a v436 server or client still
+  talks to this engine.
+- **469 string natives.** `Locs` 238, `Repl` 239, `$=` 322, `@=` 323, `-=` 324 (`Core/Src/UnCorSc.cpp`) at OldUnreal
+  469's numbers, because a 469-compiled mod calls a final native by its number. `ClearConfig` 537, `AddToPackageMap`
+  1718 and `IsInPackageMap` 1719 touch engine state and stay unregistered. `tools/oracle-469-natives/run.sh
+  <469-install> <436-run-tree>` checks them against stock 469.
+- **Downloads.** `Engine/Src/UnDownload.cpp` (`UDownload`, `UChannelDownload`) and `IpDrv/Src/HTTPDownload.cpp`.
+  A `.uz` file's codec chain is RLE, BWT, MTF, a second RLE only for signature 5678, then Huffman on every file. On
+  the web `UHTTPDownload` fetches through the `GWebHttp` hook table (`IpDrv/Inc/WebHttp.h`); with no hook it fails at
+  once and the next download manager takes over. Nothing may follow `DownloadDone()`: it can start the next
+  download, which deletes the object.
+- **Package lookup by GUID.** On a join `appFindPackageFile` gets the server's GUID and size: a candidate of that size
+  is taken without opening it, another size is checked by its GUID (natively the package summary, on the web the
+  page's manifest through the optional pkgguid module, `vendor/glue/ue_pkgguid_abi.h`); `.u` files are checked too.
+  A package already loaded in another version cannot be swapped, so `UNetPendingLevel` refuses that join at once.
+- **ProxyNetDrv** (`Source/ProxyNetDrv/`, web only, experimental, `UE_WITH_PROXYNET`): a client-only net driver over
+  the optional proxynet module (`ue_proxynet_*`). It shares nothing with WebRTCDrv. IpDrv imports nothing from
+  JavaScript: ProxyNetDrv registers the generic `GWebHttp` (redirect downloads, at its first connect) and `GWebLinks`
+  (`IpDrv/Inc/WebLinks.h`, the in-game server browser, at startup) tables, and `ATcpLink`/`AUdpLink` hand the
+  connections a browser cannot make to `GWebLinks`. UBrowser's script is unchanged. The launcher keeps
+  `NetworkDevice=ProxyNetDrv.ProxyNetDriver` because the build has it.
+- **WebRTC peer prefix** `ut99-436-compat` (`Source/WebRTCDrv/WebRTCDrv.cpp`) must match the frontend's
+  `targets/ut99-436-compat/target.json` `network.peerPrefix`; it keeps a v436 client off a v400 host.
 
 ## Rules
 - **Comments** explain the code as it is, in one or two lines. No stage markers or work ids, no story of a fix,
