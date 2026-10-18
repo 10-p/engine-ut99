@@ -1568,21 +1568,21 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	// (which opens the menu) and SDL's Emscripten port re-grabs it on the first click after the menu closes.
 	// Acts on state changes only.
 	{
-		static INT WebCap = -1;
-		static INT WebMenu = -1;
+		static INT CaptureState = -1;
+		static INT MenuState = -1;
 		UViewport* WV = ( Client && Client->Viewports.Num()==1 ) ? Client->Viewports(0) : NULL;
 		INT Menu = ( WV && WV->Actor && ( WV->Actor->bShowMenu || WV->bShowWindowsMouse ) ) ? 1 : 0;
 		INT Want = ( WV && GLevel && WV->Actor && !Menu ) ? 1 : 0;
-		if( WV && ( Want != WebCap || Menu != WebMenu ) )
+		if( WV && ( Want != CaptureState || Menu != MenuState ) )
 		{
 			debugf( TEXT("[webmouse] relative-capture=%i menu=%i (bShowMenu=%i bShowWinMouse=%i)"),
 				Want, Menu, WV->Actor ? (INT)WV->Actor->bShowMenu : -1, (INT)WV->bShowWindowsMouse );
-			if( Want != WebCap )
+			if( Want != CaptureState )
 			{
 				WV->SetMouseCapture( Want, Want, 0 );
-				WebCap = Want;
+				CaptureState = Want;
 			}
-			WebMenu = Menu;
+			MenuState = Menu;
 		}
 	}
 #endif

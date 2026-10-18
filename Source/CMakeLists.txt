@@ -18,7 +18,7 @@ endif()
 # UnrealTournament/CMakeLists.txt for the link flags; UT_WEB_DEBUG selects -O0 over the -O2 dev default.
 option(UT_WEB_PERF "Emscripten: shipping build — link at -O3 -g0, assertions off" OFF)
 option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
-option(USE_SDL "Use NSDLDrv instead of WinDrv" ON)
+option(USE_SDL "Use the SDL2 client (NSDLDrv); off only for the Dreamcast client (KOSDrv)" ON)
 option(LOW_MEMORY "Conserve memory as much as possible" OFF)
 option(BUILD_UNREALTOURNAMENT "Build the launcher" ON)
 # BUILD_EDITOR is a runtime dependency of a playable game: maps and meshes reference classes of the Editor

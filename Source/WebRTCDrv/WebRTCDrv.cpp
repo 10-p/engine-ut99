@@ -62,7 +62,7 @@ inline void webrtc_set_listen_status( const char*, const char*, int, int, const 
 #endif
 
 // The running engine, for the listen-server status push (set in Launch.cpp after InitEngine).
-extern UEngine* GWebRTCEngine;
+extern UEngine* GEngineForExec;
 
 // TCHAR -> a caller-owned ANSI buffer. appToAnsi() hands back one shared static string, so anything that
 // needs two converted strings alive at the same time (the listen-status push needs three) must copy.
@@ -350,7 +350,7 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 				FString SName = ServerName, MapName = TEXT("?"), GType = TEXT("");
 				INT Players = 1 + ClientConnections.Num();   // the listen host counts
 				INT MaxPl   = 16;
-				UGameEngine* GE = Cast<UGameEngine>( GWebRTCEngine );
+				UGameEngine* GE = Cast<UGameEngine>( GEngineForExec );
 				if( GE && GE->GLevel )
 				{
 					if( GE->GLevel->URL.Map.Len() )
