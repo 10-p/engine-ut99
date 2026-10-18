@@ -3978,9 +3978,9 @@ void UFractalTexture::PostLoad()
 }
 
 //
-// v436-compat port: with the client's NoFractalAnim set, a fractal texture is primed once to a
-// settled still frame (at least 48 steps, with the switch lifted so ConstantTimeTick runs) and
-// then taken off realtime; otherwise it primes as any texture does (436 Fire.dll).
+// As v436 does: with the client's NoFractalAnim set, prime once to a settled still frame (at least
+// 48 steps, with the switch lifted so ConstantTimeTick runs) and take the texture off realtime;
+// otherwise prime as any texture does.
 //
 void UFractalTexture::Prime()
 {
@@ -4180,8 +4180,8 @@ void UFireTexture::TouchTexture(INT UPos, INT VPos, FLOAT Magnitude)
 void UFireTexture::ConstantTimeTick()
 {
 	guard(UFireTexture::ConstantTimeTick);
-	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
-	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	// As v436 does, no update without a client or with its NoFractalAnim set
+	// (UFractalTexture::Prime lifts the switch while it primes the still frame).
 	if( !__Client || __Client->NoFractalAnim )
 		return;
 
@@ -4576,8 +4576,8 @@ void UWaveTexture::Clear( DWORD ClearFlags )
 void UWaveTexture::ConstantTimeTick()
 {
 	guard(UWaveTexture::ConstantTimeTick);
-	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
-	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	// As v436 does, no update without a client or with its NoFractalAnim set
+	// (UFractalTexture::Prime lifts the switch while it primes the still frame).
 	if( !__Client || __Client->NoFractalAnim )
 		return;
 
@@ -4748,8 +4748,8 @@ void UWetTexture::Clear( DWORD ClearFlags )
 void UWetTexture::ConstantTimeTick()
 {
 	guard(UWetTexture::ConstantTimeTick);
-	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
-	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	// As v436 does, no update without a client or with its NoFractalAnim set
+	// (UFractalTexture::Prime lifts the switch while it primes the still frame).
 	if( !__Client || __Client->NoFractalAnim )
 		return;
 	if( SourceTexture && USize>=8 && VSize>=8 ) // safe sizes ?
@@ -4950,8 +4950,8 @@ void UIceTexture::Clear( DWORD ClearFlags )
 void UIceTexture::ConstantTimeTick()
 {
 	guard(UIceTexture::ConstantTimeTick);
-	// v436-compat port: no fractal update without a client or with its NoFractalAnim set
-	// (then the texture was primed to a still frame by UFractalTexture::Prime).
+	// As v436 does, no update without a client or with its NoFractalAnim set
+	// (UFractalTexture::Prime lifts the switch while it primes the still frame).
 	if( !__Client || __Client->NoFractalAnim )
 		return;
 
@@ -4988,8 +4988,8 @@ void UIceTexture::ConstantTimeTick()
 void UIceTexture::Tick(FLOAT DeltaSeconds)  //"raw tick" override
 {
 	guard(UIceTexture::Tick);
-	// v436-compat port: no ice update without a client or with its NoFractalAnim set; 436
-	// skips the whole tick, the frame-synced (TimeMethod 0) path included.
+	// As v436 does, no update without a client or with its NoFractalAnim set, the
+	// frame-synced (TimeMethod 0) path included.
 	if( !__Client || __Client->NoFractalAnim )
 		return;
 

@@ -388,8 +388,8 @@ UBOOL ULevel::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		FString Temp;
 		if( ParseToken( Cmd, Temp, 0 ) )
 		{
-			// v436-compat port: take ".dem" (any case) out of the name before it is parsed as a
-			// URL, then always add it to the map (436 ULevel::Exec DEMOPLAY).
+			// v436: take ".dem" (any case) out of the name before it is parsed as a URL, then
+			// always add it to the map.
 			INT DemoPos = Temp.Caps().InStr( TEXT(".DEM") );
 			if( DemoPos != -1 )
 				Temp = Temp.Left(DemoPos) + Temp.Mid(DemoPos+4);
@@ -640,9 +640,9 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		if( ParseCommand(&Text,TEXT("HELLO")) )
 		{
 			// Versions.
-			// v436-compat port: 436 records the client's version and turns away anything older than
-			// 432 (while still advertising MINVER=400); on any rejection it closes the control channel
-			// and lets that end the connection, hard-closing only clients of 420 and older.
+			// As v436 does: record the client's version and turn away anything older than 432 (while
+			// still advertising MINVER=400); any rejection closes the control channel and hard-closes
+			// only clients of 420 and older.
 			INT RemoteMinVer=219, RemoteVer=219;
 			Parse( Text, TEXT("MINVER="), RemoteMinVer );
 			Parse( Text, TEXT("VER="),    RemoteVer    );
@@ -667,7 +667,7 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		}
 		else if( ParseCommand(&Text,TEXT("NETSPEED")) )
 		{
-			// v436-compat port: 436 ignores requests below 2000 (v400: below 500) and caps at MaxClientRate.
+			// v436: requests below 2000 are ignored, and the rate is capped at MaxClientRate.
 			INT Rate = appAtoi(Text);
 			if( Rate>=2000 )
 				Connection->CurrentNetSpeed = Min<INT>( Rate, NetDriver->MaxClientRate );
@@ -684,8 +684,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		}
 		else if( ParseCommand(&Text,TEXT("SKIP")) )
 		{
-			// v436-compat port: the client pressed F10 on an optional package; forget it so we stop
-			// expecting the other side to have it.
+			// v436: the client skipped an optional package (F10); drop it from the package map so
+			// the client is not expected to have it.
 			FGuid Guid(0,0,0,0);
 			Parse( Text, TEXT("GUID=" ), Guid );
 			if( Connection->PackageMap )

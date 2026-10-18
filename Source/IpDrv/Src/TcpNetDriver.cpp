@@ -32,7 +32,7 @@ UBOOL GInitialized;
 
 // v436: the address of a peer whose connection was just destroyed, kept until Time (appSeconds) so that
 // the peer's trailing packets are dropped instead of opening a new connection. UTcpipConnection::Destroy
-// adds one for 5 seconds; UTcpNetDriver::TickDispatch expires and matches them.
+// adds one for 5 seconds; UTcpNetDriver::RecentlyClosedPeer expires and matches them.
 struct FRecentlyClosed
 {
 	DOUBLE  Time;
@@ -338,8 +338,8 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 				if( IpMatches( ((UTcpipConnection*)ClientConnections(i))->RemoteAddr, FromAddr ) )
 					Connection = (UTcpipConnection*)ClientConnections(i);
 
-			// If we didn't find a client connection, maybe create a new one
-			// (v436: unless the packet is a straggler from a connection that just closed).
+			// If we didn't find a client connection, maybe create a new one.
+			// v436: not for a straggler from a connection that just closed.
 			if( !Connection && !RecentlyClosedPeer(FromAddr) && Notify->NotifyAcceptingConnection()==ACCEPTC_Accept )
 			{
 				Connection = new UTcpipConnection( Socket, this, FromAddr, USOCK_Open, 0, FURL() );
@@ -409,9 +409,8 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 #endif
 		// Increase socket queue size, because we are polling rather than threading
 		// and thus we rely on Windows Sockets to buffer a lot of data on the server.
-		// v436: except on Windows NT 5.x (2000/XP), where the OS default is kept unless
-		// OverrideBufferAllocation is set. No other OS is NT 5, so elsewhere the sizes are always set.
 #if __WINSOCK__
+		// v436: on Windows NT 5.x (2000/XP) the OS default is kept unless OverrideBufferAllocation is set.
 		UBOOL KeepDefaultQueue = (BYTE)GetVersion()==5 && !OverrideBufferAllocation;
 #else
 		UBOOL KeepDefaultQueue = 0;

@@ -17,7 +17,7 @@ int FReachSpec::MonsterPath()
 {
 	guard(FReachSpec::MonsterPath);
 
-	// v436-compat port: 436 admits paths down to 40 units high (was MINCOMMONHEIGHT, 48).
+	// v436: admits paths down to 40 units high, below MINCOMMONHEIGHT (48).
 	return ( (CollisionRadius >= COMMONRADIUS) && (CollisionHeight >= 40)
 			&& !(reachFlags & R_FLY) ); 
 	unguard;
@@ -178,7 +178,7 @@ int FReachSpec::findBestReachable(FVector &begin, FVector &Destination, APawn * 
 
 	if (result)
 	{
-		// v436-compat port: rounded, not truncated (436 FReachSpec::findBestReachable).
+		// v436: rounded, not truncated.
 		CollisionRadius = appRound(Scout->CollisionRadius);
 		CollisionHeight = appRound(bestHeight);
 		FVector path = End->Location - Start->Location;

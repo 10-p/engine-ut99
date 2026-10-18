@@ -658,7 +658,7 @@ UBOOL UModel::LineCheck
 				Hit.Actor		= Owner;
 				if ( Owner )
 					Hit.Normal = Hit.Normal.TransformVectorBy(Owner->ToWorld());
-				// v436-compat port: the hit normal always faces back along the trace (436 UModel::LineCheck).
+				// v436: the hit normal always faces back along the trace.
 				if( ((-V) | Hit.Normal) < 0.f )
 					Hit.Normal = -Hit.Normal;
 			}

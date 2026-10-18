@@ -542,7 +542,7 @@ void UActorChannel::Init( UNetConnection* InConnection, INT InChannelIndex, INT 
 	Level			= Connection->Driver->Notify->NotifyGetLevel();
 	RelevantTime	= Connection->Driver->Time;
 	LastUpdateTime	= Connection->Driver->Time - Connection->Driver->SpawnPrioritySeconds;
-	NumReps			= 0; // v436-compat port.
+	NumReps			= 0;
 	unguard;
 }
 
@@ -703,7 +703,7 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 
 	// Initialize client if first time through.
 	FClassNetCache* ClassCache = NULL;
-	UBOOL bJustSpawned = 0; // v436-compat port: this bunch spawned the actor (PostNetBeginPlay below).
+	UBOOL bJustSpawned = 0; // This bunch spawned the actor (PostNetBeginPlay below).
 	if( Actor==NULL )
 	{
 		guard(InitialClientActor);
@@ -850,8 +850,8 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 		// Process important changed properties.
 		Actor->PostNetReceive();
 
-		// v436-compat port: an actor this channel spawned gets PostNetBeginPlay once, after its
-		// first batch of replicated properties has arrived.
+		// As v436 does, an actor this channel spawned gets PostNetBeginPlay once, after its first
+		// batch of replicated properties has arrived.
 		if( bJustSpawned )
 		{
 			Actor->eventPostNetBeginPlay();
@@ -1028,8 +1028,8 @@ void UActorChannel::ReplicateActor()
 	guard(FigureOutWhatNeedsReplicating);
 	BYTE*   CompareBin = Recent.Num() ? &Recent(0) : &ActorClass->Defaults(0);
 	INT     iCount     = ClassCache->RepProperties.Num();
-	// v436-compat port: 436 passes the channel's replication count (the native lists send a reduced
-	// set on most updates, the full set every 5th) and counts this update before script replication.
+	// As v436 does, pass the channel's replication count (a pawn's or inventory item's native list
+	// sends a reduced set on most updates, the full set every 5th), then count this update.
 	LastRep            = Actor->GetOptimizedRepList( CompareBin, &Retirement(0), Reps, Connection->PackageMap, NumReps );
 	NumReps++;
 	if( Actor->ShouldDoScriptReplication() )
@@ -1192,8 +1192,8 @@ UFileChannel::UFileChannel()
 void UFileChannel::Init( UNetConnection* InConnection, INT InChannelIndex, INT InOpenedLocally )
 {
 	guard(UFileChannel::UFileChannel);
-	// v436-compat port: 436 does nothing else here. The v400 FileAr/Transfered/PackageIndex reset is
-	// gone: a channel is allocated zero-filled, so PackageIndex now starts at 0, not INDEX_NONE.
+	// As v436 does, nothing is reset here: the channel is allocated zero-filled, so PackageIndex
+	// starts at 0.
 	Super::Init( InConnection, InChannelIndex, InOpenedLocally );
 	unguard;
 }
@@ -1233,7 +1233,7 @@ void UFileChannel::ReceivedBunch( FInBunch& Bunch )
 					FPackageInfo& Info = Connection->PackageMap->List(i);
 					if( Info.Guid==Guid && appStricmp(*Info.URL,TEXT(""))!=0 )
 					{
-						// v436-compat port: refuse anything over MaxDownloadSize.
+						// Refuse anything over MaxDownloadSize.
 						if( Connection->Driver->MaxDownloadSize>0
 						&&	GFileManager->FileSize(*Info.URL)>Connection->Driver->MaxDownloadSize )
 							break;
@@ -1267,8 +1267,8 @@ void UFileChannel::Tick()
 	guard(UFileChannel::Tick);
 	UChannel::Tick();
 	Connection->TimeSensitive = 1;
-	// v436-compat port: 436 only saturates the link with file data under -lanplay; v400 always passed
-	// Saturate=1, so a file send now respects the connection's rate unless -lanplay is given.
+	// As v436 does, a file send saturates the link only under -lanplay; otherwise it respects the
+	// connection's rate.
 	static UBOOL LanPlay = ParseParam(appCmdLine(),TEXT("lanplay"));
 	INT Size;
 	while( !OpenedLocally && SendFileAr && IsNetReady(LanPlay) && (Size=MaxSendBytes())!=0 )
@@ -1309,8 +1309,8 @@ void UFileChannel::Destroy()
 		SendFileAr = NULL;
 	}
 
-	// v436-compat port: the receive side is finished by the download manager, which owns the cache
-	// write, the progress messages and NotifyReceivedFile (v400 did all of that here).
+	// The download manager finishes the receive side: the cache write, the progress messages and
+	// NotifyReceivedFile.
 	if( OpenedLocally && Download )
 	{
 		Download->DownloadDone();

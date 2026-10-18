@@ -9,7 +9,7 @@
 // Core includes.
 #include "CorePrivate.h"
 #ifdef __EMSCRIPTEN__
-#include "ue_pkgguid_abi.h"	// ufront 2.79p: a package's GUID from the page's manifest (appPackageFileGuid)
+#include "ue_pkgguid_abi.h"	// a package's GUID from the page's manifest (appPackageFileGuid)
 #endif
 
 /*-----------------------------------------------------------------------------
@@ -1565,34 +1565,14 @@ static UBOOL appFindFileNoCase( const TCHAR* Dir, const TCHAR* In, const TCHAR* 
 // Find a file.
 //
 //
-// Is this package file the one a GUID asks for? (ufront 2.79o, the v436 line.)
-//
-// The lookup below matches a package by NAME, and a network join asks for a package by name AND GUID
-// (the server's exact version). Retail took the first file with the right name and let the GUID be
-// checked later, when the linker was made -- so a player owning ANOTHER version of a server's package
-// could never join it: the server's copy was never downloaded, and the local one was refused
-// ("Package 'X' version mismatch"). Measured on a live MonsterHunt server: the player's v613 against the
-// server's v503 (the most common build), and a texture package 'Spinner' against a code package 'Spinner'.
-//
-// So when a GUID is given, a candidate must CARRY it; one that does not is skipped, the search goes
-// on, and ends at the download cache -- which is named by GUID, and which the join fills. The header
-// read is what ULinkerLoad reads first anyway. No GUID (the common case) = no read, exactly as before.
-// UT2004 does the same (CheckPotentialFileGuid), except that it never checks '.u' files; this engine
-// does, because the code packages that clash on real servers are exactly the ones a client has NOT
-// loaded yet (a loaded one is refused before any download -- UNetPendingLevel).
-//
-//
-// The GUID the package file at Filename carries, when it can be had WITHOUT reading the file where reading is
-// not free (ufront 2.79p). Natively a read is 52 bytes of a local file: the summary, exactly as the linker reads
-// it (from FileVersion 68 the GUID follows the tables' offsets; below that it is the last heritage entry). On the
-// WEB a read on the join path is a network fetch of the whole file, and from UNetPendingLevel it DEADLOCKED the
-// client (2.79o) -- so there the answer comes from the manifest the page already holds, which records every
-// package's GUID at build time (the optional "pkgguid" ABI module, vendor/glue/ue_pkgguid_abi.h). 0 = unknown.
+// The GUID the package file at Filename carries; 0 = unknown.
 //
 static UBOOL appPackageFileGuid( const TCHAR* Filename, FGuid& OutGuid )
 {
 	guard(appPackageFileGuid);
 #ifdef __EMSCRIPTEN__
+	// No file is read: here a read is a network fetch of the whole file, which deadlocks a join. The page's
+	// manifest records every package's GUID at build time (the optional pkgguid ABI module).
 	ANSICHAR Hex[33];
 	if( !ue_package_guid( appToAnsi( Filename ), Hex ) )
 		return 0;
@@ -1609,6 +1589,8 @@ static UBOOL appPackageFileGuid( const TCHAR* Filename, FGuid& OutGuid )
 	}
 	return 1;
 #else
+	// The summary, as the linker reads it: from FileVersion 68 the GUID ends the first 52 bytes and the generation
+	// table follows (a count, then 8 bytes per generation); below 68 the GUID is the last heritage table entry.
 	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
 	if( !Ar )
 		return 0;
@@ -1623,20 +1605,18 @@ static UBOOL appPackageFileGuid( const TCHAR* Filename, FGuid& OutGuid )
 	unguard;
 }
 
+//
+// Is this package file the one a GUID asks for? A join asks by name and GUID: a candidate that does not carry the
+// GUID is skipped, and the search goes on to the download cache, which is named by GUID. No GUID: any file matches.
+//
 static UBOOL appPackageFileIsTheOneAsked( const TCHAR* Filename, const FGuid* Guid, INT ExpectedSize )
 {
 	guard(appPackageFileIsTheOneAsked);
 	if( !Guid )
 		return 1;
 
-	// ★ ON THE JOIN PATH THE SIZE IS A SHORTCUT, THE GUID DECIDES (ufront 2.79o, 2.79p). A server's USES line
-	// carries the package's SIZE beside its GUID: the same size settles it from metadata alone, with no file
-	// opened (on the WEB a read here is a network fetch, and from UNetPendingLevel it DEADLOCKED -- measured, the
-	// client sat in WELCOME for ten minutes without a line). A DIFFERENT size is NOT "another build", though:
-	// OldUnreal 469 rebuilt Botpack, Engine, UnrealShare & co keeping their GUIDs, and servers re-save texture
-	// packages smaller -- measured on a live 469 server, 20 packages the player HAD were downloaded again
-	// (153 MB) under the size-only rule. So a different size asks the file's GUID (appPackageFileGuid: the header
-	// natively, the manifest on the web); unknown = not the one asked, the old answer (the server's is fetched).
+	// A join or a demo knows the size the server announced: the same size matches with no file opened. A different
+	// size is not proof of another build (469 rebuilt stock packages keeping their GUIDs): the file's GUID decides.
 	if( ExpectedSize > 0 )
 	{
 		if( GFileManager->FileSize( Filename ) == ExpectedSize )
@@ -1648,13 +1628,13 @@ static UBOOL appPackageFileIsTheOneAsked( const TCHAR* Filename, const FGuid* Gu
 	// No size known (a load, where the linker is about to open this very file anyway): read the summary.
 	FArchive* Ar = GFileManager->CreateFileReader( Filename, 0, GNull );
 	if( !Ar )
-		return 1;	// cannot tell: the file as found, as before
+		return 1;	// cannot tell: take the file as found
 	FPackageFileSummary Summary;
 	*Ar << Summary;
 	const UBOOL IsPackage = !Ar->IsError() && Summary.Tag==PACKAGE_FILE_TAG;
 	delete Ar;
 	if( !IsPackage )
-		return 1;	// not a package we can read: as before
+		return 1;	// not a package we can read: take it as found
 	return Summary.Guid==*Guid;
 	unguard;
 }

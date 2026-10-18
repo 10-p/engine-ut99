@@ -80,7 +80,7 @@ CORE_API void appEnableFastMath( UBOOL Enable );
 CORE_API class FGuid appCreateGuid();
 CORE_API void appCreateTempFilename( const TCHAR* Path, TCHAR* Result256 );
 CORE_API void appCleanFileCache();
-CORE_API UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out, INT ExpectedSize=0 );	// ufront 2.79o: the size the server announced, when it is known (then no file is opened)
+CORE_API UBOOL appFindPackageFile( const TCHAR* In, const FGuid* Guid, TCHAR* Out, INT ExpectedSize=0 );	// ExpectedSize: the size the server announced, or 0; a file of that size matches unopened
 
 /*-----------------------------------------------------------------------------
 	Clipboard.
@@ -381,8 +381,8 @@ CORE_API DOUBLE appPow( DOUBLE A, DOUBLE B );
 CORE_API UBOOL appIsNan( DOUBLE Value );
 CORE_API INT appRand();
 CORE_API FLOAT appFrand();
-CORE_API FLOAT appRandRange( FLOAT Min, FLOAT Max ); // v436-compat port
-CORE_API INT appRandRange( INT Min, INT Max ); // v436-compat port
+CORE_API FLOAT appRandRange( FLOAT Min, FLOAT Max );
+CORE_API INT appRandRange( INT Min, INT Max );
 
 #if !DEFINED_appRound
 CORE_API INT appRound( FLOAT Value );

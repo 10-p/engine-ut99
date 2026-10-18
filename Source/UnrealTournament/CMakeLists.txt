@@ -178,7 +178,7 @@ if(EMSCRIPTEN)
   # ProxyNetDrv's own shim (the optional proxynet ABI module), a separate --js-library so that a build without
   # UT_WITH_PROXYNET has no ue_proxynet_* imports at all.
   if(UT_WITH_PROXYNET)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_WITH_PROXYNET=1)  # Launch.cpp: honour the ini's choice
+    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_WITH_PROXYNET=1)
     target_link_options(${PROJECT_NAME} PRIVATE
       "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/proxynet-shim.js")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS

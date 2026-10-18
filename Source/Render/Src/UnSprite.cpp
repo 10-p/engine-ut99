@@ -38,8 +38,7 @@ void URender::SetupDynamics( FSceneNode* Frame, AActor* Exclude )
 			if
 			(	(Actor != Exclude)
 			&&	(GIsEditor ? !Actor->bHiddenEd : !Actor->bHidden)
-			// v436-compat port: v436 enables the PlayerPawn Render Control Interface (RCI) and the
-			// visibility-volume cull, which v400 compiled out (they were Legend's, under LEGEND).
+			// As v436 does, the Render Control Interface and the VisibilityRadius/Height cull are always on.
 			// call PlayerPawn Render Control Interface (RCI) to assess visible actors
 			&&	( ( GIsEditor && !( Frame->Viewport->Actor->ShowFlags & SHOW_PlayerCtrl ) )
 				|| ( Frame->Viewport->Actor->IsA( APlayerPawn::StaticClass() ) 
@@ -53,10 +52,9 @@ void URender::SetupDynamics( FSceneNode* Frame, AActor* Exclude )
 				// Add the sprite proxy.
 				if( !Actor->IsMovingBrush() )
 				{
-					// v436-compat port: the Enhanced Actor Render Interface (EARI), as v436 enables it.
-					// An actor with a RenderIteratorClass gets a RenderInterface object, which supplies
-					// the actors actually drawn. (Legend's version also required GIsRunning and rooted
-					// the object; v436 does neither, and releases it with ConditionalDestroy + delete.)
+					// The Enhanced Actor Render Interface (EARI), as v436 has it: an actor with a
+					// RenderIteratorClass gets a RenderInterface object, which supplies the actors drawn.
+					// The object is not rooted and is released with ConditionalDestroy + delete.
 					UClass* ObjectClass = Actor->RenderIteratorClass;
 					if( ObjectClass != NULL && (Actor->RenderInterface == NULL || !Actor->RenderInterface->IsValid()) )
 					{
@@ -80,7 +78,7 @@ void URender::SetupDynamics( FSceneNode* Frame, AActor* Exclude )
 						if( Actor->bFilterByVolume )
 						{
 							// Filter only the actor's own sprite through the Bsp; its items ride along
-							// as unfiltered sub-sprites, drawn in its place (see DrawFrame).
+							// as unfiltered sub-sprites, which DrawFrame draws in its place.
 							FDynamicSprite* Group = new(GDynMem)FDynamicSprite( Frame, 0, Actor );
 							for( i->First(); !i->IsDone(); i->Next() )
 							{
@@ -179,10 +177,9 @@ FDynamicSprite::FDynamicSprite( FSceneNode* Frame, INT iNode, AActor* InActor )
 }
 
 //
-// v436-compat port: a sprite that is set up exactly like a filtered one but is neither registered
-// with the dynamics cache nor filtered through the Bsp (the retail v436 Render.dll's constructor for
-// the items of a bFilterByVolume render iterator). It has no span buffer; DrawFrame draws it as one
-// of its group's sub-sprites.
+// A sub-sprite for an item of a bFilterByVolume render iterator, as in v436: set up like a filtered
+// sprite but neither registered with the dynamics nor filtered through the Bsp. It has no span
+// buffer; DrawFrame draws it with its group.
 //
 FDynamicSprite::FDynamicSprite( FSceneNode* Frame, AActor* InActor )
 :	Actor			( InActor )
@@ -202,8 +199,8 @@ FDynamicSprite::FDynamicSprite( FSceneNode* Frame, AActor* InActor )
 }
 
 //
-// Compute the sprite's projection-plane proxy and its full rasterization (the part of the
-// constructor after Setup; the raster is what a filtered sprite sends down the Bsp).
+// Compute the sprite's projection-plane proxy and the full rasterization a filtered sprite
+// sends down the Bsp (the part of the constructor after Setup).
 //
 FRasterPoly* FDynamicSprite::SetupProxy( FSceneNode* Frame )
 {
@@ -275,7 +272,7 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 			return 0;
 
 		// Setup projection plane.
-		// v436-compat port: the projection plane moves forward by the actor's SpriteProjForward (was 32).
+		// v436: the projection plane moves forward by the actor's SpriteProjForward.
 		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - Actor->SpriteProjForward;
 		if( Z<-2*Actor->SpriteProjForward && !Frame->Viewport->IsOrtho() )
 			return 0;
@@ -338,7 +335,7 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 			return 0;
 
 		// Setup projection plane.
-		// v436-compat port: the projection plane moves forward by the actor's SpriteProjForward (was 32).
+		// v436: the projection plane moves forward by the actor's SpriteProjForward.
 		Z = ((Actor->Location - Frame->Coords.Origin) | Frame->Coords.ZAxis) - Actor->SpriteProjForward;
 		if( Z<-2*Actor->SpriteProjForward && !Frame->Viewport->IsOrtho() )
 			return 0;
@@ -348,7 +345,7 @@ UBOOL FDynamicSprite::Setup( FSceneNode* Frame )
 		if( !GRender->BoundVisible( Frame, &Bounds, NULL, ScreenBounds ) )
 			return 0;
 
-		// v436-compat port: the screen bounds are rounded, not truncated.
+		// As v436 does, the screen bounds are rounded, not truncated.
 		X1 = appRound( ScreenBounds.MinX );
 		X2 = appRound( ScreenBounds.MaxX );
 		Y1 = appRound( ScreenBounds.MinY );
@@ -506,7 +503,7 @@ void FDynamicChunk::Filter( UViewport* Viewport, FSceneNode* Frame, INT iNode, I
 		{
 			FLOAT	FloatYAdjust	= (FLOAT)Y0 + 1.0 - Intersect[0].ScreenY;
 			FLOAT	FloatFixDX 		= 65536.0 * (Intersect[1].ScreenX - Intersect[0].ScreenX) / (Intersect[1].ScreenY - Intersect[0].ScreenY);
-			// v436-compat port: both fixed-point values are rounded, not truncated.
+			// As v436 does, both fixed-point values are rounded, not truncated.
 			INT		FixDX			= appRound( FloatFixDX );
 			INT		FixX			= appRound( 65536.0 * Intersect[0].ScreenX + FloatFixDX * FloatYAdjust );
 
@@ -786,7 +783,7 @@ static DWORD GetPolyFlags( FSceneNode* Frame, AActor* Owner )
 void URender::DrawActorSprite( FSceneNode* Frame, FDynamicSprite* Sprite )
 {
 	guard(URender::DrawActorSprite);
-	// v436-compat port: hits and the editor's selection tint go to the actor's HitActor, if any.
+	// v436: hits and the editor's selection tint go to the actor's HitActor, if any.
 	PUSH_HIT(Frame,HActor(Sprite->Actor->GetHitActor()));
 	DWORD PolyFlags = GetPolyFlags(Frame,Sprite->Actor);
 

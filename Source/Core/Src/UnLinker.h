@@ -159,7 +159,7 @@ struct FPackageFileSummary
 		appMemzero( this, sizeof(*this) );
 	}
 
-	// v436-compat port: FileVersion carries the licensee version in its upper 16 bits.
+	// v436: FileVersion carries the licensee version in its upper 16 bits.
 	INT GetFileVersion() const { return (FileVersion & 0xffff); }
 	INT GetFileVersionLicensee() const { return ((FileVersion >> 16) & 0xffff); }
 
@@ -686,7 +686,7 @@ class ULinkerLoad : public ULinker, public FArchive
 			}
 			if( !Import.XObject && !SafeReplace )
 			{
-				// v436-compat port: 436 logs every import it cannot resolve.
+				// As v436 does, log every import that cannot be resolved.
 				debugf( TEXT("Failed import: %s %s (file %s)"), *Import.ClassName, *GetImportFullName(i), *Import.SourceLinker->Filename );
 				if( LoadFlags & LOAD_Forgiving )
 				{

@@ -123,7 +123,7 @@ public:
 	// Status accessors.
 	INT Ver()				{return ArVer;}
 	INT NetVer()			{return ArNetVer&0x7fffffff;}
-	INT LicenseeVer()		{return ArLicenseeVer;} // v436-compat port
+	INT LicenseeVer()		{return ArLicenseeVer;}
 	UBOOL IsLoading()		{return ArIsLoading;}
 	UBOOL IsSaving()		{return ArIsSaving;}
 	UBOOL IsTrans()			{return ArIsTrans;}
@@ -195,7 +195,7 @@ protected:
 	// Status variables.
 	INT ArVer;
 	INT ArNetVer;
-	INT ArLicenseeVer; // v436-compat port: licensee half of the package file version.
+	INT ArLicenseeVer; // v436: licensee half of the package file version.
 	UBOOL ArIsLoading;
 	UBOOL ArIsSaving;
 	UBOOL ArIsTrans;

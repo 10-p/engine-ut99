@@ -121,8 +121,8 @@ AActor* ULevel::SpawnActor
 	Actor->eventPostBeginPlay();
 
 	// Check for encroachment.
-	// v436-compat port: as in MoveActor, the actor is out of the collision hash while its
-	// encroachment is checked, and is re-hashed if it survives (436 ULevel::SpawnActor).
+	// v436: as in MoveActor, the actor is out of the collision hash while its encroachment
+	// is checked, and is re-hashed if it survives.
 	if( !bNoCollisionFail )
 	{
 		if( Actor->bCollideActors && Hash )
@@ -782,7 +782,7 @@ UBOOL ULevel::FarMoveActor( AActor* Actor, FVector DestLocation,  UBOOL test, UB
 	
 	if( result )
 	{
-		// v436-compat port: a network client leaves bases and bJustTeleported alone (436 FarMoveActor).
+		// v436: a network client leaves bases and bJustTeleported alone.
 		if( !test && GetLevelInfo()->NetMode != NM_Client )
 		{
 			if( Actor->StandingCount > 0 )
@@ -990,8 +990,8 @@ UBOOL ULevel::MoveActor
 		}
 	}
 
-	// v436-compat port: the actor leaves the collision hash before the encroachment check,
-	// and goes back in if the move is declined (436 ULevel::MoveActor).
+	// v436: the actor leaves the collision hash before the encroachment check, and goes back
+	// in if the move is declined.
 	if( Actor->bCollideActors && Hash )
 		Hash->RemoveActor( Actor );
 

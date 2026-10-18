@@ -7,7 +7,7 @@
 	APickup() {}
 
 	// AActor interface.
-	// v436-compat port: v436 replicates this nativereplication class's properties in C++.
+	// As v436 does, this nativereplication class replicates its properties in C++.
 	INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 
 /*-----------------------------------------------------------------------------

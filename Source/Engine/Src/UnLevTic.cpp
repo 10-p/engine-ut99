@@ -29,9 +29,8 @@ struct FActorPriority
 		Actor       = InActor;
 		Channel     = InConnection->ActorChannels.FindRef(Actor);
 		FLOAT Time  = Channel ? (InConnection->Driver->Time - Channel->LastUpdateTime) : InConnection->Driver->SpawnPrioritySeconds;
-		// v436-compat port: 436 no longer rates every actor by where it is in the view. Always-
-		// relevant actors and resting dumb proxies are neutral, the viewer's own weapon counts as
-		// dead ahead, anything behind the viewer as dead behind; optional actors sink much further.
+		// As v436 does: always-relevant actors and dumb proxies with physics rate neutral, the
+		// viewer's weapon dead ahead, anything behind the viewer dead behind; optional actors far lower.
 		FLOAT Dot   = 0.f;
 		if( Actor->bAlwaysRelevant )
 			Dot = 0.f;
@@ -107,7 +106,7 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 			// Handle all animation sequence notifys.
 			if( bAnimNotify && Mesh )
 			{
-				const FMeshAnimSeq* Seq = GetAnim( AnimSequence ); // v436-compat: via GetAnim.
+				const FMeshAnimSeq* Seq = GetAnim( AnimSequence );
 				if( Seq )
 				{
 					FLOAT BestElapsedFrames = 100000.0;
@@ -216,8 +215,8 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 		if ( Pawn->bIsPlayer && !Pawn->bCanFly && !Region.Zone->bWaterZone )
 		{
 			// only add gravity if pawn is not resting on valid floor
-			// v436-compat port: 436 probes 6 units down (was 8) and gives a pawn with no vertical
-			// speed an initial -120 before adding gravity (436 AActor::Tick).
+			// As v436 does, probe 6 units down and give a pawn with no vertical speed an initial
+			// -120 before adding gravity.
 			FCheckResult Hit(1.0);
 			GetLevel()->SingleLineCheck(Hit, this, Location - FVector(0,0,6), Location, TRACE_VisBlocking, GetCylinderExtent());
 			if ( (Hit.Time == 1.0) || (Hit.Normal.Z < 0.7) )
@@ -263,7 +262,7 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 				INT TimerTicksPassed = 1;
 				if( TimerRate > 0.0 )
 				{
-					// v436-compat port: rounded, not truncated (436 AActor::Tick).
+					// As v436 does, rounded, not truncated.
 					TimerTicksPassed     = appRound(TimerCounter/TimerRate);
 					TimerCounter -= TimerRate * TimerTicksPassed;
 					if( TimerTicksPassed && !bTimerLoop )
@@ -323,7 +322,7 @@ UBOOL AActor::Tick( FLOAT DeltaSeconds, ELevelTick TickType )
 			INT TimerTicksPassed = 1;
 			if( TimerRate > 0.0 )
 			{
-				// v436-compat port: rounded, not truncated (436 AActor::Tick).
+				// As v436 does, rounded, not truncated.
 				TimerTicksPassed     = appRound(TimerCounter/TimerRate);
 				TimerCounter -= TimerRate * TimerTicksPassed;
 				if( TimerTicksPassed && !bTimerLoop )
@@ -481,8 +480,7 @@ void ULevel::TickNetClient( FLOAT DeltaSeconds )
 UBOOL ActorCanSee( AActor* Actor, APlayerPawn* RealViewer, AActor* Viewer, FVector SrcLocation )
 {
 	guardSlow(ActorCanSee);
-	// v436-compat port: 436 also treats whatever the viewer instigated (its projectiles, effects) as
-	// always visible to it.
+	// As v436 does, whatever the viewer instigated (its projectiles, effects) is always visible to it.
 	if( Actor->bAlwaysRelevant || Actor->IsOwnedBy(Viewer) || Actor->IsOwnedBy(RealViewer) || Actor==Viewer || Actor==RealViewer || Actor->Instigator==Viewer )
 		return 1;
 	else if( Actor->AmbientSound 
@@ -504,8 +502,7 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 	check(Connection->State==USOCK_Pending || Connection->State==USOCK_Open || Connection->State==USOCK_Closed);
 
 	// Handle not ready channels.
-	// v436-compat port: 436 stops replicating to a client it has not heard from for 1.5 seconds
-	// (and dropped v400's Cull/Trace/Rep profiling).
+	// As v436 does, stop replicating to a client not heard from for 1.5 seconds.
 	INT Updated=0;
 	if
 	(	Connection->Actor
@@ -555,7 +552,7 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 		DOUBLE			 LastTime		= Connection->LastRepTime;
 		DOUBLE           ThisTime       = Connection->Driver->Time;
 		guard(MakeConsiderList);
-		// v436-compat port: the level info and the default brush are always considered; the static
+		// As v436 does, the level info and the default brush are always considered; the static
 		// actors that are not always relevant (before iFirstNetRelevantActor) never are.
 		for( INT i=0; i<2; i++ )
 		{
@@ -564,9 +561,8 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 			{
 				Actor->NetTag                 = NetTag;
 				PriorityList  [ConsiderCount] = FActorPriority( ViewPos, ViewDir, Connection, Actor );
-				// ⚠ Two statements on purpose: C++17 sequences the right operand of `=` first, so
-				// `PriorityActors[ConsiderCount] = PriorityList + ConsiderCount++;` would index with
-				// the ALREADY-incremented count (the old out-of-bounds Sort crash).
+				// Two statements: C++17 sequences the right operand of `=` before the left, so a
+				// `PriorityList + ConsiderCount++` on the right would move the subscript on the left.
 				PriorityActors[ConsiderCount] = PriorityList + ConsiderCount;
 				ConsiderCount++;
 			}
@@ -582,8 +578,8 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 				{
 					if( appRound(LastTime*Actor->NetUpdateFrequency)!=appRound(ThisTime*Actor->NetUpdateFrequency) )
 					{
-						// v436-compat port: skip an always-relevant actor whose channel shows nothing
-						// new to send, but keep the channel relevant.
+						// Skip an always-relevant actor whose channel shows nothing new to send, but
+						// keep the channel relevant.
 						UActorChannel* Channel = Actor->CheckRecentChanges() ? Connection->ActorChannels.FindRef(Actor) : NULL;
 						if( Channel && Channel->Recent.Num() && !Channel->Dirty.Num() && Actor->NoVariablesToReplicate((AActor*)&Channel->Recent(0)) )
 							Channel->RelevantTime = NetDriver->Time;
@@ -593,8 +589,8 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 				}
 				else
 				{
-					// v436-compat port: drop an optional effect more than 0.15 s into its life, and
-					// throttle by the per-viewer UpdateFrequency (only when below the server tick rate).
+					// Drop an optional effect more than 0.15 s into its life, and throttle by the
+					// per-viewer UpdateFrequency (only when below the server tick rate).
 					if( Actor->bNetOptional && Actor->GetClass()->GetDefaultActor()->LifeSpan-0.15f>=Actor->LifeSpan )
 						continue;
 					FLOAT Frequency = Actor->UpdateFrequency( Viewer, ViewDir, ViewPos );
@@ -628,7 +624,7 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 		{
 			AActor*        Actor       = PriorityActors[j]->Actor;
 			UActorChannel* Channel     = PriorityActors[j]->Channel;
-			// v436-compat port: a channel found relevant within the last 0.3 s is not traced again.
+			// As v436 does, a channel found relevant within the last 0.3 s is not traced again.
 			UBOOL          CanSee      = 0;
 			if( !Channel || NetDriver->Time-Channel->RelevantTime>0.3 )
 				CanSee = ActorCanSee( Actor, InViewer, Viewer, Location );
@@ -649,7 +645,7 @@ INT ULevel::ServerTickClient( UNetConnection* Connection, FLOAT DeltaSeconds )
 				}
 				if( !Connection->IsNetReady(0) )
 					break;
-				// v436-compat port: jitter the relevancy stamp so channels do not all time out together.
+				// Jitter the relevancy stamp so channels do not all time out together.
 				if( CanSee )
 					Channel->RelevantTime = NetDriver->Time + 0.2*appFrand();
 				if( Channel->IsNetReady(0) )
@@ -686,7 +682,7 @@ void ULevel::TickNetServer( FLOAT DeltaSeconds )
 	unclock(NetTickCycles);
 
 	// Log message.
-	// v436-compat port: 436 rounds both times (fistp), so the title updates on the half second.
+	// As v436 does, both times are rounded, so the title updates on the half second.
 	if( appRound(TimeSeconds-DeltaSeconds)!=appRound(TimeSeconds) )
 		debugf( NAME_Title, LocalizeProgress("RunningNet"), *GetLevelInfo()->Title, *URL.Map, NetDriver->ClientConnections.Num() );
 
@@ -827,7 +823,7 @@ void ULevel::Tick( ELevelTick TickType, FLOAT DeltaSeconds )
 	//Keep actor time profile FIXME TEMP!!!
 	Info->AvgAITime = 0.95 * GetLevelInfo()->AvgAITime + 0.05 * 1000 * GSecondsPerCycle * ActorTickCycles;
 	FLOAT ratio = GSecondsPerCycle * ActorTickCycles/DeltaSeconds;
-	INT offset = appRound(10 * ratio); // v436-compat port: rounded (436 ULevel::Tick).
+	INT offset = appRound(10 * ratio); // Rounded, as v436 does.
 	if ( offset > 7 )
 		offset = 7;
 	else if ( offset < 0 )

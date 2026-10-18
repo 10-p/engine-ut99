@@ -1,25 +1,7 @@
 /*=============================================================================
-	ProxyNetDrv.cpp: "Proxy networking" — a client-only UE1 net driver that reaches an
-	ordinary NATIVE game server through a WSS<->UDP game proxy.  ufront step 2.79.
-
-	Modelled function for function on IpDrv/Src/TcpNetDriver.cpp, deliberately: it takes
-	exactly what the TcpIp driver takes — `open host:port`, the same URL forms, an `ip:port`
-	remote address, and an ini section ([ProxyNetDrv.ProxyNetDriver]) with the same keys as
-	[IpDrv.TcpNetDriver]. The only thing swapped is the socket: sendto()/recvfrom() become the
-	`ue_proxynet_*` imports of the OPTIONAL proxynet ABI module (vendor/glue/ue_proxynet_abi.h,
-	satisfied by the baked vendor/glue/proxynet-shim.js -> the host-injected Module.UE.proxynet).
-	What TcpNetDriver does that a CLIENT never needs is simply absent: no listen socket, no
-	accept path, no ICMP handling, no recently-closed peer list.
-
-	DETACHED BY DECISION (ufrontend docs/12 ADR-16). This package shares nothing with WebRTCDrv
-	and edits none of its files. It is selected like any other driver —
-	    [Engine.Engine] NetworkDevice=ProxyNetDrv.ProxyNetDriver
-	— and -DUT_WITH_PROXYNET=OFF removes it entirely.
-
-	436-ONLY. Native servers run 436 and later, so this lives on feat/v436-compat and never on
-	base main (the v400 baseline).
-
-	CLIENT ONLY. A browser cannot accept UDP; hosting is what P2P networking is for.
+	ProxyNetDrv.cpp: "Proxy networking", a client-only net driver that joins an ordinary native
+	server through a WSS<->UDP game proxy. It is IpDrv's TcpNetDriver, client half, with the socket
+	calls swapped for the `ue_proxynet_*` imports (vendor/glue/ue_proxynet_abi.h); web only.
 =============================================================================*/
 
 #include "Engine.h"
@@ -29,10 +11,11 @@
 #ifdef __EMSCRIPTEN__
 #include "ue_proxynet_abi.h"
 #include "WebLinks.h"
-#include <stdlib.h>	// atoi (2.79o's list parser)
+#include <stdlib.h>	// atoi (the list parser)
 #include <string.h>	// strstr
 #else
-// A native build has real sockets and never links this package; these keep a stray build compiling.
+// The package is built for the web only. These stubs let it compile elsewhere, but it cannot link there:
+// IpDrv defines GWebHttp on __EMSCRIPTEN__ only.
 #define PROXYNET_STATE_INVALID    0
 #define PROXYNET_STATE_CONNECTING 1
 #define PROXYNET_STATE_OPEN       2
@@ -59,9 +42,8 @@ inline void ue_proxynet_list_close( int ) {}
 // Package.
 IMPLEMENT_PACKAGE(ProxyNetDrv);
 
-// The same figures TcpNetDriver.cpp uses, because the far end IS a TcpNetDriver: the packet size the
-// server will send, and the per-packet overhead the rate limiter must charge so NETSPEED means to us what
-// it means to a native client.
+// TcpNetDriver.cpp's figures, since the far end is a TcpNetDriver: its packet size, and the per-packet
+// overhead the rate limiter charges, so NETSPEED means what it means to a native client.
 #define PROXYNET_IP_HEADER_SIZE     (20)
 #define PROXYNET_UDP_HEADER_SIZE    (PROXYNET_IP_HEADER_SIZE+8)
 #define PROXYNET_SLIP_HEADER_SIZE   (PROXYNET_UDP_HEADER_SIZE+4)
@@ -78,7 +60,7 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 
 	// Variables.
 	INT		ConnId;			// from ue_proxynet_connect(); -1 once closed
-	FString	RemoteHost;		// as the player typed it — the PROXY resolves names, not the engine
+	FString	RemoteHost;		// as the player typed it: the proxy resolves names, not the engine
 	INT		RemotePort;
 
 	// Constructor.
@@ -89,8 +71,8 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 	,	RemotePort		( InURL.Port )
 	{
 		guard(UProxyNetConnection::UProxyNetConnection);
-		// Init the connection — as UTcpipConnection does. No address resolution: the host string goes to
-		// the game proxy as typed, and the PROXY resolves it (and refuses private address space).
+		// Init the connection as UTcpipConnection does, without address resolution: the game proxy resolves
+		// the host as typed (and refuses private address space).
 		State          = InState;
 		MaxPacket      = PROXYNET_MAX_PACKET;
 		PacketOverhead = PROXYNET_SLIP_HEADER_SIZE;
@@ -112,9 +94,8 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 	void Destroy()
 	{
 		guard(UProxyNetConnection::Destroy);
-		// ★ THE CONNECTION OWNS ITS TRANSPORT, like a socket. ue_proxynet_connect() hands out a NEW id per
-		// call, so at a server map change the departing level's connection and the arriving one are two ids,
-		// exactly as they are two UDP sockets natively — closing this one cannot touch the other.
+		// The connection owns its transport, like a socket: each ue_proxynet_connect() is a new id, so at a map
+		// change the departing and arriving connections are two ids and closing this one cannot touch the other.
 		CloseTransport();
 		Super::Destroy();
 		unguard;
@@ -124,9 +105,8 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 	void LowLevelSend( void* Data, INT Count )
 	{
 		guard(UProxyNetConnection::LowLevelSend);
-		// Non-blocking, and allowed to drop: before the proxy says `ready` there is nowhere to send, and
-		// under back-pressure a datagram transport loses packets. The engine's own reliability layer
-		// retransmits what matters — which is also what carries the first HELLO to a server still loading.
+		// Non-blocking and allowed to drop (nothing goes out before the proxy is `ready`, and back-pressure loses
+		// packets): the engine's reliability layer retransmits what matters, the first HELLO included.
 		if( ConnId >= 0 && Count > 0 )
 			ue_proxynet_send( ConnId, Data, Count );
 		unguard;
@@ -157,23 +137,20 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 IMPLEMENT_CLASS(UProxyNetConnection);
 
 /*-----------------------------------------------------------------------------
-	Redirect downloads.
-
-	A native server names an HTTP redirect (`DLMGR CLASS=IpDrv.HTTPDownload`). In a browser
-	IpDrv's UHTTPDownload cannot open a socket, so it asks the table in IpDrv/Inc/WebHttp.h —
-	and this package, which owns the `ue_proxynet_http_*` imports, is what fills it. The game
-	proxy does the fetch for a LIVE session and pays for it from that session's download
-	allowance; any refusal is simply FAILED and the engine falls back to the in-band download.
+	Redirect downloads: on the web UHTTPDownload fetches through the GWebHttp table
+	(IpDrv/Inc/WebHttp.h), filled here with the `ue_proxynet_http_*` imports. The game proxy
+	fetches for a live session, from its download allowance; a refusal is WEBHTTP_Failed and the
+	engine moves on to the next download manager the server offered.
 -----------------------------------------------------------------------------*/
 
-// The hook's status values ARE the ABI's: they cross unconverted.
+// The hook's status values are the ABI's: they cross unconverted.
 static_assert( WEBHTTP_Pending==PROXYNET_HTTP_PENDING && WEBHTTP_Receiving==PROXYNET_HTTP_RECEIVING
 	&& WEBHTTP_Done==PROXYNET_HTTP_DONE && WEBHTTP_Failed==PROXYNET_HTTP_FAILED, "WebHttp.h and ue_proxynet_abi.h disagree" );
 
 static INT ProxyNetHttpOpen( UNetConnection* Connection, const ANSICHAR* Url )
 {
-	// Only for a download that belongs to one of OUR connections: its session is what the proxy
-	// charges. Anything else (a P2P connection in the same build) gets -1 and falls back at once.
+	// Only for a download on one of our connections, whose session the proxy charges; anything else
+	// (a P2P connection in the same build) gets -1 and falls back at once.
 	UProxyNetConnection* Conn = Cast<UProxyNetConnection>( Connection );
 	if( !Conn || Conn->ConnId < 0 )
 		return -1;
@@ -195,26 +172,21 @@ static FWebHttpHooks GProxyNetHttpHooks = { ProxyNetHttpOpen, ProxyNetHttpPoll, 
 
 #ifdef __EMSCRIPTEN__
 /*-----------------------------------------------------------------------------
-	The stock server browser, from the game proxy's list (2.79o, IpDrv's WebLinks.h).
-
-	The web build has no sockets, so UBrowser (UnrealScript, unchanged) can neither reach a GameSpy
-	master nor ping a server. In Proxy mode the game proxy already holds the public list, fetched here
-	through the four `ue_proxynet_list_*` imports, and both ends of both conversations are played from
-	it: a TcpLink to a master's list port gets the challenge and then "\ip\a.b.c.d:queryport\...\final\";
-	a UdpLink query to a listed server gets that server's "\info\", from the address that was asked
-	(436's UBrowserServerPing checks the source), after the proxy's own round trip -- so the ping the
-	browser shows is the player -> proxy leg: a floor, not the whole path.
-
-	Registered when the program starts (the browser wants its list before any connection exists);
-	Active() keeps it out of the way unless THIS launch is in Proxy mode.
+	The stock server browser, answered from the game proxy's list (the GWebLinks table,
+	IpDrv/Inc/WebLinks.h). The web build has no sockets, so in Proxy mode UBrowser's master and
+	server conversations are played from the list the `ue_proxynet_list_*` imports fetch: a TcpLink
+	to a master's list port gets the challenge, then "\ip\a.b.c.d:queryport\...\final\"; a UdpLink
+	query to a listed server gets its "\info\" from the address asked (v436's UBrowserServerPing
+	checks the source) after the player -> proxy round trip, so the ping shown is that leg only.
+	Registered at startup, before any connection; Active() is false unless this launch is in Proxy mode.
 -----------------------------------------------------------------------------*/
 
 #define PROXYNET_GSPY_LIST_PORT 28900	// a GameSpy master's list port: every [UBrowserAll] factory's
 
 static UBOOL ProxyNetLinksActive()
 {
-	// Proxy networking is this launch's mode exactly when the engine's network device is this driver
-	// (Launch.cpp honours that key). Fixed for the launch -> cached.
+	// Proxy networking is this launch's mode exactly when the engine's network device is this driver;
+	// fixed for the launch, so cached.
 	static INT Active = -1;
 	if( Active < 0 && GConfig )
 		Active = appStricmp( GConfig->GetStr( TEXT("Engine.Engine"), TEXT("NetworkDevice") ),
@@ -222,7 +194,7 @@ static UBOOL ProxyNetLinksActive()
 	return Active == 1;
 }
 
-// The list: dotted-IPv4 rows only (a host NAME would be "resolved" by the web build to an address no
+// The list: dotted-IPv4 rows only (a host name would be "resolved" by the web build to an address no
 // ping can reach, and UBrowser drops an unanswered server).
 struct FProxyRow
 {
@@ -259,9 +231,8 @@ static UBOOL ProxyParseIp( const ANSICHAR* S, DWORD& Out )
 	return 1;
 }
 
-// The list is UTF-8 (it is the page's own text); a GameSpy answer is 8-bit text. So each character is DECODED
-// to its Latin-1 byte, in place (never longer), rather than copied byte by byte -- which would turn a name's
-// "»" into two characters. A code point above 0xFF becomes '?', and so does a broken sequence.
+// The list is UTF-8 and a GameSpy answer 8-bit text: each character is decoded to its Latin-1 byte in place
+// (never longer), so a name's "»" stays one character. A code point above 0xFF or a broken sequence becomes '?'.
 static void ProxyUtf8ToLatin1( ANSICHAR* S )
 {
 	BYTE* In = (BYTE*)S;
@@ -325,18 +296,17 @@ static void ProxyParseList( ANSICHAR* Text )
 			const INT Port = N == 10 ? atoi( F[1] ) : 0;
 			if( Port > 0 && Port < 65535 && ProxyParseIp( F[0], Addr ) )
 			{
-				// A backslash would split a GameSpy field: somebody else's data, so it goes (after the
-				// decode: only an ASCII byte can become one).
+				// A backslash would split a GameSpy field, so it becomes '/' (after the decode, which yields
+				// one only from an ASCII byte).
 				for( INT f = 2; f <= 4; f++ )
 					ProxyUtf8ToLatin1( F[f] );
 				for( INT f = 2; f <= 4; f++ )
 					for( ANSICHAR* C = F[f]; *C; C++ )
 						if( *C == '\\' )
 							*C = '/';
-				// The version fields only when the list KNOWS them (the proxy asks each server its \info\, 2.79p).
-				// Never a stand-in: our own 436 made EVERY server look compatible, and a 469-only one then turned
-				// the player away at the door. With no gamever UBrowser's "compatible" tabs leave the row out --
-				// as they do natively for a server that never answered its ping.
+				// The version fields only when the list knows them (the proxy asks each server its \info\), never
+				// a stand-in that would make a 469-only server look compatible. With no gamever UBrowser's
+				// "compatible" tabs leave the row out, as they do natively for a server that never answered.
 				const INT Version = atoi( F[7] ), MinVersion = atoi( F[8] );
 				FString Versions;
 				if( Version > 0 )
@@ -359,8 +329,8 @@ static void ProxyParseList( ANSICHAR* Text )
 }
 
 // 2 = the list is here, 3 = it cannot be had (no proxy chosen, or unreachable), 1 = still asking.
-// At most four sync calls a second: a per-frame proxied import once overflowed Emscripten's proxy
-// queue (WebRTCLan.cpp). Only ever called from a link's Tick, never from inside a script call.
+// At most four sync calls a second: a proxied import every frame can overflow Emscripten's proxy
+// queue. Only ever called from a link's Tick, never from inside a script call.
 static INT ProxyListPoll()
 {
 	if( GProxyListState == 2 && appSeconds() - GProxyListAt > 60.0 )
@@ -430,7 +400,7 @@ static FProxyMaster* ProxyMasterFind( INT Id )
 static INT ProxyNetTcpOpen( DWORD Addr, INT Port )
 {
 	if( Port != PROXYNET_GSPY_LIST_PORT )
-		return -1;			// the news (HTTP), IRC, anything else: fails as before
+		return -1;			// the news (HTTP), IRC, anything else: fails, as with no hook
 	if( GProxyListState == 3 )
 		GProxyListState = 0;	// a new query asks again
 	INT i = GProxyMasters.AddZeroed();
@@ -476,8 +446,7 @@ static INT ProxyNetTcpTick( INT Handle, ANSICHAR* Buffer, INT MaxLen, UBOOL* Ope
 	if( Count > 0 )
 	{
 		appMemcpy( Buffer, appToAnsi(*M->Out), Count );
-		// ★ Mid( Start ) with its default Count (MAXINT) computes Start+MAXINT: a signed overflow, and under
-		// clang -O2 it asked for a 2 GB string (a null write, then the heap-at-address-zero abort). Say the count.
+		// Keep what did not fit for the next tick.
 		M->Out = M->Out.Mid( Count, M->Out.Len() - Count );
 	}
 	if( M->Phase == 2 && !M->Out.Len() )
@@ -518,7 +487,7 @@ static UBOOL ProxyNetUdpSend( void* Link, DWORD Addr, INT Port, const ANSICHAR* 
 		GProxyReplies(i).Addr = Addr;
 		GProxyReplies(i).Port = Port;
 		GProxyReplies(i).Due  = appSeconds() + Max( GProxyPingMs, 0 ) / 1000.0;
-		// \info\ and \status\ get what the list knows; \rules\ and \players\ it does not know.
+		// \info\, \status\ and \basic\ get what the list knows; anything else (\rules\, \players\) a bare \final\.
 		GProxyReplies(i).Text = (strstr( Text, "\\info\\" ) || strstr( Text, "\\status\\" ) || strstr( Text, "\\basic\\" ))
 			? GProxyRows(r).Info : FString( TEXT("\\final\\") );
 		if( !GProxyPingsLogged )
@@ -582,18 +551,15 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		return (UProxyNetConnection*)ServerConnection;
 	}
 
-	// A player whose saved ini predates this driver has no [ProxyNetDrv.ProxyNetDriver] section, so every
-	// CPF_Config property arrives as zero — and a zero ConnectionTimeout closes the connection on its first
-	// tick. Substitute the stock TcpNetDriver values for whatever is missing, and say so in the log.
-	//
-	// ⚠ Done HERE, at InitConnect, and not as constructor assignments: on this engine a C++ constructor runs
-	// AFTER the ini was loaded into the object and would overwrite real ini values with these fallbacks.
+	// A saved ini without a [ProxyNetDrv.ProxyNetDriver] section leaves every CPF_Config property zero, and a
+	// zero ConnectionTimeout closes the connection on its first tick: fill in what is missing and log it.
+	// Done at InitConnect, not in the constructor: a C++ constructor runs after the ini is loaded into the
+	// object and would overwrite its values.
 	void NormalizeConfigDefaults()
 	{
 		guard(UProxyNetDriver::NormalizeConfigDefaults);
-		// A missing SECTION is recognisable by its timeout being zero — no real ini sets that. The two
-		// download switches are a bool and a size, which cannot say "unset" on their own, so they follow it:
-		// without them a joined server could never send a custom map.
+		// A missing section shows as a zero timeout, which no real ini sets. The download switches, a bool and
+		// a size that cannot say "unset", follow it: without them a server could never send a custom map.
 		if( ConnectionTimeout <= 0.f )
 		{
 			AllowDownloads  = 1;
@@ -606,9 +572,9 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 				Field = Default;												\
 				Patched += FString::Printf( TEXT(" %s"), TEXT(#Field) );		\
 			}
-		// The shipped [IpDrv.TcpNetDriver] values, except the two timeouts: no game ticks run while a web
-		// client streams a map it has never touched, so it needs more patience than a native one. These are
-		// the CLIENT's timeouts; the SERVER's own (15 s / 150 s on a stock 469e) are not ours to set.
+		// The stock [IpDrv.TcpNetDriver] values except three: ConnectionTimeout 60 (no game ticks run while a
+		// web client streams a map it has never touched), InitialConnectTimeout 200 and MaxClientRate 10000000,
+		// the cap on NETSPEED. These are the client's timeouts; the server keeps its own.
 		PROXYNET_CFG( ConnectionTimeout,        60.f )
 		PROXYNET_CFG( InitialConnectTimeout,   200.f )
 		PROXYNET_CFG( KeepAliveTime,            0.2f )
@@ -642,7 +608,7 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		// are static, and Open() turns away every connection that is not ours.
 		GWebHttp = &GProxyNetHttpHooks;
 
-		// Connect to remote — through the game proxy. A NEW connection id every time.
+		// Connect to remote through the game proxy: a new connection id every time.
 		INT NewConnId = ue_proxynet_connect( appToAnsi(*ConnectURL.Host), ConnectURL.Port );
 		if( NewConnId < 0 )
 		{
@@ -667,7 +633,7 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 	UBOOL InitListen( FNetworkNotify* InNotify, FURL& LocalURL, FString& Error )
 	{
 		guard(UProxyNetDriver::InitListen);
-		// A browser cannot accept UDP, and the game proxy carries a client to ONE server — it is not a
+		// A browser cannot accept UDP, and the game proxy carries a client to one server; it is not a
 		// rendezvous. Hosting is what P2P networking is for: refuse in words.
 		Error = TEXT("Proxy networking cannot host a game. Switch to P2P networking to host.");
 		debugf( NAME_Log, TEXT("ProxyNetDrv: %s"), *Error );
@@ -683,13 +649,10 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		if( !Conn || Conn->ConnId < 0 )
 			return;
 
-		// The transport's verdict. CONNECTING covers "reached the proxy" AND "queued by the proxy" (it paces
-		// new connections to one game server), so it is simply waited out. CLOSED/INVALID is final: refused,
-		// unreachable, or lost beyond the proxy's resume window.
-		//
-		// ★ Never promote the UE connection to USOCK_Open here. It stays USOCK_Pending through the whole
-		// download + join handshake and the engine's own join flow opens it — exactly as under TcpNetDriver,
-		// which knows nothing of connection state either. This block only ever CLOSES.
+		// The transport's verdict. CONNECTING ("reached the proxy" or "queued by it": it paces new connections
+		// to one server) is waited out; CLOSED/INVALID is final: refused, unreachable, or lost beyond the proxy's
+		// resume window. This only ever closes: the connection stays USOCK_Pending through download and join,
+		// and the engine's join flow opens it, as under TcpNetDriver.
 		INT TransportState = ue_proxynet_state( Conn->ConnId );
 		if( (TransportState==PROXYNET_STATE_CLOSED || TransportState==PROXYNET_STATE_INVALID) && Conn->State!=USOCK_Closed )
 		{

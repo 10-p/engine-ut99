@@ -1,5 +1,5 @@
-// ufront 2.79p oracle: the five string natives OldUnreal 469 backported (238, 239, 322, 323, 324).
-// Compiled by 469's ucc; run under stock 469e AND under our 436 -- the NT lines must be identical.
+// Test commandlet for the five string natives OldUnreal 469 backported (238, 239, 322, 323, 324).
+// Compiled by 469's ucc; tools/oracle-469-natives/run.sh runs it under 469 and this engine and diffs the NT lines.
 class NativesTest extends Commandlet;
 
 function int Main( string Params )

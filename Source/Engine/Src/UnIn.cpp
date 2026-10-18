@@ -171,9 +171,8 @@ FLOAT* UInput::FindAxisName( AActor* Actor, const TCHAR* ButtonName ) const
 }
 
 //
-// v436-compat port: drive a key's binding directly with an analog value (436 UInput::DirectAxis).
-// The binding runs as a held key with the value appended as its SPEED=, so an AXIS binding
-// moves by Delta*Length.
+// v436: drive a key's binding directly with an analog value. The binding runs as a held key
+// with the value appended as its SPEED=, so an AXIS binding moves by Delta*Length.
 //
 void UInput::DirectAxis( EInputKey iKey, FLOAT Length, FLOAT Delta )
 {
@@ -288,8 +287,7 @@ UBOOL UInput::Exec( const TCHAR* Str, FOutputDevice& Ar )
 		&&	ParseToken( Str, Temp, ARRAY_COUNT(Temp), 0 )
 		&&	(Axis=FindAxisName(Viewport->Actor,Temp))!=NULL )
 		{
-			// v436-compat port: SPEEDBASE= (436 UInput::Exec) -- a positive base applies the
-			// delta scaled by it whatever the input action is.
+			// v436: a positive SPEEDBASE= applies the delta scaled by it whatever the input action is.
 			FLOAT Speed=1.f, SpeedBase=0.f;
 			Parse( Str, TEXT("SPEED="), Speed );
 			Parse( Str, TEXT("SPEEDBASE="), SpeedBase );
@@ -405,7 +403,7 @@ UBOOL UInput::Process( FOutputDevice& Ar, EInputKey iKey, EInputAction State, FL
 void UInput::ReadInput( FLOAT DeltaSeconds, FOutputDevice& Ar )
 {
 	guard(UInput::ReadInput);
-	// v436-compat port: input is only read while the main loop runs.
+	// v436: input is only read while the main loop runs.
 	if( GIsRunning )
 	{
 		FCacheItem*     Item  = NULL;

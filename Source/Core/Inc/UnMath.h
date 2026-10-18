@@ -28,8 +28,7 @@ inline	INT Fix		(FLOAT A)		{return (INT)(A*65536.0);};
 inline	INT Unfix	(INT A)			{return A>>16;};
 
 // Constants.
-// v436-compat port: FLOAT constants, as in 436 (its FVector::Rotation/FCoords::OrthoRotation use
-// 65535/(2*(FLOAT)PI) and 32768/(FLOAT)PI, and SafeNormal/Normalize compare against 1.e-8f).
+// v436: FLOAT constants, as v436 defines them, so the maths using them stays in float.
 #undef  PI
 #define PI 					(3.1415926535897932f)
 #define SMALL_NUMBER		(1.e-8f)
@@ -653,8 +652,7 @@ public:
 	{
 		return FRotator( Pitch-R.Pitch, Yaw-R.Yaw, Roll-R.Roll );
 	}
-	// v436-compat port: scaled components are rounded, not truncated (436 Core FRotator
-	// operator*/operator*= inline appRound; v400 called _ftol).
+	// As v436 does, scaled components are rounded (appRound), not truncated.
 	FRotator operator*( FLOAT Scale ) const
 	{
 		return FRotator( appRound(Pitch*Scale), appRound(Yaw*Scale), appRound(Roll*Scale) );
@@ -898,7 +896,7 @@ public:
 	{
 		return TrigFLOAT[(((i+16384)>>ANGLE_SHIFT)&(NUM_ANGLES-1))];
 	}
-	// v436-compat port: the table index is rounded (436 Core FGlobalMath::SinFloat/CosFloat).
+	// As v436 does, the table index is rounded.
 	FLOAT SinFloat( FLOAT F )
 	{
 		return SinTab(appRound((F*65536.f)/(2.f*PI)));

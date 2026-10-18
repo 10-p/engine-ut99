@@ -1013,12 +1013,9 @@ void UClass::Serialize( FArchive& Ar )
 	}
 	Ar << ClassFlags << ClassGuid;
 
-	// Native-replication guard (the load-time detector the v436 sweep lacked): a `nativereplication`
-	// class tells UPackageMap::GetClassNetCache to skip its properties' script replication conditions,
-	// so only its C++ GetOptimizedRepList can send them. If the C++ class does not declare native
-	// replication (DECLARE_CLASS without CLASS_NativeReplication, which Engine keeps equal to "declares
-	// its own GetOptimizedRepList" with compile-time checks), those properties silently never reach a
-	// client: no error, no log, and only visible over the network. Warn here, at load, instead.
+	// Native-replication guard: UPackageMap::GetClassNetCache skips the script replication conditions of a
+	// `nativereplication` class, so only its C++ GetOptimizedRepList sends those properties. Warn at load when
+	// the C++ class does not declare CLASS_NativeReplication: the properties would silently never replicate.
 	if( Ar.IsLoading() && (ClassFlags & CLASS_NativeReplication) )
 	{
 		extern UClass* GNativeFlagClasses[]; extern DWORD GNativeFlagValues[]; extern INT GNativeFlagCount;

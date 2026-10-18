@@ -211,8 +211,8 @@ static inline INT DrawString
 	for( INT i=0; Text[i]; i++ )
 	{
 		INT bUnderlineNext = 0;
-		// v436-compat port: characters go through the font's remap table (436 inlines RemapChar
-		// for the character, the underline '_' and the '&'-marked character alike).
+		// As v436 does, the character, the underline '_' and the '&'-marked character all go
+		// through the font's remap table.
 		INT Ch = Font->RemapChar(Text[i]);
 
 		// Handle ampersand underlining.
@@ -312,7 +312,7 @@ static inline void GetCharSize( UFont* Font, TCHAR InCh, INT& Width, INT& Height
 	guardSlow(GetCharSize);
 	Width = 0;
 	Height = 0;
-	INT Ch    = Font->RemapChar(InCh); // v436-compat port: remapped glyph.
+	INT Ch    = Font->RemapChar(InCh); // v436: remapped glyph.
 	INT Page  = Ch / Font->CharactersPerPage;
 	INT Index = Ch - Page * Font->CharactersPerPage;
 	if( Page<Font->Pages.Num() && Index<Font->Pages(Page).Characters.Num() )

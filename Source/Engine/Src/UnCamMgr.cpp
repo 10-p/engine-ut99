@@ -60,9 +60,9 @@ void UClient::StaticConstructor()
 	new(GetClass(),TEXT("MinDesiredFrameRate"),	RF_Public)UFloatProperty(CPP_PROPERTY(MinDesiredFrameRate	), TEXT("Display"), CPF_Config );
 	new(GetClass(),TEXT("Decals"),				RF_Public)UBoolProperty (CPP_PROPERTY(Decals				), TEXT("Display"), CPF_Config );
 	new(GetClass(),TEXT("NoDynamicLights"),		RF_Public)UBoolProperty (CPP_PROPERTY(NoDynamicLights		), TEXT("Display"), CPF_Config );
-	// v436-compat port: config switch added to UClient in 436; read by the Fire.dll textures.
+	// v436: config switch the Fire textures read; set, they are primed to a still frame and not animated.
 	new(GetClass(),TEXT("NoFractalAnim"),		RF_Public)UBoolProperty (CPP_PROPERTY(NoFractalAnim			), TEXT("Display"), CPF_Config );
-	// v436-compat port: 436 registers ParticleDensity last (no compiled default; the ini has 0).
+	// As v436 does, ParticleDensity is registered last; it defaults to 0, and no shipped ini sets it.
 	new(GetClass(),TEXT("ParticleDensity"),		RF_Public)UIntProperty  (CPP_PROPERTY(ParticleDensity		), TEXT("Display"), CPF_Config );
 
 	unguard;
@@ -83,7 +83,7 @@ UBOOL UClient::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	guard(UClient::Exec);
 	if( ParseCommand(&Cmd,TEXT("BRIGHTNESS")) )
 	{
-		// v436-compat port: FLOAT step, and the level shown is rounded (436 UClient::Exec).
+		// As v436 does: a FLOAT step, and the level shown is rounded.
 		if( (Brightness+=0.1f) >= 1.f )
 			Brightness = 0;
 		Engine->Flush(1);
