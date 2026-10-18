@@ -2,7 +2,7 @@
 	WebRTCLan.cpp — a synthetic LAN that makes the stock server browser work over WebRTC.
 
 	The browser is script in retail `.u` packages, and it speaks UDP, so the glue's
-	discovery calls (`webrtc_discover_servers` and friends) are answered at the
+	discovery calls (`ue_net_discover_servers` and friends) are answered at the
 	UDP layer:
 
 	  Passive   — `UnrealListenMenu` spawns `IpDrv.ClientBeaconReceiver`, which binds
@@ -35,19 +35,7 @@
 
 #ifdef __EMSCRIPTEN__
 
-// Discovery bridge (vendor/glue/webrtc-shim.js exports, resolved at the wasm link).
-extern "C"
-{
-	void webrtc_discover_servers( const char* room );
-	int  webrtc_get_server_count();
-	int  webrtc_is_discovery_done();
-	int  webrtc_get_server_info( int index, char* name, int nameMax, char* joinKey, int joinKeyMax );
-	int  webrtc_get_server_map( int index, char* buf, int maxLen );
-	int  webrtc_get_server_gametype( int index, char* buf, int maxLen );
-	int  webrtc_get_server_players( int index );
-	int  webrtc_get_server_maxplayers( int index );
-	int  webrtc_get_server_ping( int index );
-}
+#include "ue_abi.h"	// the glue ABI's discovery imports (vendor/glue/net-shim.js), resolved at the wasm link
 
 /*-----------------------------------------------------------------------------
 	Tunables + state.
@@ -182,14 +170,14 @@ static void KickDiscovery()
 		return;
 	GLastDiscoveryAt  = Now;
 	GDiscoveryPending = 1;
-	webrtc_discover_servers( "" );   // "" = every room on this signalling server
+	ue_net_discover_servers( "" );   // "" = every room on this signalling server
 	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery started") );
 }
 
 /**
  * Drain a finished discovery into GServers. No-op while one is still in flight.
  *
- * Throttled to four times a second: every webrtc_* call here is a sync cross-thread round trip to the main
+ * Throttled to four times a second: every ue_net_* call here is a sync cross-thread round trip to the main
  * thread, this runs from AUdpLink::Tick (once per link per frame), and asking every frame overflows
  * Emscripten's proxy queue ("emscripten_proxy_async failed").
  */
@@ -203,7 +191,7 @@ static void PumpDiscovery()
 	if( PumpNow - GLastPumpAt < 0.25 )
 		return;
 	GLastPumpAt = PumpNow;
-	if( !webrtc_is_discovery_done() )
+	if( !ue_net_is_discovery_done() )
 		return;
 	GDiscoveryPending = 0;
 
@@ -212,7 +200,7 @@ static void PumpDiscovery()
 	// reallocs whatever pointer the slot holds. Placement new is the spelling that copy-constructs, as
 	// `TArray::operator=` does. Removal and Empty() destruct the elements they drop.
 	GServers.Empty();
-	const INT Count = webrtc_get_server_count();
+	const INT Count = ue_net_get_server_count();
 	char nameBuf[256], roomBuf[256], mapBuf[128], gtBuf[128];
 	for( INT i=0; i<Count; i++ )
 	{
@@ -220,23 +208,23 @@ static void PumpDiscovery()
 		appMemzero( roomBuf, sizeof(roomBuf) );
 		appMemzero( mapBuf,  sizeof(mapBuf)  );
 		appMemzero( gtBuf,   sizeof(gtBuf)   );
-		if( !webrtc_get_server_info( i, nameBuf, sizeof(nameBuf), roomBuf, sizeof(roomBuf) ) )
+		if( !ue_net_get_server_info( i, nameBuf, sizeof(nameBuf), roomBuf, sizeof(roomBuf) ) )
 			continue;
 		FString Room = ANSI_TO_TCHAR(roomBuf);
 		// Skip the host's own listen server: joining it would be a peer connecting to itself.
 		if( GLocalRoom.Len() && appStricmp( *Room, *GLocalRoom )==0 )
 			continue;
-		webrtc_get_server_map( i, mapBuf, sizeof(mapBuf) );
-		webrtc_get_server_gametype( i, gtBuf, sizeof(gtBuf) );
+		ue_net_get_server_map( i, mapBuf, sizeof(mapBuf) );
+		ue_net_get_server_gametype( i, gtBuf, sizeof(gtBuf) );
 
 		FLanServer S;
 		S.Room       = Room;
 		S.Name       = ANSI_TO_TCHAR(nameBuf);
 		S.Map        = mapBuf[0] ? FString(ANSI_TO_TCHAR(mapBuf)) : FString(TEXT("?"));
 		S.GameType   = ANSI_TO_TCHAR(gtBuf);
-		S.Players    = webrtc_get_server_players( i );
-		S.MaxPlayers = webrtc_get_server_maxplayers( i );
-		S.Ping       = webrtc_get_server_ping( i );
+		S.Players    = ue_net_get_server_players( i );
+		S.MaxPlayers = ue_net_get_server_maxplayers( i );
+		S.Ping       = ue_net_get_server_ping( i );
 		if( S.MaxPlayers <= 0 ) S.MaxPlayers = 16;
 		if( S.Ping      <= 0 )  S.Ping = 1;
 		if( !S.Name.Len() )     S.Name = Room;
@@ -321,7 +309,7 @@ void WebRTCLan_Bind( const void* LinkId, INT Port )
 	// Warm the cache on any bind: the stock browser's link binds, sweeps once and is destroyed a few seconds
 	// later, and discovery is asynchronous, so starting it here leaves GServers populated for the next query.
 	// Deferred to WebRTCLan_NextReply: a bind can come from inside a script event our own delivery triggered,
-	// where a sync cross-thread webrtc_* call hangs the engine.
+	// where a sync cross-thread ue_net_* call hangs the engine.
 	GWantKick = 1;
 
 	// ClientBeaconReceiver is passive: it binds the beacon port and waits for servers to shout, so binding
@@ -516,17 +504,6 @@ void WebRTCLan_SetLocalRoom( const TCHAR* Room )
 {
 	GLocalRoom = Room ? Room : TEXT("");
 }
-
-#else  // !__EMSCRIPTEN__
-
-// Native builds have real UDP and a real LAN; the stock browser needs no help.
-void    WebRTCLan_Bind( const void*, INT ) {}
-void    WebRTCLan_Unbind( const void* ) {}
-UBOOL   WebRTCLan_Send( const void*, DWORD, INT, const TCHAR* ) { return 0; }
-UBOOL   WebRTCLan_NextReply( const void*, DWORD*, INT*, FString& ) { return 0; }
-FString WebRTCLan_HostForRoom( const TCHAR* ) { return FString(TEXT("")); }
-FString WebRTCLan_RoomForHost( const TCHAR* ) { return FString(TEXT("")); }
-void    WebRTCLan_SetLocalRoom( const TCHAR* ) {}
 
 #endif // __EMSCRIPTEN__
 

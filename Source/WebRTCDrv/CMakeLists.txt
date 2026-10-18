@@ -17,6 +17,7 @@ target_include_directories(${PROJECT_NAME}
   ${CMAKE_CURRENT_SOURCE_DIR}/Inc
   PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/Src
+  ${CMAKE_SOURCE_DIR}/../vendor/glue   # ue_abi.h
 )
 
 target_link_libraries(${PROJECT_NAME} Engine Core)
