@@ -294,8 +294,8 @@ UStruct::UStruct( ENativeConstructor, INT InSize, const TCHAR* InName, const TCH
 ,	FriendlyName	( /*Uninitialized*/ )
 {
 	// Layout guard: record the native C++ sizeof (InSize) keyed by object pointer, so UStruct::Link can
-	// compare it against the size derived from the LOADED .u property offsets and warn on any C++/script
-	// disagreement. Plain globals (BSS) -> safe at the static-init time these native constructors run.
+	// compare it with the size derived from the loaded .u property offsets (a mismatch is fatal). Plain
+	// globals (BSS), safe at the static-init time these native constructors run.
 	extern UStruct* GLayoutStructs[]; extern INT GLayoutSizes[]; extern INT GLayoutCount;
 	if( GLayoutCount < 4096 ) { GLayoutStructs[GLayoutCount]=this; GLayoutSizes[GLayoutCount]=InSize; GLayoutCount++; }
 }
@@ -332,7 +332,7 @@ void UStruct::Register()
 }
 
 //
-// Native placeholders (ufront 2.83). A few script variables stand in for C++ data that script never
+// Native placeholders. A few script variables stand in for C++ data that script never
 // touches: the object header, the vtable pointer of a secondary C++ base, a private pointer. The retail
 // packages declare them as ints -- sized for 32-bit pointers -- so on LP64 the C++ data is larger than
 // its script stand-in and every later member would sit at a different offset in C++ than in script.
@@ -342,10 +342,8 @@ void UStruct::Register()
 //
 static INT NativePlaceholderSize( UStruct* Owner, UProperty* Property )
 {
-	// Every placeholder is an int member of a class; nothing else is looked up. The lookup is by string on
-	// purpose: FNames made once and cached here would be purged by garbage collection when unreferenced and
-	// their index reused for another name (measured: a cached ReplacementMap had become TcpNetDriver0 by
-	// the time UWeb loaded), so no cached name could be trusted to still mean what it meant.
+	// Every placeholder is an int member of a class; nothing else is looked up. The lookup is by string: a
+	// cached FName would be purged by garbage collection when unreferenced and its index reused for another name.
 	if( !Cast<UIntProperty>(Property) || !Cast<UClass>(Owner) || !Owner->GetOuter() )
 		return 0;
 	static const struct { const TCHAR* Package; const TCHAR* Struct; const TCHAR* Property; INT Size; } Placeholders[] =
@@ -416,15 +414,10 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 			}
 		}
 		PropertiesSize = Align(PropertiesSize,4);
-		// Layout guard (ported from feat/v436-compat, where it was a GENERAL fix living on a
-		// target-specific branch): a native class's C++ sizeof must equal the size derived from the
-		// loaded .u property offsets. A mismatch means the class's own members — and any native
-		// subclass's — are read from the wrong offsets.
-		//
-		// ⚠ IT IS NECESSARY BUT NOT SUFFICIENT, and step 2.32 is the proof: the ABrush/AMover keyframe
-		// bug passed this check. C++ may place a derived class's members in the base's TAIL PADDING, so
-		// sizeof(base) is unchanged while the derived member moves, and AMover re-aligned before its end
-		// so its size matched too. Only a per-PROPERTY offset comparison sees that class of bug.
+		// Layout guard: a native class's C++ sizeof must equal the size derived from the loaded .u property
+		// offsets, or the class's members (and any native subclass's) are read from the wrong offsets. Necessary,
+		// not sufficient: C++ may place a derived class's members in the base's tail padding, which only a
+		// per-property offset comparison (tools/dev/layout-sweep.gdb) sees.
 		{
 			extern UStruct* GLayoutStructs[]; extern INT GLayoutSizes[]; extern INT GLayoutCount;
 			for( INT li=0; li<GLayoutCount; li++ )
@@ -432,11 +425,10 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 				{
 					if( GLayoutSizes[li] != PropertiesSize )
 					{
-						// ufront 2.83: FATAL. C++ and script read the same object through two layouts; when
-						// they disagree every access past the first difference is silent corruption, and an
-						// object allocated at the script size is smaller than the class C++ writes through.
-						// The .u packages are fixed, so a mismatch is always our header or the placeholder
-						// table (NativePlaceholderSize): run tools/dev/layout-sweep.gdb to find the member.
+						// Fatal: C++ and script read the same object through two layouts, and an object
+						// allocated at the script size is smaller than the class C++ writes through. The .u
+						// packages are fixed, so a mismatch is a header or the placeholder table
+						// (NativePlaceholderSize): tools/dev/layout-sweep.gdb finds the member.
 						debugf( NAME_Warning, TEXT("[layout] native %s: C++ sizeof=%i but script layout=%i -- member-offset shift risk"),
 							GetName(), GLayoutSizes[li], PropertiesSize );
 						appErrorf( TEXT("Native class %s: C++ sizeof=%i but script layout=%i. The C++ header and the package disagree (tools/dev/layout-sweep.gdb names the member)."),
@@ -448,16 +440,9 @@ void UStruct::Link( FArchive& Ar, UBOOL Props )
 	}
 	else
 	{
-		// ufront 2.70 — this branch links NATIVE properties (CPP_PROPERTY, registered in a StaticConstructor):
-		// their storage is a C++ member, so linking must not move it. Epic restored the OFFSET and forgot the
-		// BIT: UBoolProperty::Link merges a bool into the previous bool's word as if they were packed script
-		// bitfields, so adjacent native bools came out with BitMask 2, 4, 8... while each one is a whole UBOOL.
-		// Harmless for Epic's own drivers (a bool that only config ever writes is simply nonzero or zero), but a
-		// constructor that writes `= true` (bit 1) before config is applied can then never be switched off:
-		// NOpenALDrv's `UseReverb=False` cleared bit 4 and reverb stayed on (measured), and ExportText reads such
-		// a bool back as False. A native property can never be a real bitfield (CPP_PROPERTY takes an offset),
-		// so its bit is restored exactly like its offset. Unreal 1 never merges native bools at all (its
-		// LinkOffsets runs only for loaded/compiled structs), which is why the same driver works there.
+		// Native properties (CPP_PROPERTY, registered in a StaticConstructor): their storage is a C++ member, so
+		// linking must not move it. UBoolProperty::Link merges a bool into the previous bool's word as if they were
+		// packed script bitfields; a native bool is a whole UBOOL, so its bit mask is restored like its offset.
 		UProperty* Prev = NULL;
 		for( UField* Field=Children; Field && Field->GetOuter()==this; Field=Field->Next )
 		{
@@ -1202,7 +1187,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 	#define XFER(T) {Ar << *(T*)&Script(iCode); iCode += sizeof(T); }
 	#endif
 	// An object reference: a 4-byte slot holding the object's index (UObject::GetScriptObject), on every
-	// pointer width (ufront 2.83). The archive is handed the object itself -- loading resolves it from the
+	// pointer width. The archive is handed the object itself -- loading resolves it from the
 	// package, saving writes the package's own reference, garbage collection marks it, and a reference-
 	// replacing archive may hand back another -- and the slot is rewritten from whatever comes back.
 	#define XFER_OBJ \
@@ -1412,8 +1397,7 @@ EExprToken UStruct::SerializeExpr( INT& iCode, FArchive& Ar )
 		case EX_Case:
 		{
 			XFER(_WORD); // Code offset.
-			// Read it back AFTER the transfer (loading fills it) and by copy -- the slot is unaligned
-			// (ufront 2.83; the Dreamcast branch that stood here copied it before loading).
+			// Read it back after the transfer (loading fills it), by copy: the slot is unaligned.
 			_WORD W;
 			appMemcpy( &W, &Script(iCode-sizeof(_WORD)), sizeof(W) );
 			if( W != MAXWORD )

@@ -6,7 +6,7 @@ Bin
 Source/.vs
 build/
 
-# ufront web port (step 2.7): out-of-tree build dirs + local smoke scratch (never tracked)
+# Preset build trees and local smoke scratch
 /build-native/
 /build-wasm/
 /build-wasm-perf/
@@ -14,7 +14,7 @@ build/
 /build-windows/
 __smoke.html
 /build-soft/
-# ufront 2.83: the 64-bit trees, and a script package compiled from tools/test (a build product)
+# The 64-bit trees, and a script package compiled from tools/test (a build product)
 /build-native64/
 /build-native64-asan/
 /build-android-*/

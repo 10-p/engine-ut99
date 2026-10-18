@@ -6,7 +6,7 @@
 		* Created by Jack Porter
 =============================================================================*/
 
-#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+#pragma pack (push,4) /* script-mirrored classes keep the Win32 /Zp4 layout on every target */
 
 class ENGINE_API  UScriptedTexture : public UTexture
 {

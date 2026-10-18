@@ -3,20 +3,17 @@
 #
 #   tools/dev/mkrun-ut99.sh <build-dir> <run-dir>
 #
-# $UT99_ASSETS_DIR is an overlayfs (lowerdir=/home/ion/assets-readonly/ut99) shared with other
-# work, so nothing here may write into it. Big read-only trees are symlinked; System/ is a real
-# copy because the engine rewrites inis and logs into it.
+# $UT99_ASSETS_DIR may be a shared read-only tree, so nothing here writes into it: big read-only trees are
+# symlinked, and System/ is a real copy because the engine rewrites inis and logs into it.
 #
-# NOTE: --remove-destination on every copy is load-bearing. Without it a plain `cp` onto a symlink
-# FOLLOWS the link and writes straight through into the shared asset tree. Do not drop it.
+# --remove-destination on every copy is required: a plain `cp` onto a symlink follows the link and writes
+# into the shared asset tree.
 set -eu
 
 BUILD="${1:?usage: mkrun-ut99.sh <build-dir> <run-dir>}"
 RUN="${2:?}"
-# Prefer the reference run-tree's REAL asset directories over $UT99_ASSETS_DIR. The latter is an
-# overlayfs that gets unmounted between sessions, and a run tree that symlinks into it dies with it
-# (dangling Maps -> "Failed to load 'Entry': Can't find file 'Entry'"). The reference tree is a
-# plain copy and survives.
+# Prefer the reference run tree's real asset directories over $UT99_ASSETS_DIR, which may be unmounted
+# between sessions (a run tree symlinked into it would dangle).
 A="${UT99_ASSETS_DIR:-/home/ion/ut99-assets}"
 REF_ASSETS=${UT99_REF_RUNTREE:-/home/ion/native-runtrees/ut99}
 [ -d "$REF_ASSETS/Maps" ] && [ ! -d "$A/Maps" ] && A="$REF_ASSETS"
@@ -41,9 +38,8 @@ done
 cp -a "$A/System" "$RUN/System"
 mkdir -p "$RUN/Logs"
 
-# The retail ini names WinDrv.WindowsClient as the viewport manager, which does not exist on Linux
-# (the engine appErrors out before the first frame). Take the already-working native config from the
-# reference run-tree when it is there; otherwise patch the one line.
+# The retail ini names WinDrv.WindowsClient as the viewport manager. Take the native config from the
+# reference run tree when it is there; otherwise patch the one line.
 REF=${UT99_REF_RUNTREE:-/home/ion/native-runtrees/ut99}
 if [ -f "$REF/System/UnrealTournament.ini" ]; then
     cp -f --remove-destination "$REF/System/UnrealTournament.ini" "$RUN/System/"

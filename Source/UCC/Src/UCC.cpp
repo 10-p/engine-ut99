@@ -82,8 +82,8 @@ void ShowBanner( FOutputDevice& Warn )
 }
 int main( int argc, char* argv[] )
 {
-	// ufront 2.12 (native ucc): __Context (the legacy setjmp exception context) was removed in the modern
-	// ut99 native port — the modernized Launch.cpp never initializes it. Guarded out to build against Core.
+	// __Context (the legacy setjmp exception context) does not exist in this Core; nothing defines
+	// UE_LEGACY_CONTEXT, so the call is compiled out.
 	#if !_MSC_VER && defined(UE_LEGACY_CONTEXT)
 		__Context::StaticInit();
 	#endif
@@ -102,7 +102,7 @@ int main( int argc, char* argv[] )
 		#endif
 		
 		// Parse command line.
-		// ufront: 4096 (Core's GCmdLine), a token that does not fit dropped whole (it overran a TCHAR[1024]).
+		// 4096, the size of Core's GCmdLine; a token that does not fit is dropped whole.
 		TCHAR CmdLine[4096], *CmdLinePtr=CmdLine;
 		*CmdLinePtr = 0;
 		UBOOL CmdLineCut = 0;
@@ -191,7 +191,7 @@ int main( int argc, char* argv[] )
 				Class = UObject::StaticLoadClass( UCommandlet::StaticClass(), NULL, *(Token+TEXT("Commandlet")), NULL, LoadFlags, NULL );
 			if( !Class )
 			{
-				INT i; // ufront 2.12: hoisted out of the for (retail code relied on MSVC's old for-scope; used below)
+				INT i; // declared outside the for: it is used after the loop
 				for( i=0; i<List.Num(); i++ )
 				{
 					FString Str = List(i).Object;

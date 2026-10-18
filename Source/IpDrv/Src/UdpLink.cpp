@@ -8,8 +8,8 @@ Revision history:
 =============================================================================*/
 
 #include "IpDrvPrivate.h"
-// ufront 2.38 — the synthetic LAN (engine-local WebRTCDrv). Header only: the call is resolved at the
-// final --whole-archive link, so IpDrv does not link WebRTCDrv and there is no module cycle.
+// The synthetic LAN (WebRTCDrv). Header only: the call is resolved at the final --whole-archive link, so
+// IpDrv does not link WebRTCDrv.
 #include "WebRTCLan.h"
 
 /*-----------------------------------------------------------------------------
@@ -36,7 +36,7 @@ void AUdpLink::Destroy()
 {
 	guard(AUdpLink::Destroy);
 #ifdef __EMSCRIPTEN__
-	WebRTCLan_Unbind( this );   // ufront 2.38 — drop any queued synthetic packets for this link
+	WebRTCLan_Unbind( this );   // drop any queued synthetic packets for this link
 #endif
 	if( HasSocket() )
 		closesocket(GetSocket());
@@ -54,14 +54,9 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 	P_GET_UBOOL_OPTX(bUseNextAvailable,0);
 	P_FINISH;
 #ifdef __EMSCRIPTEN__
-	// ★ ufront 2.38 — a browser has no UDP, so there is no socket to bind and no point pretending
-	// otherwise halfway. Bind is answered by the synthetic LAN instead: report the port as taken and
-	// register the link, and everything downstream (SendText/Tick) is served from WebRTCLan.
-	//
-	// ⚠ This has to REPLACE the bind rather than fall back after it, because the stock callers treat a
-	// zero return as fatal and stop: UBrowserLocalLink gives up with "Could not bind to a free port"
-	// and Unreal 1's ClientBeaconReceiver logs "beacon port in use" and never starts its timer. Under
-	// Emscripten's virtual socket layer the result is not even reliably one or the other.
+	// A browser has no UDP: the synthetic LAN answers the bind (the port is reported as taken and the link
+	// registered), and SendText/Tick are served from WebRTCLan. It replaces the bind outright, because the stock
+	// callers stop on a zero return (UBrowserLocalLink, ClientBeaconReceiver).
 	{
 		static INT GNextSyntheticPort = 40000;
 		const INT Bound = InPort ? InPort : GNextSyntheticPort++;
@@ -92,7 +87,7 @@ void AUdpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 					INT boundport = bindnextport( Socket, &Addr, bUseNextAvailable ? 20 : 1, 1 );
 					if( boundport )
 					{
-						// ufront 2.33: WinSock has no fcntl — switch on the socket API, not the compiler.
+						// WinSock has no fcntl: switch on the socket API, not the compiler.
 						#if __BSD_SOCKETS__
 						INT pd_flags;
 						pd_flags = fcntl( Socket, F_GETFL, 0 );
@@ -136,9 +131,8 @@ void AUdpLink::execSendText( FFrame& Stack, RESULT_DECL )
 	P_GET_STR(Str);
 	P_FINISH;
 #ifdef __EMSCRIPTEN__
-	// ufront 2.38 — hand the datagram to the synthetic LAN. It answers the beacon sweep and the
-	// GameSpy \info\ query; anything else is swallowed, because the alternative is a sendto() on a
-	// socket that does not exist and a script warning that means nothing.
+	// Hand the datagram to the synthetic LAN: it answers the beacon sweep and the GameSpy \info\ query and
+	// swallows anything else (there is no socket to send on).
 	WebRTCLan_Send( this, IpAddr.Addr, IpAddr.Port, *Str );
 	*(DWORD*)Result = 1;
 	return;
@@ -205,9 +199,9 @@ UBOOL AUdpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 	guard(AUdpLink::Tick);
 	UBOOL Result = Super::Tick( DeltaTime, TickType );
 #ifdef __EMSCRIPTEN__
-	// ufront 2.38 — deliver synthetic LAN packets through the STOCK receive path, so the browser's own
-	// ReceivedText handlers, list building, ping timing and sorting all run unmodified. Outside the
-	// GetSocket() guard below on purpose: on the web there is no socket at all (see execBindPort).
+	// Deliver synthetic LAN packets through the stock receive path, so the browser's ReceivedText handlers,
+	// list building, ping timing and sorting run unmodified. Outside the socket guard below: on the web there
+	// is no socket (see execBindPort).
 	{
 		FIpAddr From;
 		FString Text;

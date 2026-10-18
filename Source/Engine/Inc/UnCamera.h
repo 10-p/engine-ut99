@@ -6,7 +6,7 @@
 		* Created by Tim Sweeney
 =============================================================================*/
 
-#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+#pragma pack (push,4) /* script-mirrored classes keep the Win32 /Zp4 layout on every target */
 
 /*-----------------------------------------------------------------------------
 	UCanvas.
@@ -306,9 +306,8 @@ class ENGINE_API UViewport : public UPlayer
 };
 
 // Viewport hit-testing macros.
-// ufront 2.7d: sizeof(expr) where expr is a temporary hit-proxy (e.g. HMenuToggleButton()) parses under
-// clang (Emscripten) as sizeof of a FUNCTION TYPE — "invalid application of sizeof to a function type".
-// sizeof(decltype(expr)) is equivalent (GCC computed the same) and unambiguous across compilers.
+// sizeof(decltype(expr)): clang parses sizeof of a temporary hit-proxy (HMenuToggleButton()) as sizeof
+// of a function type.
 #define PUSH_HIT(frame,expr) if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PushHit(expr,sizeof(decltype(expr)));
 #define POP_HIT(frame)       if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PopHit(0);
 #define POP_HIT_FORCE(frame) if( (frame->Viewport)->HitTesting ) (frame->Viewport)->PopHit(1);
@@ -401,27 +400,23 @@ class ENGINE_API UClient : public UObject
 };
 
 /*-----------------------------------------------------------------------------
-	ufront AutoFOV (step 2.16) — aspect-correct field of view.
+	AutoFOV — aspect-correct field of view.
 -----------------------------------------------------------------------------*/
 
 //
-// UE1 defines FovAngle as the HORIZONTAL field of view and derives the vertical one by dividing by the
-// viewport aspect, so widening the window buys width out of height: 90 deg at 4:3 shows 73.7 deg
-// vertically, but only 41.1 deg at 24:9 — the world looks zoomed ~1.8x, the viewmodel huge, the HUD
-// oversized. AutoFOV re-derives the horizontal FOV from the live aspect so the VERTICAL one stays put.
+// UE1 defines FovAngle as the horizontal field of view and derives the vertical one from the viewport
+// aspect, so a wider window shows less vertically (90 deg at 4:3 is 73.7 deg vertical, at 24:9 41.1 deg).
+// AutoFOV re-derives the horizontal FOV from the live aspect so the vertical one stays put.
 //
 //   Off      (0) — stock: FovAngle used verbatim.
 //   HorPlus  (1) — 2*atan( tan(Fov/2) * Aspect/Ref ). Vertical FOV pinned to its value at Ref.
-//   Adaptive (2) — max(Fov, HorPlus). DEFAULT. Identical to HorPlus at/above Ref, but falls back to
-//                  stock below it: at 8:9 pure Hor+ would cut vertical 96.7->73.7 AND horizontal
-//                  90->67.4, i.e. worse than doing nothing, so a half-screen window must not use it.
+//   Adaptive (2) — max(Fov, HorPlus), the default: HorPlus at or above Ref, stock below it (below Ref
+//                  pure Hor+ would cut both the vertical and the horizontal FOV).
 //
-// Applied as a SCOPED override around the frame draw (see UGameEngine::Draw), never written back, so
-// every render device, the software renderer and the culling planes all agree on one value, while
-// script keeps seeing the player's real FOV — which matters because PlayerPawn.uc computes
-// MouseScale = MouseSensitivity * DesiredFOV * 0.0111, i.e. any fix that writes the actor's FOV
-// silently changes the player's aim (x1.18 at 16:9). Config: [ufront.AutoFOV] in the game ini,
-// overridable per launch with -AUTOFOV=<n> / -AUTOFOVREF=<f> / -AUTOFOVWEAPON=<f> / -NOAUTOFOV.
+// Applied as a scoped override around the frame draw (UGameEngine::Draw), never written back: every render
+// device and the culling planes agree on one value, while script keeps the player's FOV (PlayerPawn.uc's
+// MouseScale depends on DesiredFOV). Configured only in the [ufront.AutoFOV] ini section (AutoFOV,
+// ReferenceAspect, WeaponScale, AutoFOVUI, UIScale); from outside, with -ini:.
 //
 enum EAutoFovMode
 {
@@ -431,41 +426,29 @@ enum EAutoFovMode
 };
 
 // Effective horizontal FOV for a viewport of SizeX x SizeY. Returns BaseFov unchanged when disabled or
-// when the size is degenerate. Cheap: config is parsed once, then it is pure arithmetic.
-// bLog: emit the one-line report. Only the PRIMARY view passes 1 (the scoped override in
-// UGameEngine::Draw). A frame draws several scene nodes with DIFFERENT FOVs — world, viewmodel,
-// portals — so logging from every call produced a repeating burst every frame (~180 lines/s at
-// 60fps), which is real CPU churn for a diagnostic.
+// when the size is degenerate. Config is parsed once.
+// bLog: emit the one-line report; only the primary view passes 1 (the scoped override in
+// UGameEngine::Draw), since a frame draws several scene nodes with different FOVs.
 ENGINE_API FLOAT ufrontEffectiveFov( FLOAT BaseFov, INT SizeX, INT SizeY, UBOOL bLog = 0 );
 
-// FOV for a script-drawn actor overlay (the first-person viewmodel). AutoFOVWeapon blends in TAN space
-// between the stock FOV (0.0) and the corrected world FOV (1.0, the default — the viewmodel keeps
-// exactly its Ref-aspect proportions). Returns EffectiveFov when the blend is a no-op, so callers skip
-// the extra pass entirely and the default costs nothing.
+// FOV for a script-drawn actor overlay (the first-person viewmodel). WeaponScale blends in tan space
+// between the stock FOV (0.0) and the corrected world FOV (1.0, the default: the viewmodel keeps its
+// Ref-aspect proportions). Returns EffectiveFov when the blend is a no-op, so callers skip the extra pass.
 ENGINE_API FLOAT ufrontWeaponFov( FLOAT BaseFov, FLOAT EffectiveFov );
 
-// The UNCORRECTED FovAngle for the frame being drawn, published by the scoped override in
+// The uncorrected FovAngle for the frame being drawn, published by the scoped override in
 // UGameEngine::Draw. The overlay pass runs after Actor->FovAngle already holds the corrected value, so
 // it needs this to know what "stock" was. Not DesiredFOV: during a zoom transition FovAngle is still
 // interpolating towards it, and the viewmodel must track the live view.
 ENGINE_API extern FLOAT GAutoFovFrameBase;
 
-// AutoFOVUI (step 2.16b) — HUD auto-scale.
+// AutoFOVUI — HUD auto-scale.
 //
-// The HUD sizes its widgets off the canvas WIDTH, so a wide window inflates every element while the gaps
-// between them grow too — hence the overlap on 21:9+. Rather than touching individual widgets (what
-// foxWSFix does, which only works for the HUDs it ships replacements for), co-opt the game's OWN global
-// scale: multiply `HudScale` by Ref/Aspect and the width cancels out of the sizing formula, leaving size
-// proportional to HEIGHT. Positions are untouched, so corner-anchored widgets stay in the corners — the
-// HUD spreads out instead of zooming, for ANY HUD including a total conversion's, because HudScale is
-// declared on the base HUD class (UT99 Botpack.ChallengeHUD) and every subclass inherits it.
-//
-// CLAMPED AT 1: at or below the reference aspect the factor is exactly 1.0, so narrow/tall windows render
-// bit-for-bit as stock. Deliberate — the stock sizing ALREADY shrinks as the aspect gets taller (it
-// follows the canvas width), and this way we need not characterise that behaviour to stay safe.
-//
-// Applied as a SCOPED multiply around the HUD's PostRender and restored immediately, so nothing can
-// persist the factor into the player's config.
+// The HUD sizes its widgets off the canvas width, so a wide window inflates every element. Multiplying the
+// HUD's own `HudScale` (found by reflection, so any HUD subclass is covered) by Ref/Aspect makes the size
+// follow the height; positions are untouched, so corner-anchored widgets stay in the corners. Clamped at 1:
+// at or below the reference aspect the HUD renders as stock. Applied as a scoped multiply around the HUD's
+// PostRender and restored at once, so the factor never reaches the player's config.
 ENGINE_API FLOAT ufrontHudScaleFactor( INT SizeX, INT SizeY );
 
 /*-----------------------------------------------------------------------------

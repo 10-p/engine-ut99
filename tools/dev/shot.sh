@@ -4,12 +4,10 @@
 #   tools/dev/shot.sh <Map.unr> <out.png> [seconds] [extra engine args...]
 #   U1RUN=<run-tree> U1DEV=soft|gl U1RES=WxH U1DISP=:N tools/dev/shot.sh ...
 #
-# Xvfb's -fbdir dump is used instead of the engine's SHOT command: SHOT needs a keypress and there
-# is no key-injection tool on this box.
+# Xvfb's -fbdir dump is used instead of the engine's SHOT command, which needs a keypress.
 #
 # Writes <out.png> and <out.png>.log (the engine log for exactly that run), and prints the render
-# device the engine actually selected -- do not trust the ini, ufront 2.9 refuses to promote a
-# software device to the hardware default and silently falls back to GL.
+# device the engine actually selected (a software device in the ini is not adopted as a default).
 set -u
 
 MAP="${1:?usage: shot.sh <Map.unr> <out.png> [seconds] [args...]}"
@@ -19,11 +17,8 @@ shift 3 || true
 
 RUN=${U1RUN:-/home/ion/native-runtrees/ut99-softenh}
 DISP=${U1DISP:-:99}
-# Match Xvfb to the engine's own viewport size. If they differ the engine ends up ticking two
-# viewports (800x600 and 640x480 both show up in the AutoFOV log) and the captured frame is
-# whichever was presented last -- which varies between builds and silently swamps any real
-# comparison. A colour-only change measured 17 dB apart on a mismatched screen and 43 dB apart on a
-# matched one; the 17 dB was entirely HUD/geometry displacement from the wrong viewport.
+# Match Xvfb to the engine's own viewport size: otherwise the engine ticks two viewports and the
+# captured frame is whichever was presented last.
 _VPX=$(sed -nE 's/^WindowedViewportX=([0-9]+).*/\1/p' "$RUN/System/UnrealTournament.ini" 2>/dev/null | head -1)
 _VPY=$(sed -nE 's/^WindowedViewportY=([0-9]+).*/\1/p' "$RUN/System/UnrealTournament.ini" 2>/dev/null | head -1)
 RES=${U1RES:-${_VPX:-800}x${_VPY:-600}}
@@ -49,15 +44,15 @@ sleep 1
 
 # SDL_RENDER_DRIVER=software is required headlessly: SDL_CreateRenderer otherwise picks a
 # GL-backed renderer that composites nothing under Xvfb, and SoftDrv's frames never reach the
-# window -- the capture comes out pure white with the engine happily rendering behind it.
+# window (the capture comes out white).
 ( cd "$RUN/System" && DISPLAY="$DISP" SDL_VIDEODRIVER=x11 SDL_RENDER_DRIVER=software \
     LD_LIBRARY_PATH="$RUN/System:${LD_LIBRARY_PATH:-}" \
     exec ./UnrealTournament "$MAP" -log $DEVARG "$@" >/tmp/ut99run.log 2>&1 ) &
-GPID=$!	# exec: the subshell BECOMES the game, so this kill below reaches it (it used to leave every game running)
+GPID=$!	# exec: the subshell becomes the game, so the kill below reaches it
 
 sleep "$SECS"
 
-# Fail loudly rather than silently converting a stale dump from a previous run.
+# Fail rather than convert a stale dump from a previous run.
 cp "$FBDIR/Xvfb_screen0" "$XWD" 2>/dev/null || true
 kill "$GPID" 2>/dev/null; wait "$GPID" 2>/dev/null
 kill "$XPID" 2>/dev/null; wait "$XPID" 2>/dev/null

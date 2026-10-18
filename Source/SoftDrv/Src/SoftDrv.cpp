@@ -42,10 +42,8 @@ UBOOL USoftwareRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, IN
 	// Driver flags.
 	SpanBased			= 1;
 	FullscreenOnly		= 0;
-	// ufront: fog maps used to be gated on GIsMMX, because volumetric fog existed only in the MMX
-	// kernels. The portable path now has it (LightPassPentiumFog + the fog merge passes in
-	// DrawSurf.cpp), so advertise it unconditionally -- URender only builds fog maps at all when
-	// the device claims support (UnRender.cpp, IsVolumetric).
+	// Fog maps on every path: the portable one has LightPassPentiumFog and the fog merge passes
+	// (DrawSurf.cpp). URender builds fog maps only when the device claims support.
 	SupportsFogMaps		= 1;
 	SupportsDistanceFog	= 0;
 	InitDrawSurf();

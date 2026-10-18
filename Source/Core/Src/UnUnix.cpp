@@ -21,7 +21,7 @@
 #endif
 
 #ifdef __EMSCRIPTEN__
-#include <emscripten.h>  // ufront 2.12: EM_ASM for the return-to-launcher reload on normal exit (appRequestExit)
+#include <emscripten.h>  // EM_ASM for the return to the launcher on a normal exit (appRequestExit)
 #endif
 
 // Standard includes.
@@ -44,9 +44,9 @@
 #ifndef UNREAL_STATIC
 #include <dlfcn.h>
 #endif
-// ufront 2.33 (Windows/MinGW): this file is the platform layer for every GCC/Clang target now, Windows
-// included (Core/CMakeLists.txt gives UnVcWin32.cpp to MSVC only). Name resolution there is WinSock, and
-// UnMinGW.cpp holds the calls with no POSIX equivalent at all.
+// This file is the platform layer of every GCC/Clang target, MinGW Windows included (Core/CMakeLists.txt
+// gives UnVcWin32.cpp to MSVC only). Name resolution there is WinSock; UnMinGW.cpp holds the calls with
+// no POSIX equivalent.
 #ifdef PLATFORM_WIN32
 #include <winsock2.h>
 #include <windows.h>
@@ -59,8 +59,7 @@
 #include "CorePrivate.h"
 #include "UnUnix.h"
 
-// ufront 2.83 -- a POSIX build without SDL (the headless Android ucc-bin) times itself with the monotonic
-// clock. Before, appSeconds() and appCycles() returned 0 there: engine time never advanced.
+// A POSIX build without SDL (the headless Android ucc-bin) times itself with the monotonic clock.
 #if defined(PLATFORM_POSIX) && !defined(PLATFORM_SDL) && !defined(PLATFORM_DREAMCAST)
 #define UT_POSIX_CLOCK 1
 static QWORD PosixMonotonicNs()
@@ -151,8 +150,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		appStrncpy( Arg0, Cmd, (CmdLen - RestLen) + 1 );
 
 #ifdef PLATFORM_WIN32
-		// ufront 2.33: no fork() on Windows. _spawnl already means "start a new process and keep going",
-		// so the child/parent split collapses into spawn-then-exit.
+		// No fork() on Windows: _spawnl starts a new process and keeps going, then this one exits.
 		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", Arg0, (char*)NULL ) == -1 )
 			appErrorf( TEXT("Failed to launch process.") );
 		appRequestExit( 0 );
@@ -228,17 +226,10 @@ CORE_API void appRequestExit( UBOOL Force )
 		//!UNIX No quit message in UNIX.
 		GIsRequestingExit = 1;
 #ifdef __EMSCRIPTEN__
-		// ufront 2.12 (web): a NORMAL exit (Exit menu / `exit` console command / RELAUNCH route here; the crash
-		// path is the Force branch above — exit(1), typically via the error device — NOT this one) returns the
-		// page to the launcher instead of leaving a dead canvas. Navigate to location.pathname, which strips any
-		// autostart query (?map=…) so the shared frontend shows the launcher (its autostart gate keys off
-		// location.search). Deferred via setTimeout(0) so it fires after the blocking ASYNCIFY main loop unwinds.
-		// Crashes never reach here, so their console/error stays on screen. Mirrors engine-unreal1/engine-ut2004.
-		// ufront 2.13.2: MAIN_THREAD_EM_ASM, not EM_ASM. Under -sPROXY_TO_PTHREAD this runs on the worker,
-		// where `window` does not exist and WorkerLocation is read-only — the guard below would simply skip
-		// and the page would sit on a dead canvas forever (the E2E caught exactly that on the pilot:
-		// waitForURL timed out). Only the browser main thread can navigate. It is a plain EM_ASM on a
-		// non-threaded build, so both configurations keep working.
+		// A normal exit (the Exit menu, the `exit` command, RELAUNCH; a crash takes the Force branch above)
+		// sends the page back to the launcher: navigate to location.pathname, which drops any autostart query.
+		// Deferred with setTimeout(0), so it fires after the Asyncify main loop unwinds. Only the browser main
+		// thread can navigate, hence MAIN_THREAD_EM_ASM on the threaded build.
 #ifdef __EMSCRIPTEN_PTHREADS__
 		MAIN_THREAD_EM_ASM({
 #else
@@ -438,19 +429,13 @@ void appCreateProc( const TCHAR* URL, const TCHAR* Parms )
 	argv[j] = 0;
 
 #ifdef PLATFORM_WIN32
-	// ufront 2.33: _spawnv is the Windows spelling of "fork + exec and do not wait".
+	// _spawnv is the Windows spelling of "fork + exec and do not wait".
 	_spawnv( _P_NOWAIT, URL, argv );
 #else
-	// ufront 2.83 -- the branches were inverted (as in Epic's v400 Linux code): the PARENT called execv and
-	// the CHILD returned into the engine. The stats log starts its batcher at every match end, whose .exe
-	// does not exist here, so execv failed, the server went on -- and so did a second copy of it, sharing
-	// every open package file and its read offset. At the next map change the two moved each other's
-	// file positions: `Bad name index`, `fread failed`, a lazy-array seek past EOF (measured on i386,
-	// x86_64 and arm64; the orphaned copies were still running afterwards).
-	// Now the child only starts a grandchild, which runs the program or exits, and exits at once itself,
-	// so the server reaps it immediately and never has a zombie to collect -- start it and keep going,
-	// like _spawnv(_P_NOWAIT) above. Only _exit and execv run in the children (no stdio flush, no
-	// destructors: they own nothing). Where fork fails (the web build) nothing happens, as before.
+	// Start the program and keep going, like _spawnv(_P_NOWAIT) above: the child starts a grandchild, which
+	// runs the program or exits, and exits at once itself, so the caller reaps it immediately. A failed exec
+	// must never leave a second copy of the engine running. Only _exit and execv run in the children (no stdio
+	// flush, no destructors). Where fork fails (the web build) nothing happens.
 	pid_t pid = fork();
 	if( pid == 0 )
 	{
@@ -705,8 +690,7 @@ CORE_API const char* appBaseDir()
 	{
 		// Get directory this executable was launched from.
 #if defined(__EMSCRIPTEN__)
-		// ufront 2.7b: SDL_GetBasePath() returns "/" under Emscripten. The launcher chdir's to /System, so
-		// use getcwd() — config + the package-search Paths then resolve like a native install.
+		// SDL_GetBasePath() returns "/" under Emscripten; the launcher chdir's to /System, so take getcwd().
 		if( getcwd( BaseDir, sizeof(BaseDir) ) )
 			appStrcat( BaseDir, "/" );
 #elif defined(PLATFORM_SDL)
@@ -714,7 +698,7 @@ CORE_API const char* appBaseDir()
 		appStrncpy( BaseDir, BasePath, sizeof(BaseDir) );
 		SDL_free( BasePath );
 #elif defined(UT_POSIX_CLOCK)
-		// What SDL_GetBasePath() does on Linux and Android: the executable's own directory (ufront 2.83).
+		// What SDL_GetBasePath() does on Linux and Android: the executable's own directory.
 		char Exe[1024];
 		ssize_t Len = readlink( "/proc/self/exe", Exe, sizeof(Exe)-1 );
 		if( Len > 0 )
@@ -770,8 +754,7 @@ CORE_API const TCHAR* appComputerName()
 	}
 		appStrcpy( Result, "localhost" );
 #else
-		// ufront 2.33: on Windows gethostname is a WinSock call and fails with WSANOTINITIALISED until
-		// WSAStartup has run — and this can be reached before IpDrv is loaded at all.
+		// On Windows gethostname is a WinSock call, which needs WSAStartup; this can run before IpDrv loads.
 #ifdef PLATFORM_WIN32
 		appWinSockInit();
 #endif
@@ -790,8 +773,7 @@ CORE_API const TCHAR* appUserName()
 	if( !Result[0] )
 #ifdef PLATFORM_WIN32
 	{
-		// ufront 2.33: no getlogin() on Windows. GetUserName is the equivalent; fall back to a constant
-		// rather than leaving the buffer empty, since callers treat this as always-valid.
+		// No getlogin() on Windows: GetUserName, else a constant (callers treat the result as always valid).
 		DWORD Size = ARRAY_COUNT(Result);
 		if( !GetUserNameA( Result, &Size ) )
 			appStrcpy( Result, TEXT("Player") );
@@ -863,7 +845,7 @@ void appPlatformInit()
 #elif defined(UT_POSIX_CLOCK)
 	debugf( NAME_Init, TEXT("Detected: POSIX") );
 
-	// CPU speed: the monotonic clock counts nanoseconds (ufront 2.83).
+	// CPU speed: the monotonic clock counts nanoseconds.
 	DOUBLE Frequency = 1000000000.0;
 	GSecondsPerCycle = 1.0 / Frequency;
 	debugf( NAME_Init, TEXT("CPU Timer Freq=%f Hz"), (FLOAT)Frequency );
@@ -937,7 +919,7 @@ unsigned int appGetLocalIP( void )
 		struct hostent *Hostinfo;
 		char Hostname[256];
 #ifdef PLATFORM_WIN32
-		appWinSockInit();	// ufront 2.33 — see appComputerName above.
+		appWinSockInit();	// see appComputerName above
 #endif
 		gethostname( Hostname, sizeof(Hostname) );
 		Hostinfo = gethostbyname( Hostname );

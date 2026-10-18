@@ -3,14 +3,10 @@
 ------------------------------------------------------------------------------------*/
 
 #ifdef __EMSCRIPTEN__
-// ufront 2.19: on the web there is nothing to load. Emscripten provides the whole GLES2 API as real
-// link-time symbols under -sFULL_ES2, and this driver uses 45 entry points, every one of them core GLES2.
-// Taking the headers directly is not just tidier — it is what lets this driver co-link with XOpenGLDrv,
-// which vendors its OWN glad with byte-identical symbol names (glad_glActiveTexture, and even
-// gladLoadGLES2Loader). Two glads in one static binary under --whole-archive is a duplicate-symbol link
-// failure, which is why the web build could previously ship only one of the two.
+// On the web Emscripten provides the GLES2 API as link-time symbols (-sFULL_ES2), so no loader is compiled;
+// that also keeps this driver from clashing with XOpenGLDrv's glad in the static binary.
 #include <GLES2/gl2.h>
-#include <GLES2/gl2ext.h>   // GL_BGRA_EXT and friends (the ext tokens glad used to supply)
+#include <GLES2/gl2ext.h>   // GL_BGRA_EXT and the other extension tokens
 #else
 #include "glad.h"
 #endif
@@ -71,13 +67,10 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 
 	// Options.
 	UBOOL NoFiltering;
-	// ufront 2.19 — image-quality knobs.
-	//   MaxAnisotropy is a REAL numeric control on the web: EXT_texture_filter_anisotropic exposes a
-	//     driver maximum (16 on this box) and takes a float per texture. Clamped to that max at Init.
-	//   NumAASamples is honest-but-nominal: WebGL picks MSAA with a BOOLEAN `antialias` context attribute
-	//     at creation time, so the count cannot be chosen and the context is already made by the viewport
-	//     before this driver runs. It is kept as a number for parity with XOpenGL/UTGLR (and for native,
-	//     where it is meaningful); >0 simply means "AA requested".
+	// Image quality.
+	//   MaxAnisotropy: EXT_texture_filter_anisotropic level, clamped at Init to the driver's maximum.
+	//   NumAASamples: antialiasing samples (0 = off). On the web Init asks ufront_backbuffer_samples for a
+	//     multisampled back buffer; natively the viewport made the context first, so it is only logged.
 	FLOAT MaxAnisotropy;
 	INT NumAASamples;
 	UBOOL UseBGRA;
@@ -163,11 +156,7 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 
 	// Constructors.
 	UNOpenGLESRenderDevice();
-	// ufront 2.19: v400 registers config properties from StaticConstructor. The v200-era
-	// InternalClassInitializer this driver shipped with has ZERO call sites in this engine (see
-	// NSDLDrv/Src/NSDLViewport.cpp:187, which documents the same dead hook costing UT99 its keyboard), so
-	// none of the five Options below were ever registered and [NOpenGLESDrv.NOpenGLESRenderDevice] in the
-	// ini was silently inert — the device always ran on the C++ constructor defaults.
+	// Registers the config options and their compiled defaults (v400 calls StaticConstructor once per class).
 	void StaticConstructor();
 
 	// URenderDevice interface.
@@ -220,13 +209,10 @@ private:
 		IdxDataPtr = IdxData;
 	}
 
-	// ufront 2.72: flush BEFORE a polygon that may not fit. The batch buffers are fixed (MAX_VERTS entries) and
-	// every Attrib*/EndPoly write is unchecked; FlushTriangles' checks fire only after the overrun has already
-	// written past the heap block. Reached in the wild once 2.71 rendered at the display's true resolution: a
-	// character up close is subdivided by RenderSubsurface in proportion to Frame->FX (the screen width in
-	// pixels), and one mesh then exceeds 32768 indices in a single batch ("Assertion failed: IdxDataPtr <=
-	// IdxDataEnd", six players' sessions on the first night). The bound is generous: UE1 polys carry at most 16
-	// vertices; AttribSizes sum to 19 floats.
+	// Flush before a polygon that may not fit: the batch buffers are fixed (MAX_VERTS entries) and every
+	// Attrib*/EndPoly write is unchecked. A close-up mesh, subdivided in proportion to the screen width, can
+	// exceed the index buffer in one batch. The bound is generous: UE1 polys carry at most 16 vertices and
+	// AttribSizes sum to 19 floats.
 	enum { MAX_POLY_VERTS = 64, MAX_POLY_FLOATS = MAX_POLY_VERTS * 20, MAX_POLY_INDICES = ( MAX_POLY_VERTS - 2 ) * 3 };
 	inline void BeginPoly()
 	{

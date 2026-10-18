@@ -72,8 +72,7 @@ UObject::UObject( ENativeConstructor, UClass* InClass, const TCHAR* InName, cons
 
 	// Setup registration info, for processing now (if inited) or later (if starting up). Names cannot be
 	// made yet, so the strings and the registration chain are parked in the object's own pointer fields
-	// until Register(). Pointer-sized fields only (ufront 2.83): Name and _LinkerIndex are 4 bytes, which
-	// held a pointer only while pointers were 4 bytes too.
+	// until Register(). Pointer-sized fields only: Name and _LinkerIndex are 4 bytes.
 	check(sizeof(Outer     )>=sizeof(InPackageName));
 	check(sizeof(StateFrame)>=sizeof(InName       ));
 	check(sizeof(_Linker   )>=sizeof(GAutoRegister));
@@ -307,7 +306,7 @@ UBOOL UObject::ConditionalDestroy()
 		ClearFlags( RF_DebugDestroy );
 		const INT SavedIndex = Index;
 		Destroy();
-		// (ufront 2.83) A Destroy may delete its own object: a net channel purged before its unreachable
+		// A Destroy may delete its own object: a net channel purged before its unreachable
 		// connection routes the Destroy to the connection (UChannel::RouteDestroy), which deletes every
 		// channel it owns, this one included. ~UObject empties the slot, so don't read `this` any more.
 		if( GObjObjects(SavedIndex)!=this )
@@ -1994,12 +1993,8 @@ void UObject::SafeLoadError( DWORD LoadFlags, const TCHAR* Error, const TCHAR* F
 #ifndef __EMSCRIPTEN__
 	if(   LoadFlags & LOAD_Throw   ) appThrowf( TEXT("%s"), Error   );
 #else
-	// ufront (bots parity / "2.6f", mirrors engine-unreal1 + engine-ut2004): do NOT re-throw on LOAD_Throw.
-	// The web build disables exception CATCHING and a throw cannot unwind across Asyncify-transformed frames,
-	// so a re-thrown load error escapes every caller's catch and aborts the WASM module. Callers already turn
-	// a NULL result into a graceful failure; not re-throwing lets a lazy load (e.g. a bot character skin, incl.
-	// the absent BossSkins) fail soft instead of aborting the match. The [appThrowf] diagnostic (UnMisc.cpp)
-	// names any remaining hard-throw site.
+	// No re-throw on LOAD_Throw: the web build catches no exceptions, so a re-thrown load error would abort the
+	// module. Callers turn the NULL result into a failure, so a lazy load (a bot skin, say) fails soft.
 	(void)Error;
 #endif
 	if(   LoadFlags & LOAD_NoFail  ) appErrorf( TEXT("%s"), TempStr );
@@ -2044,7 +2039,7 @@ ULinkerLoad* UObject::GetPackageLinker
 			// Resolve filename from package name.
 			if( !InOuter )
 #ifdef __EMSCRIPTEN__
-				return NULL; // ufront (2.6f): fail soft (catching off — a throw aborts across Asyncify frames)
+				return NULL; // fail soft: the web build catches no exceptions
 #else
 				appThrowf( LocalizeError("PackageResolveFailed") );
 #endif
@@ -2054,7 +2049,7 @@ ULinkerLoad* UObject::GetPackageLinker
 				if( (LoadFlags & LOAD_AllowDll) && InOuter->IsA(UPackage::StaticClass()) && ((UPackage*)InOuter)->DllHandle )
 					return NULL;
 #ifdef __EMSCRIPTEN__
-				return NULL; // ufront (2.6f): package not found -> NULL (callers handle it), not a hard abort
+				return NULL; // package not found: NULL, which callers handle
 #else
 				appThrowf( LocalizeError("PackageNotFound"), InOuter->GetName() );
 #endif
@@ -2065,7 +2060,7 @@ ULinkerLoad* UObject::GetPackageLinker
 			// Verify that the file exists.
 			if( !appFindPackageFile( InFilename, CompatibleGuid, NewFilename ) )
 #ifdef __EMSCRIPTEN__
-				return NULL; // ufront (2.6f): missing package/map file -> NULL (graceful), not a hard abort
+				return NULL; // missing package or map file: NULL, which callers handle
 #else
 				appThrowf( LocalizeError("FileNotFound"), InFilename );
 #endif
@@ -2118,11 +2113,9 @@ ULinkerLoad* UObject::GetPackageLinker
 		if( CompatibleGuid && Result->Summary.Guid!=*CompatibleGuid )
 #ifdef __EMSCRIPTEN__
 		{
-			// ufront (2.79o): the package exists -- or is already LOADED -- in ANOTHER VERSION than the one asked
-			// for (a server running a different version of a mod the player also has). Natively this throw is the
-			// join's "version mismatch" failure; with catching off it aborted the whole module. Say why, return
-			// NULL; UGameEngine::LoadMap turns a NULL linker into that same failed join.
-			// (One Localize call per statement: it answers in a shared static buffer.)
+			// The package exists (or is loaded) in another version than the one asked for, e.g. a server running
+			// another version of a mod: say why and return NULL, which UGameEngine::LoadMap turns into the failed
+			// join the native throw gives. (One Localize call per statement: it answers in a shared static buffer.)
 			FString Why = FString::Printf( LocalizeError("PackageVersion"), InOuter->GetName() );
 			SafeLoadError( LoadFlags, *Why, LocalizeError("FailedLoad"), InOuter->GetName(), *Why );
 			return NULL;
@@ -2247,11 +2240,8 @@ UObject* UObject::StaticLoadObject( UClass* ObjectClass, UObject* InOuter, const
 		if( !Result )
 #ifdef __EMSCRIPTEN__
 		{
-			// 2.6g (mirrors engine-unreal1): don't throw on object-not-found. Exception CATCHING is disabled
-			// on the web build (a throw can't unwind across Asyncify frames -> module abort), so the catch
-			// below can't be relied on. Return NULL — what the native catch path ultimately yields here — so
-			// callers fail soft (a missing map, an absent bot-skin/mesh texture, ...). Skips the package-remap
-			// retry on web (rare for the fixed bundled package set), same as unreal1.
+			// Object not found: return NULL, what the native catch path yields, since the web build catches no
+			// exceptions. The package-remap retry below is skipped.
 			EndLoad();
 			return NULL;
 		}
@@ -2522,10 +2512,8 @@ INT CDECL LinkerExportSort( const void* A, const void* B )
 	return GTempSave->MapObject(((FObjectExport*)B)->_Object) - GTempSave->MapObject(((FObjectExport*)A)->_Object);
 }
 
-// ufront (from engine-uc2's S2, UC2StableSort): SavePackage's three sorts by usage count must not depend on the C
-// library. appQsort is the C library's qsort, which leaves the order of equal keys to the library (glibc's merge
-// sort keeps table order, msvcrt's and others do not), so the same `ucc make` on two platforms appended names,
-// imports and exports in different orders. A stable merge sort gives every platform the order glibc gives.
+// SavePackage's three sorts by usage count must not depend on the C library: appQsort is qsort, which leaves the
+// order of equal keys to the library. A stable merge sort gives every platform glibc's order.
 static void UfrontStableSort( void* Base, INT Num, INT Width, QSORT_COMPARE Compare )
 {
 	if( Num < 2 )
@@ -3268,28 +3256,13 @@ UObject* UObject::StaticConstructObject
 	guard(UObject::StaticConstructObject);
 	check(Error);
 
-	// Allocate the object, then run its C++ constructor -- as retail does, for EVERY class.
-	//
-	// ufront: the Dreamcast port this engine descends from wrapped this in a "STUPID HACK" (`maximqad: remove
-	// that when zeroing on actor construct is fixed`) that saved every property byte of an ACTOR before its
-	// constructor and copied them back afterwards, so actor constructors were silently undone on every
-	// platform. Its reason -- the value-initialising `new(X)TClass()` zeroing objects under GCC -- is fixed at
-	// the root (DECLARE_CLASS, a680288), so the hack only did harm: AInternetLink's `Socket = INVALID_SOCKET`
-	// and `ReceiveMode = RMODE_Event` were thrown away, and every UdpLink/TcpLink (the server query, the
-	// beacon, the web admin, UBrowser) failed "BindPort: already bound". Actor string members are
-	// FStringNoInit and the rest are plain data, so a constructor changes nothing it does not assign.
+	// Allocate the object, then run its C++ constructor, as retail does, for every class.
 	UObject* Result = StaticAllocateObject( InClass, InOuter, InName, InFlags, InTemplate, Error );
 	if( Result )
 	{
 #ifndef __EMSCRIPTEN__
-		// ufront (2.12 Part B) — native segfault-on-quit fix. The value-init ClassConstructor
-		// (new(X)TClass()) zero-initialised the WHOLE object for classes with no user-provided default
-		// ctor, wiping the UObject header (Index/Class/Outer/Name/ObjectFlags) that StaticAllocateObject
-		// set up; for native CLASS_Config classes (render devices, audio/net drivers, client) that crashed at
-		// shutdown (PurgeGarbage -> UViewport::Destroy -> `delete RenDev` -> ~UObject: Class==NULL faults
-		// ExitProperties and the zeroed Index fails IsValid()). DECLARE_CLASS no longer value-initialises
-		// (a680288), so this is a self-detecting safety net: if the ctor ever wipes the header (Class went
-		// NULL) of a native CLASS_Config class, restore the WHOLE header and re-load its config.
+		// Safety net: DECLARE_CLASS default-initialises, but a constructor that wipes the UObject header
+		// (Class went NULL) of a native CLASS_Config class gets the whole header back and re-loads its config.
 		INT      SavedIndex = Result->Index;
 		UClass*  SavedClass = Result->Class;
 		UObject* SavedOuter = Result->Outer;
@@ -3307,10 +3280,8 @@ UObject* UObject::StaticConstructObject
 		}
 #else
 		(*InClass->ClassConstructor)( Result );
-		// ufront (2.12): the web's lighter form of the same safety net -- a native CLASS_Config object whose
-		// ctor wiped the Class pointer gets it back and re-loads config onto the live instance from its own
-		// [Pkg.Class] section (its CPF_Config feature flags -- Coronas, VolumetricLighting, DetailTextures --
-		// would otherwise be zero). Self-detecting: an object whose Class survived is untouched.
+		// The same safety net, restoring only Class: a native CLASS_Config object whose constructor wiped it gets
+		// it back and re-loads its config. An object whose Class survived is untouched.
 		if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
 		{
 			Result->Class = InClass;
@@ -3351,27 +3322,10 @@ void UObject::SerializeRootSet( FArchive& Ar, DWORD KeepFlags, DWORD RequiredFla
 class FArchiveTagUsed : public FArchive
 {
 public:
-	// ★ ufront 2.19d — ITERATIVE, NOT RECURSIVE.
-	//
-	// The stock UE1 tagger recursed straight into `Obj->Serialize( *this )` from inside `operator<<`,
-	// so the C++ call stack mirrored the depth of the object graph. That is fine natively and fatal on
-	// the web: measured 2026-08-03 on a UT99 `-O0` build, loading DM-Codex died with
-	// `RangeError: Maximum call stack size exceeded` at **5,547 wasm frames**, of which one 1,010-frame
-	// stretch was a single class's `Next` field chain walked 202 links deep (`UField::Serialize`
-	// serializes `SuperField` and `Next`, so a linked list becomes recursion, 5 frames per link).
-	//
-	// It is NOT undefined behaviour and not a cycle — the stack holds 37 distinct functions in a
-	// realistic property-type mix, and the same walk completes once frames get cheaper. It is simply a
-	// bounded traversal deeper than V8 gives a worker. Optimisation only moved the threshold: at -O2 the
-	// one-line `operator<<(FArchive&, UField*&)` forwarder is inlined away, costing 4 frames per link
-	// instead of 5, which was enough to survive — so the engine worked by luck of the inliner rather
-	// than by design.
-	//
-	// This is the same fix engine-ut2004 already carries. Reachability is order-independent, so LIFO
-	// draining marks exactly the same object set; the only thing lost is the precision of `Context` in
-	// the debugSlow "%s is referenced by %s" line, which is diagnostic output, not behaviour. Nothing
-	// here touches package serialisation: FArchiveTagUsed is file-local and used only by
-	// CollectGarbage/IsReferenced, so no on-disk format is involved.
+	// Iterative, not recursive: recursing into `Obj->Serialize( *this )` from `operator<<` makes the C++ stack
+	// as deep as the object graph (a field's `Next` chain becomes recursion), which overflows a web worker's
+	// stack. Claimed objects go to a worklist drained after the root set; reachability is order-independent,
+	// so the same set is marked (only `Context` in the debugSlow "referenced by" line is less precise).
 	TArray<UObject*> Worklist;
 
 	FArchiveTagUsed()
@@ -3623,10 +3577,9 @@ void UObject::ParseParms( const TCHAR* Parms )
 	Driver support.
 -----------------------------------------------------------------------------*/
 
-// ufront (from engine-uc2's S2, UC2SortLikeNTFS): the order Windows' FindFirstFile listed files in (NTFS: names
-// compared code unit by code unit after upper-casing). readdir() order is the file system's (ext4: hash order), and
-// it matters here: reading a localization file creates the FNames of its sections and keys, so the order fixes their
-// FName indices, which decide the order of equal-usage names a `ucc make` save appends.
+// The order Windows' FindFirstFile lists files in (NTFS: names compared code unit by code unit after
+// upper-casing); readdir() order is the file system's. Reading a localization file creates the FNames of its
+// sections and keys, so the order fixes their indices, which decide the order a `ucc make` save appends them.
 static INT UfrontCompareNTFS( const FString& A, const FString& B )
 {
 	const TCHAR* a = *A;
@@ -3672,7 +3625,7 @@ void UObject::CacheDrivers( UBOOL ForceRefresh )
 			{
 				appSprintf( Tmp, TEXT("*.int") );
 				TArray<FString> Files = GFileManager->FindFiles( Filename, 1, 0 );
-				UfrontSortLikeNTFS( Files );	// ufront: Windows' order, on every file system
+				UfrontSortLikeNTFS( Files );	// Windows' order, on every file system
 				for( INT j=0; j<Files.Num(); j++ )
 				{
 					appSprintf( Tmp, TEXT("%s%s"), appBaseDir(), *Files(j) );
@@ -3724,7 +3677,7 @@ void UObject::CacheDrivers( UBOOL ForceRefresh )
 			}
 		}}
 		TArray<FString> CoreLangs = GFileManager->FindFiles( TEXT("Core.*"), 1, 0 );
-		UfrontSortLikeNTFS( CoreLangs );	// ufront
+		UfrontSortLikeNTFS( CoreLangs );
 		{for( INT i=0; i<CoreLangs.Num(); i++ )
 		{
 			FString Ext;

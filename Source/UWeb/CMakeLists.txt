@@ -1,21 +1,8 @@
 project(UWeb)
 
-# ufront 2.38 — UWeb was never compiled, and the game shipped its SCRIPT half anyway.
-#
-# ★ Retail UT99 ships UWeb.u (script, with `native` classes) next to UWeb.dll (their natives). This repo
-# has always carried the sources — Src/UWeb.cpp + Src/WebServer.cpp — and never built them, so the moment
-# anything loaded UWeb.u the engine hit:
-#
-#     Critical: Can't bind to native class UWeb.WebRequest
-#     Exiting due to error
-#
-# which is a HARD appError, not a soft miss. That is the crash the owner reported on "Start New
-# Multiplayer Game": the multiplayer start dialog reaches the server-admin options, those pull in UWeb,
-# and the game died before the dialog could appear.
-#
-# Building it costs two small translation units and makes the shipped package whole. ⚠ Compiling UWeb does
-# NOT start a web server: UWeb.WebServer is an actor that only listens if something spawns it (a
-# ServerActor), and the web launcher clears ServerActors. It is the CLASS BINDING that was missing.
+# UWeb's natives. The game ships UWeb.u, whose native classes must bind when anything loads it (the multiplayer
+# start dialog does); without them that is a fatal "Can't bind to native class UWeb.WebRequest". Building UWeb
+# starts no web server: UWeb.WebServer listens only when a ServerActor spawns it.
 set(SRC_FILES
   "Src/UWeb.cpp"
   "Src/WebServer.cpp"
@@ -30,7 +17,6 @@ target_include_directories(${PROJECT_NAME}
   ${CMAKE_CURRENT_SOURCE_DIR}/Src
 )
 
-# UWeb's natives are TcpLink-derived, so it needs IpDrv's headers as well as Engine/Core.
 target_link_libraries(${PROJECT_NAME} IpDrv Engine Core)
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE UWEB_EXPORTS UPACKAGE_NAME=${PROJECT_NAME})

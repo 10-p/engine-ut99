@@ -1,5 +1,5 @@
 //=============================================================================
-// U64StateActor -- ufront 2.83: state code, labels, latent Sleep and GotoState run from code offsets
+// U64StateActor -- state code, labels, latent Sleep and GotoState run from code offsets
 // (the label table and the state frame) that the 64-bit port must leave where the compiler put them.
 //=============================================================================
 class U64StateActor expands Info;

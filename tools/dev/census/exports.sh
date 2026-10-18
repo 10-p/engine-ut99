@@ -1,10 +1,8 @@
 #!/usr/bin/env bash
-# exports.sh <run-tree> <out-dir> -- a cross-width ORACLE for property layout (ufront 2.83). Runs the ucc
-# batchexport commandlets; run it in a 32-bit and a 64-bit tree and `diff -r` the two out-dirs. The level
-# export prints every property of every actor in a map, read at the engine's offsets, so a width
-# disagreement becomes a text difference. 2.83: level/polys/pcx/bmp/wav/music byte-identical at 32 and 64;
-# of 496 exported classes only two differed, both by config values the trees had saved (a class's exported
-# defaults include its config), so compare trees with the same ini.
+# exports.sh <run-tree> <out-dir> -- a cross-width oracle for property layout. Runs the ucc batchexport
+# commandlets; run it in a 32-bit and a 64-bit tree and `diff -r` the two out-dirs. The level export prints
+# every property of every actor in a map, read at the engine's offsets, so a width disagreement becomes a
+# text difference. A class's exported defaults include its config, so compare trees with the same ini.
 set -u
 TREE=$1; OUT=$2
 rm -rf "$OUT"; mkdir -p "$OUT"/{level,polys,classes,pcx,bmp,wav,music}

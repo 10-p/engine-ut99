@@ -1,14 +1,10 @@
 name: build
 
-# ufront 2.34 — CI for the engine build matrix.
+# CI for the engine build matrix: builds native, windows and wasm on every push and pull request, uploads the
+# binaries as workflow artifacts, and keeps the newest build of a tracked branch in a rolling `latest` release.
 #
-# Scope, decided with the owner: build on EVERY push and pull request and upload the binaries as workflow
-# artifacts. No GitHub Releases — the artifacts on the run page are the deliverable.
-#
-# What this does NOT do: run the game. The web E2E suite needs a GPU (it is guarded by the monorepo's
-# tools/e2e-gpu-guard.mjs) and a hosted runner has none, so CI proves every target still BUILDS and that
-# the Windows exe is self-contained. Rendering stays a human check on the owner's box, which is where the
-# screenshots in the 2.34 write-up come from.
+# It does not run the game (the web E2E suite needs a GPU, which a hosted runner lacks): it proves every target
+# builds, that the Windows exe is self-contained and that the web artifact's provenance is right.
 
 on:
   push:
@@ -22,16 +18,11 @@ jobs:
   linux:
     name: linux (32-bit, one static binary)
     runs-on: ubuntu-24.04
-    # ⚠ A CONTAINER, not the bare runner. The runner image preinstalls a large set of amd64 -dev packages,
-    # and `libsdl2-dev:i386` then cannot be installed at all: it depends on libglib2.0-dev:i386, whose
-    # libglib2.0-dev-bin is Multi-Arch: foreign and so cannot be co-installed for two architectures. apt
-    # ends in "held broken packages". A stock ubuntu:24.04 has none of that preinstalled, so multiarch
-    # resolves normally — and it is the same distro SDL2/OpenAL the local `native` build links, which is
-    # the whole point of that preset.
+    # A container, not the bare runner: the runner image's preinstalled amd64 -dev packages make
+    # `libsdl2-dev:i386` uninstallable (libglib2.0-dev-bin is Multi-Arch: foreign). A stock ubuntu:24.04
+    # resolves the multiarch set.
     container: ubuntu:24.04
-    # ⚠ A container job defaults to `sh -e`, not bash — GitHub only picks bash on the bare runner image.
-    # dash has no `set -o pipefail`, so a step that opens with `set -euo pipefail` dies on line 1 with a
-    # bare "exit code 2" and no message about the shell. Pin it.
+    # A container job defaults to `sh -e`, and dash has no `set -o pipefail`: pin bash.
     defaults:
       run:
         shell: bash
@@ -45,12 +36,8 @@ jobs:
 
       - uses: actions/checkout@v4
 
-      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
-      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
-      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
-      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
-      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
-      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
+      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
       - name: Identify the engine variant
         id: variant
         run: |
@@ -69,7 +56,7 @@ jobs:
             gcc-multilib g++-multilib libsdl2-dev:i386 libopenal-dev:i386
 
       # FetchContent clones into the build dir, so cache that rather than a home directory. Keyed on the
-      # files that decide WHAT is fetched — a pin bump invalidates it, an unrelated source edit does not.
+      # files that decide what is fetched — a pin bump invalidates it, an unrelated source edit does not.
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
@@ -88,8 +75,8 @@ jobs:
         run: |
           test -x build-native/UnrealTournament/UnrealTournament
           test -x build-native/UCC/ucc-bin   # the command-line tool (dedicated server / commandlets)
-          # BUILD_STATIC means no engine packages beside the executable. System libraries (SDL2, OpenAL,
-          # libGL, libc) stay dynamic — "single binary" is about the ENGINE, not about static libc.
+          # BUILD_STATIC means no engine packages beside the executable; system libraries (SDL2, libGL,
+          # libc) stay dynamic.
           if ls build-native/*/*.so >/dev/null 2>&1; then
             echo "::error::engine .so modules were produced — BUILD_STATIC is not in effect"; exit 1
           fi
@@ -101,16 +88,8 @@ jobs:
             build-native/UnrealTournament/UnrealTournament
             build-native/UCC/ucc-bin
           if-no-files-found: error
-          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
-          # engine repos built and passed its own assertions and the runs were still RED, because
-          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
-          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
-          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
-          # NOT, which is why the note there says "three engine repos" while only one of them had
-          # the fix. 7 days is ~13x less standing storage at the same commit rate.
-          #
-          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
-          # file. That is the whole reason a short age here is safe.
+          # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
+          # newest build stays downloadable through the `latest` job at the end of this file.
           retention-days: 7
 
   windows:
@@ -119,12 +98,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
-      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
-      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
-      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
-      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
-      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
+      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
       - name: Identify the engine variant
         id: variant
         run: |
@@ -153,17 +128,15 @@ jobs:
         run: cmake --build --preset windows -j$(nproc)
         working-directory: Source
 
-      # ★ The check that matters for a "drop it somewhere and run it" binary. Without -static-libgcc /
-      # -static-libstdc++ the exe imports libgcc_s_dw2-1.dll and libstdc++-6.dll and runs ONLY on the
-      # machine that built it — and nothing else in the build fails when that happens.
+      # The exe must import only system DLLs (without -static-libgcc / -static-libstdc++ it would need
+      # the toolchain's libgcc_s and libstdc++, and nothing else in the build would fail).
       - name: Assert the exe imports nothing but system DLLs
         run: |
           set -euo pipefail
           imports=$(i686-w64-mingw32-objdump -p build-windows/UnrealTournament/UnrealTournament.exe \
                     | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
-          # OpenAL32.dll is deliberate: OpenAL Soft is the one library this build loads rather than links
-          # (see Source/cmake/OpenALMingw.cmake), and the build copies it next to the exe.
+          # OpenAL32.dll is the one library this build ships beside the exe (Source/cmake/OpenALMingw.cmake).
           bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|OpenAL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
           test -f build-windows/UnrealTournament/OpenAL32.dll
@@ -175,16 +148,8 @@ jobs:
             build-windows/UnrealTournament/UnrealTournament.exe
             build-windows/UnrealTournament/OpenAL32.dll
           if-no-files-found: error
-          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
-          # engine repos built and passed its own assertions and the runs were still RED, because
-          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
-          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
-          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
-          # NOT, which is why the note there says "three engine repos" while only one of them had
-          # the fix. 7 days is ~13x less standing storage at the same commit rate.
-          #
-          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
-          # file. That is the whole reason a short age here is safe.
+          # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
+          # newest build stays downloadable through the `latest` job at the end of this file.
           retention-days: 7
 
   web:
@@ -193,12 +158,8 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # ★ Which engine variant is this? Read it from the SOURCE, not from the branch name. `main` is v400
-      # and `feat/v436-compat` is v436 today, but the branch name is a proxy — and this step's whole theme
-      # is that proxies drift from the thing they stand for. ENGINE_VERSION is the fact: it is what the
-      # binary reports, what version-gated script gates on, and it cannot disagree with what was built.
-      # (The neighbouring ENGINE_MIN_NET_VERSION / ENGINE_NEGOTIATION_VERSION are deliberately NOT matched;
-      # on the 436 branch the define also sits inside an #ifndef, hence `tail -1`.)
+      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
+      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
       - name: Identify the engine variant
         id: variant
         run: |
@@ -208,17 +169,15 @@ jobs:
           echo "version=$v" >> "$GITHUB_OUTPUT"
           echo "Engine variant: v$v"
 
-      # ⚠ emsdk must be on PATH BEFORE cmake configures: emcc is probed at configure time and
-      # `cmake --build` never re-probes. The preset's toolchain file also reads $EMSDK.
+      # emsdk must be on PATH before cmake configures (emcc is probed then); the preset's toolchain
+      # file also reads $EMSDK.
       - uses: mymindstorm/setup-emsdk@v14
         with:
           version: 5.0.7
           actions-cache-folder: emsdk-cache
 
-      # ★ A fresh emsdk has an EMPTY ports cache, and the SDL2 port's headers only land in the sysroot
-      # once the port has been built. Without this the very first compile fails with
-      # "'SDL2/SDL.h' file not found" — which never happens on a developer box, where some earlier build
-      # warmed the cache. Reproduced locally with EM_CACHE pointed at an empty directory.
+      # A fresh emsdk has an empty ports cache, and the SDL2 port's headers land in the sysroot only
+      # once the port is built.
       - name: Build the SDL2 port into the emsdk sysroot
         run: embuilder build sdl2
 
@@ -228,8 +187,7 @@ jobs:
           path: build-wasm/_deps
           key: deps-wasm-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
 
-      # No game assets are needed: this engine's web link preloads only the TRACKED web config
-      # (Config/System/web), by design — the asset tree streams in at runtime via FetchFS.
+      # No game assets are needed: the web link preloads only the tracked web config (Config/System/web).
       - name: Configure
         run: cmake --preset wasm
         working-directory: Source
@@ -238,8 +196,7 @@ jobs:
         run: cmake --build --preset wasm -j$(nproc)
         working-directory: Source
 
-      # meta.json carries the gitSha captured at CONFIGURE time. Assert it matches the commit actually
-      # built, or provenance silently describes a different tree (a real near-miss in 2.13).
+      # meta.json's gitSha must be the commit actually built.
       - name: Check artifact provenance
         run: |
           set -euo pipefail
@@ -252,42 +209,20 @@ jobs:
           name: ut99-${{ steps.variant.outputs.version }}-web
           path: build-wasm/SDLLaunch/
           if-no-files-found: error
-          # ⚠ RETENTION IS LOAD-BEARING, not tidiness. On 2026-08-27 every job across the three
-          # engine repos built and passed its own assertions and the runs were still RED, because
-          # `upload-artifact` failed with "Artifact storage quota has been hit": the default
-          # retention is 90 days and nothing ever set it, so 145 artifacts / 2.13 GB had piled up
-          # that would never expire. ut2004 was given 7 days that day; THESE TWO REPOSITORIES WERE
-          # NOT, which is why the note there says "three engine repos" while only one of them had
-          # the fix. 7 days is ~13x less standing storage at the same commit rate.
-          #
-          # ★ AND THE NEWEST BUILD NO LONGER GOES WITH IT — see the `latest` job at the end of this
-          # file. That is the whole reason a short age here is safe.
+          # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
+          # newest build stays downloadable through the `latest` job at the end of this file.
           retention-days: 7
 
   # ---------------------------------------------------------------------------
-  # THE ROLLING "latest" RELEASE — the answer to "the 7-day age is fine, but it
-  # must not take the newest build with it" (owner, 2026-09-12).
+  # The rolling "latest" release: the newest build of a tracked branch, kept until
+  # the next one replaces it. Artifacts expire by age only; release assets do not.
   #
-  # ★ IT IS A RELEASE AND NOT A LONGER RETENTION BECAUSE ARTIFACT RETENTION CANNOT
-  # EXPRESS THIS. GitHub expires artifacts purely by age; there is no "keep the
-  # latest" flag, and raising retention-days only moves the cliff — a repository
-  # nobody pushes to for ninety days still ends up with nothing to download, which
-  # is precisely the case where you most want the last good build. RELEASE ASSETS
-  # DO NOT EXPIRE. So per-push artifacts keep their deliberately short 7 days (see
-  # the retention note on every upload above — that limit is what stopped the
-  # quota from turning whole runs red), and the newest build of a tracked branch
-  # is additionally copied here, where it stays until the next one replaces it.
+  # Delete-then-create: a rolling tag has to move, and `gh release edit --target`
+  # does not move a published release's tag; recreating it also drops assets that
+  # are no longer produced.
   #
-  # ⚠ DELETE-THEN-CREATE, ON PURPOSE. A rolling tag has to MOVE, and `gh release
-  # edit --target` does not move a published release's tag. Recreating it also
-  # drops assets that are no longer produced, so a retired build arm cannot leave
-  # a stale binary sitting in "latest" looking current. The cost is a few seconds
-  # where the tag does not exist; the alternative is a release that silently
-  # describes a commit it no longer contains.
-  #
-  # ⚠ `permissions: contents: write` IS LOAD-BEARING. This repository's default
-  # workflow token is READ-ONLY, so without this key every step below succeeds and
-  # the final one fails with HTTP 403.
+  # `permissions: contents: write` is required: the default workflow token is
+  # read-only.
   latest:
     name: rolling "latest" release
     needs: [linux, windows, web]
@@ -314,8 +249,7 @@ jobs:
             ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
             n=$((n + 1))
           done
-          # ⚠ A release that publishes NOTHING is worse than a failed job: it looks
-          # like a successful build whose downloads have quietly gone missing.
+          # A release that publishes nothing fails the job.
           [ "$n" -gt 0 ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
           echo "packed $n build(s):"
           ls -la out/

@@ -12,7 +12,7 @@ Revision history:
 
 #include "CorePrivate.h"
 
-// ufront 2.83 -- the last None-context zero-fill: where it wrote and how many bytes (see execLet).
+// The last None-context zero-fill: where it wrote and how many bytes (see execLet).
 static BYTE* GNullContextResult = NULL;
 static INT   GNullContextSize   = 0;
 
@@ -353,7 +353,7 @@ void UObject::execBoolVariable( FFrame& Stack, RESULT_DECL )
 
 	// Get bool variable.
 	BYTE B = *Stack.Code++;
-	// Peek the variable token's property without consuming it: a 4-byte object index (ufront 2.83).
+	// Peek the variable token's property without consuming it: a 4-byte object index.
 	UBoolProperty* Property = (UBoolProperty*)UObject::GetScriptObject( ReadScriptOperand<INT>(Stack.Code) );
 	(this->*GNatives[B])( Stack, NULL );
 	GProperty = Property;
@@ -473,7 +473,7 @@ void UObject::execSwitch( FFrame& Stack, RESULT_DECL )
 		Stack.Step( Stack.Object, Buffer );
 
 		// Compare. The compiled size is the 32-bit one (4 for an object), so compare at least a pointer's
-		// width (ufront 2.83): both buffers were zeroed past it above, so a smaller value's tail compares
+		// width: both buffers were zeroed past it above, so a smaller value's tail compares
 		// equal, and an object switch compares whole pointers.
 		if( bSize ? (appMemcmp(SwitchBuffer,Buffer,Max<INT>(bSize,sizeof(UObject*)))==0) : (*(FString*)SwitchBuffer==*(FString*)Buffer) )
 			break;
@@ -593,7 +593,7 @@ void UObject::execLet( FFrame& Stack, RESULT_DECL )
 	GNullContextResult = NULL;
 	Stack.Step( Stack.Object, GPropAddr ); // Evaluate expression into variable.
 
-	// ufront 2.83 -- `X = None.Y` writes zeros straight into X, but only as many as the compiler recorded:
+	// `X = None.Y` writes zeros straight into X, but only as many as the compiler recorded:
 	// the value's size in the 32-bit retail format (4 for any object). Where the value is larger in memory
 	// (an 8-byte pointer, a struct holding one) the rest of X would keep its old bytes -- the high half of
 	// the previous pointer, a live-looking garbage reference. So when the zero-fill landed on this very

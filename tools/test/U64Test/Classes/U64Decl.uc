@@ -1,9 +1,8 @@
 //=============================================================================
-// U64Decl -- ufront 2.83: the declarations the other fixture classes never compile -- an enum, a struct
-// with object, class, string, static-array, vector and rotator members, consts, ArrayCount, vect()/rot()
-// constants and struct defaults. Compile-only: its test is the compiler round-trip (a 64-bit `ucc make`
-// must write the same bytes as the 32-bit one, but for the package GUID). Found by the coverage census:
-// CompileEnum/CompileStruct/CompileConst had never run at 64-bit.
+// U64Decl -- the declarations the other fixture classes never compile: an enum, a struct with object,
+// class, string, static-array, vector and rotator members, consts, ArrayCount, vect()/rot() constants and
+// struct defaults. Compile-only: its test is the compiler round-trip (a 64-bit `ucc make` must write the
+// same bytes as the 32-bit one, but for the package GUID).
 //=============================================================================
 class U64Decl expands Info;
 

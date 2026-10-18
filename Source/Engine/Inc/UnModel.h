@@ -13,9 +13,8 @@
 //
 // Model objects are used for brushes and for the level itself.
 //
-// ufront 2.7c: ut99dc hardcoded the Dreamcast (16 MB) BSP limits (4096/8192); real UT maps (e.g. the
-// CityIntro cinematic) exceed them and trip `check(Nodes.Num()<=MAX_NODES)` in the renderer. The web build
-// has ALLOW_MEMORY_GROWTH, so restore the stock UT99 limits — keep the reduction only for Dreamcast.
+// The Dreamcast (16 MB) keeps its reduced BSP limits; every other target has the stock ones, which real
+// maps (CityIntro) need.
 #ifdef PLATFORM_DREAMCAST
 enum {MAX_NODES  = 4096};
 enum {MAX_POINTS = 8192};

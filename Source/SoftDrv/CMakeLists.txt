@@ -1,8 +1,6 @@
 #=============================================================================
-# SoftDrv - software render device (CPU rasterizer). Ported into engine-ut99 from the original UT99 v400
-# source (/home/ion/UT/SoftDrv); its x86 __asm rasterization already carries portable #if !ASM paths, so
-# it builds with -DASM=0 like engine-unreal1's SoftDrv. Pure software (no glad/SDL GL), so it coexists with
-# XOpenGLDrv on web (not subject to the NOpenGLES x XOpenGL glad-clash guard). Selected via -SOFTWARERENDERER.
+# SoftDrv - Epic's v400 software render device (CPU rasterizer), built with -DASM=0 through the portable
+# #if !ASM paths of its x86 __asm rasterization. Selected with -SOFTWARERENDERER.
 #=============================================================================
 
 project(SoftDrv CXX)
@@ -22,7 +20,7 @@ target_include_directories(${PROJECT_NAME}
   PUBLIC
   ${CMAKE_CURRENT_SOURCE_DIR}/Src
   PRIVATE
-  # RenderPrivate.h / UnRender.h come from ../Render/Src, exactly as NOpenGLESDrv / XOpenGLDrv do.
+  # RenderPrivate.h / UnRender.h come from ../Render/Src.
   ${CMAKE_CURRENT_SOURCE_DIR}/../Render/Src
 )
 
@@ -32,12 +30,8 @@ target_link_libraries(${PROJECT_NAME} Render Engine Core)
 # already has the #if !ASM fallbacks; GIsMMX is force-disabled on x86 in SoftDrvPrivate.h).
 target_compile_definitions(${PROJECT_NAME} PRIVATE SOFTDRV_EXPORTS UPACKAGE_NAME=${PROJECT_NAME} ASM=0)
 
-# ufront 2.19f: the SizeX/SizeY-indexed scratch tables are STATIC arrays, so their bounds cost .bss at
-# every resolution — 368 KB at the 4096 default, whether the viewport is 4K or 240x240. Lower this for
-# memory-constrained targets (a 256 ceiling costs 23 KB); viewports above it degrade fail-soft rather
-# than corrupting. See the rationale in Src/SoftDrvPrivate.h.
-# ufront 2.71: the wasm preset raises this to 8192 (cacheVariables, so existing build trees pick it up on
-# re-configure): the web canvas is the display's DEVICE pixel size now (5120 on a 125% 4K-class desktop)
-# and the UE1 resize path bypasses SetRes's clamp, so 4096 would let the X-indexed tables overrun.
+# The SizeX/SizeY-indexed scratch tables are static arrays, so their bound costs .bss at every resolution;
+# a viewport above it degrades rather than corrupting (Src/SoftDrvPrivate.h). The wasm presets raise it to
+# 8192: the web canvas is the display's device-pixel size, and the resize path bypasses SetRes's clamp.
 set(SOFTDRV_MAX_SCREEN "4096" CACHE STRING "Max software-renderer viewport dimension (static table bound)")
 target_compile_definitions(${PROJECT_NAME} PRIVATE SOFTDRV_MAX_SCREEN=${SOFTDRV_MAX_SCREEN})

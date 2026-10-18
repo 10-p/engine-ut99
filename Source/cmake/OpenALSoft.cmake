@@ -1,27 +1,23 @@
-# OpenALSoft.cmake — openal-soft, the ufront fork, for the WEB build (ufront 2.61) and for native LINUX
-# (ufront 2.70). Vendored identically in every UE1 engine repo; engine-ut2004 carries the same two blocks
-# inline in its root CMakeLists. Was OpenALSoftWeb.cmake until 2.70.
+# OpenALSoft.cmake — openal-soft, the project's fork, for the web build and for native Linux.
 #
 #   ufront_openal_soft(PLATFORM <WEB|NATIVE> EAX <ON|OFF>)   -> defines the target `OpenAL`
 #     WEB    a STATIC archive linked into the wasm, mixed on its own pthread and played by an AudioWorklet
 #            (the `web` backend on the fork's ufront/web branch): 5.1/7.1 where the device has it, HRTF on
 #            request, EFX reverb, the launcher's audio buffer settings (Module.alsoftConfig).
 #     NATIVE a SHARED libopenal.so.1 that NOpenALDrv links (DT_NEEDED) and the launcher copies beside the
-#            binary, found through $ORIGIN. Why not the system libopenal: it is whatever the distro built
-#            (Ubuntu's has no EAX), so the native binary carries the fork to play what the web plays.
-#            Backends are whatever the host's headers allowed at configure time (PulseAudio + ALSA on this
-#            box), each dlopen'd at run time.
+#            binary, found through $ORIGIN, so native plays through the same library as the web.
+#            Backends are whatever the host's headers allowed at configure time, each dlopen'd at run time.
 #
 # The fork: https://github.com/10-p/openal-soft-web `ufront/web` = openal-soft 1.25.2 + the Web Audio backend
-# + the wasm build patches (harmless natively: all under __EMSCRIPTEN__). A BRANCH, on purpose — a rebuild
-# takes its tip (the owner's rule; see cmake/ArtifactDeps.cmake, which records it in meta.json).
+# + the wasm build patches (all under __EMSCRIPTEN__). A branch: a rebuild takes its tip
+# (cmake/ArtifactDeps.cmake records it in meta.json).
 #
-# ★ WHAT THIS HAS TO GET RIGHT (ufront 2.61 §1):
+# What this has to get right:
 #  1. The engine's flags are not openal-soft's. Directory compile options (UE1's -fpack-struct=4 above all:
 #     libc++'s structs would stop matching) are stripped from its targets after they exist, and the
 #     engine's clang-compat C++ flags are dropped from CMAKE_CXX_FLAGS for its configure. openal-soft pins
 #     its own CXX_STANDARD 20 per target.
-#  2. EXCEPTIONS (web). openal-soft reports every AL error by THROWING and catching it at the API boundary.
+#  2. Exceptions (web). openal-soft reports every AL error by throwing and catching it at the API boundary.
 #     Its wasm objects are compiled with Emscripten's JS exceptions (-fexceptions) and the engine link must
 #     add -sNO_DISABLE_EXCEPTION_CATCHING; the engine's own objects stay -fignore-exceptions (no invoke_
 #     trampolines through the package loader). Wasm-native exceptions cannot coexist with ASYNCIFY.
@@ -60,7 +56,7 @@ function(ufront_openal_soft)
     set(ALSOFT_DLOPEN OFF CACHE BOOL "" FORCE)
     set(ALSOFT_CPUEXT_NEON OFF CACHE BOOL "" FORCE)
     set(ALSOFT_BACKEND_WEB ON CACHE BOOL "" FORCE)
-    set(ALSOFT_REQUIRE_SSE4_1 ON CACHE BOOL "" FORCE)  # a silent fallback to the C mixers is 2.5x slower
+    set(ALSOFT_REQUIRE_SSE4_1 ON CACHE BOOL "" FORCE)  # fail rather than fall back to the slower C mixers
   else()
     set(LIBTYPE SHARED CACHE STRING "" FORCE)           # -> libopenal.so.1, beside the binary
     set(ALSOFT_DLOPEN ON CACHE BOOL "" FORCE)           # backends load libpulse/libasound at run time
@@ -75,9 +71,8 @@ function(ufront_openal_soft)
   set(CMAKE_POLICY_VERSION_MINIMUM 3.10)
   FetchContent_MakeAvailable(OpenALSoft)
 
-  # Strip the engine's directory-level compile options that must not reach openal-soft (see 1. above) —
-  # from every target in its tree, SUBDIRECTORIES included: its bundled fmt is one, and a first version that
-  # walked only the top directory left fmt compiled with -fpack-struct=4.
+  # Strip the engine's directory-level compile options that must not reach openal-soft (see 1. above) from
+  # every target in its tree, subdirectories included (its bundled fmt is one).
   set(_al_dirs "${openalsoft_SOURCE_DIR}")
   while(_al_dirs)
     list(POP_FRONT _al_dirs _dir)

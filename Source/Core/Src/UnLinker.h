@@ -332,8 +332,7 @@ class ULinkerLoad : public ULinker, public FArchive
 		debugf( TEXT("Loading: %s"), InParent->GetFullName() );
 		Loader = GFileManager->CreateFileReader( InFilename, 0, GError );
 		if( !Loader )
-			// ufront 2.35 — NAME THE FILE. "Error opening file" with no filename is unactionable, and with
-			// exceptions disabled this throw is fatal, so it is the last thing the log ever says.
+			// Name the file: with exceptions disabled this throw is fatal and the last thing the log says.
 			appThrowf( TEXT("%s: %s"), LocalizeError("OpenFailed"), InFilename );
 
 		// Error if linker already loaded.
@@ -550,9 +549,8 @@ class ULinkerLoad : public ULinker, public FArchive
 			VerifyImport( -Import.PackageIndex-1 );
 			Import.SourceLinker = ImportMap(-Import.PackageIndex-1).SourceLinker;
 #ifdef __EMSCRIPTEN__
-			// 2.12 hardening: a nested import whose package is missing on the web build leaves SourceLinker NULL
-			// (its own guard below bailed — GetPackageLinker returns NULL instead of throwing since catching is
-			// off). Treat as broken links instead of check()-aborting the whole module.
+			// A nested import whose package is missing leaves SourceLinker NULL (GetPackageLinker returns NULL with
+			// catching off): mark broken links instead of aborting the module.
 			if( !Import.SourceLinker )
 			{
 				if( Cast<UPackage>(LinkerRoot) )
@@ -571,11 +569,9 @@ class ULinkerLoad : public ULinker, public FArchive
 		}
 
 #ifdef __EMSCRIPTEN__
-		// 2.12 hardening: a missing REFERENCED package resolves SourceLinker to NULL on the web build
-		// (GetPackageLinker returns NULL instead of throwing — catching is off). Bail as a broken import here
-		// instead of NULL-dereferencing SourceLinker->ExportHash below, which would abort the whole module.
-		// (A map that merely doesn't exist is already caught upstream in LoadMap; this covers a map that exists
-		// but references a package that isn't present — partial/mismatched content.)
+		// A missing referenced package resolves SourceLinker to NULL (GetPackageLinker returns NULL with catching
+		// off): bail as a broken import rather than dereference SourceLinker->ExportHash below. This covers a map
+		// that exists but references a package that is not present.
 		if( !Import.SourceLinker )
 		{
 			if( Cast<UPackage>(LinkerRoot) )
@@ -1059,7 +1055,7 @@ class ULinkerSave : public ULinker, public FArchive
 		// Create file saver.
 		Saver = GFileManager->CreateFileWriter( InFilename, 0, GThrow );
 		if( !Saver )
-			// ufront 2.35 — name the file (see the loader above).
+			// Name the file (see the loader above).
 			appThrowf( TEXT("%s: %s"), LocalizeError("OpenFailed"), InFilename );
 
 		// Set main summary info.

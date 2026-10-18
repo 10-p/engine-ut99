@@ -1,14 +1,13 @@
-// ufront 2.92 — a multisampled emulated back buffer, for the render devices that draw into framebuffer 0.
+// A multisampled emulated back buffer, for the render devices that draw into framebuffer 0.
 //
-// Under -sOFFSCREEN_FRAMEBUFFER (2.43: the explicit present) Emscripten draws "framebuffer 0" into a framebuffer of
-// its own (libwebgl.js createOffscreenFramebuffer: a single-sample RGBA texture + a depth renderbuffer) and copies it
-// to the canvas at emscripten_webgl_commit_frame. The context's `antialias` attribute reaches only the canvas, never
-// that framebuffer, so NOpenGLESDrv and OpenGLDrv/UTGLR (which draw into framebuffer 0) could not antialias at all;
-// XOpenGLDrv draws into multisampled framebuffers of its own and is not concerned.
+// Under -sOFFSCREEN_FRAMEBUFFER Emscripten draws "framebuffer 0" into a framebuffer of its own (libwebgl.js
+// createOffscreenFramebuffer: a single-sample RGBA texture + a depth renderbuffer) and copies it to the canvas at
+// emscripten_webgl_commit_frame. The context's `antialias` attribute reaches only the canvas, so NOpenGLESDrv and
+// OpenGLDrv/UTGLR antialias through this; XOpenGLDrv multisamples framebuffers of its own.
 //
 // ufront_backbuffer_samples(n), called by a render device on its own context: n > 1 on WebGL 2 swaps the emulated
-// framebuffer for a multisampled one (n samples, clamped to MAX_SAMPLES; RGBA8 + DEPTH24_STENCIL8, the depth the
-// 2.72 offscreen-depth24 rewrite gives the single-sample one). Emscripten's own framebuffer becomes its resolve
+// framebuffer for a multisampled one (n samples, clamped to MAX_SAMPLES; RGBA8 + DEPTH24_STENCIL8, the depth
+// offscreen-depth24.sh gives the single-sample one). Emscripten's own framebuffer becomes its resolve
 // target: the present blits the samples into it, then copies it to the canvas as before; a read of framebuffer 0
 // (readPixels, copyTex[Sub]Image2D: screenshots, save thumbnails) resolves first and reads the resolve. n < 2 puts
 // Emscripten's framebuffer back. Returns the samples in use: 0 when off, on WebGL 1 (no multisampled renderbuffers)

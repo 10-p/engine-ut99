@@ -568,61 +568,27 @@ void UCanvas::execDrawActor( FFrame& Stack, RESULT_DECL )
 	if( ClearZ )
 		Viewport->RenDev->ClearZ( Frame );
 
-	// AutoFOV, overlay pass (steps 2.16 + 2.29). This is how v400 draws the first-person viewmodel: the
-	// HUD calls Canvas.DrawActor from eventRenderOverlays, reusing the WORLD frame.
+	// AutoFOV, overlay pass: v400 draws the first-person viewmodel when the HUD calls Canvas.DrawActor from
+	// eventRenderOverlays, reusing the world frame. URender::DrawWorld pins the actor's FovAngle to the base
+	// angle during eventRenderOverlays (where the weapon is placed), so the corrected angle it is projected
+	// with is recomputed here from the inputs UGameEngine::Draw used.
 	//
-	// ★ 2.29 — THE FOV IS DERIVED HERE, NOT READ OFF THE ACTOR. URender::DrawWorld now pins the actor's
-	// FovAngle to the BASE angle for the duration of eventRenderOverlays, because Inventory.uc's
-	// CalcDrawOffset divides the weapon's forward offset by it and was dragging the gun towards the
-	// camera as the screen widened. That fixes WHERE the weapon sits; this fixes HOW IT IS PROJECTED —
-	// without it the weapon would be drawn at the base FOV and grow with screen width instead (2.7x at
-	// 32:9). Reading Viewport->Actor->FovAngle as the "effective" value, as this used to, now yields the
-	// base and silently disables the correction, so the effective angle is recomputed from the same
-	// inputs UGameEngine::Draw used.
-	//
-	// Writing the angle and refreshing the frame is all the invalidation needed — every driver
-	// dirty-compares Viewport->Actor->FovAngle before rebuilding its projection and re-enters
-	// SetSceneNode at the top of each primitive. Do NOT reach for SetSceneNode(NULL): only the N*Drv
-	// family null-checks the frame; XOpenGLDrv and UTGLR dereference it immediately and would crash.
+	// Writing the angle and refreshing the frame is all the invalidation needed: every driver dirty-compares
+	// Viewport->Actor->FovAngle before rebuilding its projection. Not SetSceneNode(NULL): XOpenGLDrv and UTGLR
+	// dereference the frame without a check.
 	FLOAT SavedWeaponFov = Viewport->Actor->FovAngle;
 	FLOAT EffectiveFov   = ufrontEffectiveFov( GAutoFovFrameBase, Viewport->SizeX, Viewport->SizeY, 0 );
 	FLOAT WeaponFov      = ufrontWeaponFov( GAutoFovFrameBase, EffectiveFov );
 	UBOOL bWeaponFovPass = Abs( WeaponFov - SavedWeaponFov ) > 0.01f;
 
-	// ★ MAKE THE VIEWMODEL TESTABLE WITHOUT PIXELS (step 2.29).
-	//
-	// A viewmodel bug cannot be seen by the AutoFOV specs (they watch the primary view), and asserting on
-	// the gun's silhouette would mean segmenting it from a background that legitimately differs between
-	// aspect ratios — which is why this was previously left to the eye. But the quantity that actually
-	// broke is a NUMBER the engine already has, so publish it and let the suite assert on it, exactly as
-	// AutoFOV itself is tested through its own log line.
-	//
-	// Three values, and each pins a different half of the fix:
-	//   placeFov — the FOV script saw while it positioned the weapon. MUST stay at the base at every
-	//              aspect; if the URender pin is lost this tracks drawFov instead and the gun grows.
-	//   drawFov  — the FOV the weapon is PROJECTED with. Must widen with the viewport; if the derivation
-	//              here is lost this collapses to placeFov and the gun grows the other way (2.7x at 32:9).
-	//   dist     — what those two actually produced: the FOV-dependent part of CalcDrawOffset, i.e. how
-	//              far in front of the eye the gun is placed. This is the behavioural one — it moved
-	//              33.3 -> 21.6 units at 32:9, which is the whole bug.
-	//
-	// `Actor` here is the weapon and `Viewport->Actor` the pawn that owns it, so the difference IS the
-	// offset Inventory.uc just computed:
-	//     (0.9/FOVAngle * PlayerViewOffset) >> ViewRotation  +  EyeHeight*(0,0,1)  +  WeaponBob
-	// ⚠ THE LAST TWO TERMS ARE SUBTRACTED BACK OFF, and that is what makes `dist` an invariant rather
-	// than a mood ring. Left in, it also moves when the pawn is still landing (EyeHeight interpolates),
-	// when recoil pitches the view, or when the player walks — measured as a 1.5–2.4 unit swing between
-	// two readings at the SAME aspect, which is the same order as a real regression and would have made
-	// any assertion on it either flaky or toothless. Rotation preserves length, so what remains is
-	// exactly `0.9/placeFov * |PlayerViewOffset|` and nothing else.
-	//
-	// ⚠ LATCHED ON THE VIEWPORT *AND* placeFov, NOT THE VIEWPORT ALONE — the same correction
-	// ufrontEffectiveFov already carries, for the same reason. UE1 brings up an intro camera whose FOV
-	// sweeps (128, 121, 114, 107 … 90) before gameplay settles, so a size-only latch emits ONE line per
-	// size and it is whichever transient angle the first drawn frame happened to hold: measured
-	// `placeFov=128.000015 dist=23.118` at 960x720, which does not describe gameplay at all and would
-	// have made any test built on it assert against noise. Re-emitting when the base moves means the LAST
-	// line for a size is the settled one, which is what the suite reads.
+	// The `[AutoFOV] weapon` line, which the E2E reads:
+	//   placeFov — the FOV script saw while it placed the weapon: the base, at every aspect.
+	//   drawFov  — the FOV the weapon is projected with: it widens with the viewport.
+	//   dist     — how far in front of the eye the weapon sits: the FOV-dependent part of Inventory.uc's
+	//              CalcDrawOffset, `(0.9/FOVAngle * PlayerViewOffset) >> ViewRotation + EyeHeight + WalkBob`,
+	//              with the last two terms subtracted so it does not move while landing or walking.
+	// Logged when the viewport or placeFov changes (an intro camera sweeps the FOV), so the last line for a
+	// size is the settled one.
 	{
 		static INT   LastX = -1, LastY = -1;
 		static FLOAT LastPlaceFov = -1.f;

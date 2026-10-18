@@ -642,8 +642,8 @@ void UObjectProperty::Link( FArchive& Ar, UProperty* Prev )
 	guard(UObjectProperty::Link);
 	Super::Link( Ar, Prev );
 	ElementSize = sizeof(UObject*);
-	// 4, not sizeof(UObject*): the mirror contract puts every member on a 4-byte boundary (ufront 2.83,
-	// Core/Inc/UnObjBas.h). The same value on every 32-bit target.
+	// 4, not sizeof(UObject*): the mirror contract (Core/Inc/UnObjBas.h) puts every member on a 4-byte
+	// boundary.
 	Offset      = Align( GetOuterUField()->GetPropertiesSize(), PROPERTY_ALIGNMENT );
 	unguardobj;
 }

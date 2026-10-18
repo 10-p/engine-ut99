@@ -12,62 +12,27 @@ Revision history:
 #endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
-#include <emscripten/heap.h> // emscripten_get_heap_size (ufront 2.43a — the pacing ring's heap column)
-#include <unistd.h> // chdir (ufront 2.7b — main-loop inversion + base-dir)
+#include <emscripten/heap.h> // emscripten_get_heap_size, for the pacing ring
+#include <unistd.h> // chdir
 
-// ufront 2.13.7 — the per-frame yield, WITHOUT setTimeout's clamp. (Ported from engine-ut2004, where it
-// was measured; see that repo's SDLLaunch.cpp and the monorepo's steps/2.17 §C9.)
-//
-// The engine thread must return to its event loop every frame — that is when a worker-owned OffscreenCanvas
-// is composited, so the yield is the frame's PRESENT point, not merely a politeness. (Yielding less often
-// was tried on ut2004 and measured: the screen updated at exactly the yield rate while the engine counted
-// frames nobody saw.) So frequency is fixed and only the COST of each yield is available.
-//
-// emscripten_sleep(0) pays two costs: the Asyncify unwind/rewind, and a setTimeout(0) that no browser
-// honours at 0 — the HTML timer clamp floors it at >= 1 ms. A MessagePort message is a macrotask with NO
-// clamp: the same task boundary the compositor needs, minus the floor. EM_ASYNC_JS names its import
-// __asyncjs__ufront_yield_frame_mode and link.py's DEFAULT_ASYNCIFY_IMPORTS is ['__asyncjs__*'], so it is
-// registered with Asyncify automatically — no ASYNCIFY_IMPORTS edit.
-//
-// ★ ufront 2.43 — AND THAT LAST CLAIM WAS WRONG, WHICH IS WHY THIS RESUMES FROM A TIMER.
-// "A MessagePort message is the same task boundary the compositor needs" was reasoned, never measured.
-// Chromium will run a chain of MessagePort tasks without giving the compositor a rendering opportunity,
-// so the frame sitting in the OffscreenCanvas is overwritten by the next one before it is picked up. A
-// timer task interleaves with rendering; a MessagePort task does not. Measured on the FIXED present path
-// (brutal, RTX 3090, engine fps -> distinct images presented):
-//   MessagePort  49.00 -> 27.41   (44% of frames never seen, judder 30-35%)
-//   setTimeout   40.81 -> 40.87   ( 0% lost, judder 0%)
-//   worker rAF   44.18 -> 44.20   ( 0% lost, judder 0%)
-// So the MessagePort resume of 2.13.7 is simply wrong and is gone. rAF matches the timer on quality and
-// is ~8% faster in this one headless scene, but it couples the engine to the display refresh — a hazard
-// the owner has already been bitten by on Windows — so it is NOT adopted without real-display evidence.
-// ⚠ There was briefly a -YIELDMODE switch here to compare the three. It is deleted on purpose: the
-// comparison is DONE, its answer is recorded above, and a switch nobody would know to set is exactly the
-// kind of dangling scaffolding that let 2.17 leave a stubbed present call in the build for months.
+// The per-frame yield. The engine thread returns to its event loop every frame: that is when the worker's
+// OffscreenCanvas is composited, so this is the frame's present point. It resumes from a timer task, which the
+// browser interleaves with rendering (a chain of MessagePort tasks can starve the compositor). EM_ASYNC_JS
+// imports match Asyncify's default `__asyncjs__*` list, so no ASYNCIFY_IMPORTS entry is needed.
 EM_ASYNC_JS(void, ufront_yield_frame, (void), {
     await new Promise((resolve) => { setTimeout(resolve, 0); });
 });
 
 
-// ufront 2.7d: the running engine, for WebRTCDrv's listen-status push + ue_exec_command (set in InitEngine
-// after Engine->Init()). WebRTCDrv.cpp declares `extern UEngine* GWebRTCEngine`.
+// The running engine, for WebRTCDrv's listen-status push and ue_exec_command (set in InitEngine after
+// Engine->Init()).
 UEngine* GWebRTCEngine = NULL;
 
-// ufront 2.43 — THE FRAME-PACING RING.
-//
-// Owner's complaint: "the in-game stats show 40 FPS, yet it runs at 1 FPS… as if 39 FPS got compressed
-// into 1 ms and the remaining frame took the rest of the second." That is an INTERVAL-DISTRIBUTION fault,
-// and no mean-fps counter — including the engine's own `CurrentTickRate` — can see it: 39 fast frames and
-// one 950 ms frame average out to exactly the 40 fps the display claims.
-//
-// So record every frame's timing rather than a rate, and let the reader compute distributions. Three
-// segments per frame, because "where did the second go" has exactly three candidate answers here:
-//   TickMs  — Engine->Tick + GWindowManager->Tick: simulation AND the whole render/submit path.
-//   YieldMs — the frame's PRESENT point (2.13.7): emscripten_sleep when there is cap budget left,
-//             ufront_yield_frame when there is not. A worker-owned OffscreenCanvas is composited when the
-//             engine thread returns to its event loop, so time spent here is time the compositor had.
-//   SleepReq — what the cap ASKED for, so truncation and the sleep/yield alternation are both visible.
-// A ring, because a pacing fault is diagnosed from a window of recent frames, not from a running total.
+// The frame-pacing ring: one sample per frame, so a reader sees the interval distribution a mean frame rate
+// hides. Dumped by `ufront_pacing` (ue_exec_command).
+//   TickMs   — Engine->Tick + GWindowManager->Tick: simulation and the whole render/submit path.
+//   YieldMs  — the present point: emscripten_sleep with cap budget left, ufront_yield_frame without.
+//   SleepReq — what the cap asked for.
 #define UFRONT_PACE_MAX 4096
 struct FUfrontPaceSample
 {
@@ -75,10 +40,8 @@ struct FUfrontPaceSample
 	FLOAT  TickMs;
 	FLOAT  YieldMs;
 	INT    SleepReqMs; // what the cap computed; INDEX_NONE marks the yield (no-budget) path
-	// ufront 2.43a — wasm heap size, because the fault the owner actually reports on real hardware is a
-	// 300-1100 ms STALL, not the frame coalescing 2.43 fixed, and `-sALLOW_MEMORY_GROWTH` with `-pthread`
-	// is a prime suspect: a memory.grow has to rebuild every typed-array view in EVERY thread. If a stall
-	// frame is also the frame the heap grew, that is the answer and no further guessing is needed.
+	// wasm heap size: a memory.grow under -pthread rebuilds every thread's views, so a stall frame can be
+	// matched with a heap growth
 	INT    HeapMB;
 };
 static FUfrontPaceSample GUfrontPace[UFRONT_PACE_MAX];
@@ -97,9 +60,8 @@ static void UfrontPaceRecord( DOUBLE Start, FLOAT TickMs, FLOAT YieldMs, INT Sle
 	GUfrontPaceCount++;
 }
 
-// Dump the ring as CSV. Deliberately RAW rather than pre-summarised: every summary this bug has survived
-// so far was a mean, and the reader (packages/e2e/tools/pacing-probe.cjs) needs the per-frame series to
-// compute percentiles, judder counts and the sleep/yield split. One header line, then one line per frame.
+// Dump the ring as raw CSV, one header line and one line per frame; the frontend's pacing probe computes
+// percentiles, judder and the sleep/yield split from the series.
 static FString UfrontPaceDump()
 {
 	const INT N = Min(GUfrontPaceCount, (INT)UFRONT_PACE_MAX);
@@ -114,17 +76,14 @@ static FString UfrontPaceDump()
 	return Out;
 }
 
-// ADR-10: run a console command and RETURN its captured output (not fire-and-forget). The frontend/E2E call
-// this via ccall for deterministic assertions + live debugging. FStringOutputDevice is a string-capturing
-// FOutputDevice (UnTemplate.h); the text is held in a static FString so the returned pointer stays valid
-// until the next call (the JS side reads it synchronously during the ccall). v400 Exec takes FOutputDevice&.
+// Run a console command and return its captured output (the frontend and the E2E call it through ccall). The
+// text lives in a static FString, so the returned pointer stays valid until the next call.
 extern "C" char* EMSCRIPTEN_KEEPALIVE ue_exec_command( const char* Cmd )
 {
 	static FString Captured;
 	Captured = TEXT("");
-	// ufront 2.43: the pacing ring answers here rather than through UEngine::Exec, because it belongs to
-	// the LAUNCHER's main loop, not to the engine — Exec would have to reach back out to a global anyway.
-	// `ufront_pacing reset` re-arms the window so a measurement is not diluted by map load.
+	// The pacing ring belongs to the launcher's main loop, so it answers here rather than through UEngine::Exec;
+	// `ufront_pacing reset` empties it.
 	if( Cmd && appStrnicmp( Cmd, TEXT("ufront_pacing"), 13 )==0 )
 	{
 		if( appStrfind( (TCHAR*)Cmd, TEXT("reset") ) )
@@ -256,18 +215,10 @@ void HandleIrqException( irq_t Code, irq_context_t* Context, void* Data )
 -----------------------------------------------------------------------------*/
 
 //
-// ufront 2.9 / 2.12 — unified render-device selection, SHARED between native and web (the
-// #ifdef __EMSCRIPTEN__ guard was removed 2026-07-16 so `./UnrealTournament -SOFTWARERENDERER` /
-// -XOPENGLRENDERER / … work identically on native — the run-tree launch scripts are only a testing
-// convenience; the shipped binary is run as-is with a switch).
-//
-// Each -*RENDERER switch names a render device; NSDLViewport picks the matching GL context version from
-// the device name (XOpenGL -> WebGL2, else WebGL1 on web). Precedence in SelectRenderDevice(): a switch,
-// else the persisted ini choice (a hardware default OR the user's explicit pick — incl. SoftDrv — flagged
-// by the ufrontUserRenderDevice marker), else the preference order below. A switch whose driver ISN'T
-// compiled/available no-ops (the game still boots on the default — the web canary). A switch that actually
-// initializes is persisted to the ini by PersistRenderChoiceIfSwitched() (after Engine->Init()), so the
-// pick sticks next boot on both platforms.
+// Render-device selection, on every target. Each -*RENDERER switch names a render device. SelectRenderDevice()
+// takes a switch; else the persisted ini choice when it is a hardware default or the user's marked pick
+// (ufrontUserRenderDevice); else the preference order below. A switch whose driver is absent is ignored; one
+// whose device survives Init is persisted by PersistRenderChoiceIfSwitched().
 //
 struct FRenderSwitch { const TCHAR* Param; const TCHAR* Device; };
 static const FRenderSwitch GRenderSwitches[] =
@@ -275,14 +226,10 @@ static const FRenderSwitch GRenderSwitches[] =
 	{ TEXT("XOPENGLRENDERER"),   TEXT("XOpenGLDrv.XOpenGLRenderDevice") },
 	{ TEXT("UTGLRRENDERER"),     TEXT("OpenGLDrv.OpenGLRenderDevice") },
 	{ TEXT("NOPENGLESRENDERER"), TEXT("NOpenGLESDrv.NOpenGLESRenderDevice") },
-	// -SOFTWARERENDERER selects SoftDrv.SoftwareRenderDevice (the CPU rasterizer), ported into ut99 from the
-	// original UT99 v400 SoftDrv source + engine-unreal1's gcc/wasm portability changes (ASM=0 -> the portable
-	// #if !ASM paths; empty MMX stubs + #if ASM body wraps; Line.h VC++ macros -> no 2D lines on gcc/wasm).
-	// Pure software (no glad), so it coexists with XOpenGL/UTGLR on web. Renders in-browser + native.
+	// -SOFTWARERENDERER: Epic's CPU rasterizer through its portable C paths.
 	{ TEXT("SOFTWARERENDERER"),  TEXT("SoftDrv.SoftwareRenderDevice") },
-	// -NULLRENDERER selects NullDrv.NullRenderDevice (a no-op render device — no GL context), ported into
-	// ut99 alongside SoftDrv. GPU-free: a headless / "poor-man's dedicated server" run (host listens, empty
-	// tab). Not in GRenderPreference, so IsHardwareDefaultEligible excludes it -> opt-in only, never a default.
+	// -NULLRENDERER: a render device that draws nothing and needs no GL context (headless runs). It is not in
+	// GRenderPreference, so it is never a default.
 	{ TEXT("NULLRENDERER"),      TEXT("NullDrv.NullRenderDevice") },
 };
 // Default when nothing is chosen: best HW first.
@@ -295,56 +242,34 @@ static const TCHAR* GRenderPreference[] =
 // The class a -*RENDERER switch requested (empty if none) — persisted after a successful Init().
 static FString GRequestedRenderDevice;
 
-// True iff the named "Package.Class" is compiled into this build — asked of render devices, and since
-// ufront 2.34 of viewport clients and audio subsystems too. The web build disables exception
-// CATCHING, so StaticLoadClass on an absent package appThrowf's ("Can't find file for package X") ->
-// Aborted() (uncatchable — ut99 lacks unreal1's 2.6g GetPackageLinker-returns-NULL fix). StaticFindObject
-// only inspects ALREADY-REGISTERED objects (a statically-linked native render device registers at
-// startup) — no file system, no throw. Match the class' short name (after the last '.') vs ANY_PACKAGE.
+// True iff the named "Package.Class" (a render device, viewport client, audio subsystem or net driver) is in
+// this build.
 static UBOOL IsPackageClassAvailable( const TCHAR* Device )
 {
 #ifdef __EMSCRIPTEN__
-	// web (single static binary, exception CATCHING disabled): StaticFindObject inspects ALREADY-registered
-	// classes — a statically-linked render device registers at startup, so no file load + no throw.
+	// Every driver of the static web binary registers at startup, so look the class up by its short name
+	// without loading anything.
 	FString Path = Device;
 	INT Dot = Path.InStr( TEXT("."), 1 );
 	const TCHAR* ClassName = ( Dot != INDEX_NONE ) ? ((*Path) + Dot + 1) : (*Path);
 	return UObject::StaticFindObject( UClass::StaticClass(), ANY_PACKAGE, ClassName ) != NULL;
 #else
-	// native (shared .so packages): render-device classes are NOT registered until their package is loaded,
-	// and SelectRenderDevice() runs before Engine->Init(), so StaticFindObject would see nothing. Load the
-	// class by name instead (LOAD_NoWarn) — a compiled-in driver resolves + registers, an absent one returns
-	// NULL. Every native preset builds the full render set, so this resolves for all GRenderSwitches/Preference.
-	// UObject (not URenderDevice) is the base: this same probe answers for viewport clients and audio
-	// subsystems, which are not render devices (ufront 2.34).
+	// A driver class is registered only once its package is loaded, so load it by name (LOAD_NoWarn): a present
+	// driver resolves, an absent one returns NULL. UObject is the base because the probe also answers for
+	// viewport clients, audio subsystems and net drivers.
 	return UObject::StaticLoadClass( UObject::StaticClass(), NULL, Device, NULL, LOAD_NoWarn, NULL ) != NULL;
 #endif
 }
 
 #ifndef __EMSCRIPTEN__
-// ★ ufront 2.34 — "if we have the wrong driver, select a NON-NULL driver" (owner's rule, and it applies to
-// sound and networking as much as to graphics).
-//
-// Every ini this engine can meet names subsystems it may not contain: the retail UT99 one says
-// `ViewportManager=WinDrv.WindowsClient` and `AudioDevice=Galaxy.GalaxyAudioSubsystem` — packages the
-// ut99dc lineage deleted years ago and no target here builds. The engine loads them with LOAD_NoFail, so a
-// missing one is not a degraded mode, it is an appError before the first frame (on native it does not even
-// get that far: the error path itself segfaults, exit 139, empty log). Nor can a user fix it by editing the
-// ini on a BUILD_STATIC target, where packages resolve through the internal registry and no .so/.dll
-// dropped beside the binary can answer.
-//
-// So: if what the ini names is not present, substitute the best REAL driver this build has. Null drivers
-// (SoundDrv's silent subsystem, NullDrv's no-op renderer) are never candidates — they stay explicit opt-ins
-// via their own switches. A configured driver that IS present is left completely alone, so this cannot
-// override anybody's deliberate choice.
-//
-// Excluded on Emscripten: the web block below already sets every subsystem unconditionally, so this would
-// be dead code there — and leaving the web preprocessor output untouched keeps the wasm identical.
+// Replace a subsystem the ini names but this build lacks with the first present driver of Preference, and log
+// the substitution. The retail ini names WinDrv.WindowsClient and Galaxy.GalaxyAudioSubsystem, which the engine
+// loads with LOAD_NoFail: a fatal error before the first frame. A present choice is left alone.
 static void NormalizeSubsystem( const TCHAR* Section, const TCHAR* Key, const TCHAR* const* Preference, INT Num )
 {
 	FString Configured;
 	if( GConfig->GetString( Section, Key, Configured ) && Configured.Len() && IsPackageClassAvailable( *Configured ) )
-		return;	// what the user asked for is here — do not touch it
+		return;	// the configured driver is present
 
 	for( INT i=0; i<Num; i++ )
 	{
@@ -368,14 +293,9 @@ static void SetRenderDeviceConfig( const TCHAR* Device )
 	GConfig->SetString( TEXT("Engine.Engine"), TEXT("RenderDevice"),         Device );
 }
 
-// True iff Device is one of the hardware render devices eligible as an IMPLICIT web default (i.e. it is
-// in GRenderPreference). SoftDrv (the CPU rasterizer) is deliberately NOT in that set: it is opt-in ONLY,
-// selectable via -SOFTWARERENDERER (which wins at step 1 of SelectRenderDevice), but never auto-adopted as
-// the default. The retail UT99 ini ships GameRenderDevice=SoftDrv.SoftwareRenderDevice (a Glide-era CPU
-// default from before hardware T&L); now that SoftDrv is compiled into the web build, honoring that
-// persisted value verbatim would silently default the browser to the slow software rasterizer instead of
-// the GPU. So a persisted SOFTWARE device is not honored as a default — only a persisted HARDWARE choice
-// (a prior -*RENDERER pick, written back by PersistRenderChoiceIfSwitched) sticks next boot.
+// True iff Device is in GRenderPreference, i.e. may be taken from the ini without the user marker. SoftDrv is
+// not: the retail ini ships GameRenderDevice=SoftDrv.SoftwareRenderDevice, and the CPU rasterizer is never an
+// implicit default.
 static UBOOL IsHardwareDefaultEligible( const TCHAR* Device )
 {
 	for( INT i=0; i<ARRAY_COUNT(GRenderPreference); i++ )
@@ -384,7 +304,7 @@ static UBOOL IsHardwareDefaultEligible( const TCHAR* Device )
 	return 0;
 }
 
-// Choose the web render device BEFORE Engine->Init() (mirrors the old hardcoded block, now data-driven).
+// Choose the render device before Engine->Init() loads it.
 static void SelectRenderDevice()
 {
 	// 1) A command-line -*RENDERER switch (first present wins).
@@ -405,19 +325,12 @@ static void SelectRenderDevice()
 		}
 	}
 
-	// 2) The persisted ini choice, if its driver is compiled in AND is a hardware default (see
-	//    IsHardwareDefaultEligible). This is what makes a prior -*RENDERER pick "stick" next boot (the
-	//    frontend renderer dropdown is session-only; the engine persists the choice via Flush). It
-	//    deliberately does NOT adopt a persisted SoftDrv: the retail ini ships GameRenderDevice=SoftDrv,
-	//    so honoring it verbatim would default the web build to the CPU rasterizer — SoftDrv is opt-in
-	//    only, via -SOFTWARERENDERER (handled at step 1 above).
+	// 2) The persisted ini choice, if its driver is present and it is a hardware default or the marked user pick.
 	FString Persisted, UserSel;
 	if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("GameRenderDevice"), Persisted ) && Persisted.Len()>0 )
 	{
-		// A persisted device sticks if it is a hardware default OR was EXPLICITLY user-selected: the marker
-		// ufrontUserRenderDevice is written by PersistRenderChoiceIfSwitched ONLY after a -*RENDERER switch
-		// actually initialized, so it distinguishes a user's SoftDrv pick (sticky, per owner 2.12) from the
-		// retail ini's GameRenderDevice=SoftDrv (no marker -> still overridden to a hardware default first boot).
+		// ufrontUserRenderDevice is written only after a -*RENDERER switch initialized, so it tells a user's SoftDrv
+		// pick from the retail ini's GameRenderDevice=SoftDrv.
 		const UBOOL bUserSelected =
 			GConfig->GetString( TEXT("Engine.Engine"), TEXT("ufrontUserRenderDevice"), UserSel )
 			&& UserSel.Len()>0 && appStricmp( *Persisted, *UserSel )==0;
@@ -443,11 +356,8 @@ static void SelectRenderDevice()
 	debugf( NAME_Warning, TEXT("ufront 2.9: no known render device is compiled into this build!") );
 }
 
-// After Engine->Init(): persist a -*RENDERER switch choice so it sticks next boot. The render device
-// inits lazily (in the main loop at level bring-up), not within Engine->Init(), so we can't inspect the
-// active RenDev here. Instead confirm the engine didn't rewrite GameRenderDevice to a fallback during
-// Init: if it still equals our (compiled, selected) request, persist it. Flush writes the user ini,
-// which survives reload via the user-data IDB layer.
+// After Engine->Init(): persist a -*RENDERER choice so it sticks next boot. The render device initializes later
+// (at level bring-up), so this checks that Init did not rewrite GameRenderDevice to a fallback.
 static void PersistRenderChoiceIfSwitched()
 {
 	if( GRequestedRenderDevice.Len()==0 )
@@ -455,8 +365,7 @@ static void PersistRenderChoiceIfSwitched()
 	FString Active;
 	if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("GameRenderDevice"), Active ) && appStricmp( *Active, *GRequestedRenderDevice )==0 )
 	{
-		// Mark this as an EXPLICIT user selection so SelectRenderDevice honors it next boot even when it is
-		// not a hardware default (i.e. a user-chosen SoftDrv). Distinguishes it from the retail ini SoftDrv.
+		// The marker lets SelectRenderDevice keep a pick that is not a hardware default (SoftDrv).
 		GConfig->SetString( TEXT("Engine.Engine"), TEXT("ufrontUserRenderDevice"), *GRequestedRenderDevice );
 		GConfig->Flush( 0 );
 		debugf( TEXT("ufront 2.12: persisted render device %s as a user selection (sticks next boot)"), *GRequestedRenderDevice );
@@ -466,8 +375,6 @@ static void PersistRenderChoiceIfSwitched()
 		debugf( NAME_Warning, TEXT("ufront 2.9: render device changed from %s during init -> not persisted"), *GRequestedRenderDevice );
 	}
 }
-
-// (render-device selection above is compiled + used on both native and web — see the header note.)
 
 //
 // Creates a UEngine object.
@@ -481,62 +388,26 @@ static UEngine* InitEngine()
 	GExec = NULL;
 
 #ifdef __EMSCRIPTEN__
-	// ufront 2.7c: the shipped Default.ini is Dreamcast-configured (PVRDrv/KOSDrv/AICADrv). Force the web
-	// driver set BEFORE Engine->Init() loads the subsystems — mirrors engine-unreal1's SDLLaunch override.
-	// SDL2 windowing (NSDLDrv) + NOpenGLESDrv (GLES2 -> WebGL) + the null (silent) audio subsystem. The net
-	// driver auto-switches IpDrv.TcpNetDriver -> WebRTCDrv in step 2.7d. Keeping this in code (not the asset
-	// inis) leaves the game data pristine — the override travels with the engine.
+	// The web build's subsystems, set before Engine->Init() loads them: the SDL client, OpenAL audio and the
+	// WebRTC net driver.
 	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"),      TEXT("NSDLDrv.NSDLClient") );
-	// ufront 2.12 (web audio): route audio to the real OpenAL subsystem (NOpenALDrv) instead of the silent
-	// null one — SFX via Emscripten's built-in OpenAL + .umx tracker music via a FetchContent'd libxmp,
-	// pumped from Update() (the web build is single-threaded; EFX/HRTF compiled out under NOPENAL_WEB). The
-	// driver's constructor defaults are audible (MasterVolume=255) so no ini is required. Native uses the
-	// same driver (openal-soft, full EFX). Mirrors engine-unreal1.
 	GConfig->SetString( TEXT("Engine.Engine"), TEXT("AudioDevice"),          TEXT("NOpenALDrv.NOpenALAudioSubsystem") );
-	// ufront 2.7d: BSD sockets don't work in a browser — auto-switch the net driver to the engine-local
-	// WebRTC driver (its transport is the glue webrtc_* ABI). Mirrors engine-unreal1/engine-ut2004.
+	// A browser has no BSD sockets: the net driver is WebRTCDrv over the glue ABI.
 	GConfig->SetString( TEXT("Engine.Engine"), TEXT("NetworkDevice"),        TEXT("WebRTCDrv.WebRTCNetDriver") );
-	// ufront 2.12 (web mouse): the SDL client ships CaptureMouse=False (classic click-drag-to-look), but the
-	// web wants UT2004-style dynamic pointer lock — captured while playing, released in a menu. UnGame's
-	// Tick/mouse handlers already drive SetMouseCapture from bShowMenu + Client->CaptureMouse; enabling the flag
-	// + NSDLViewport::SetMouseCapture's web focus-skip (-> SDL_SetRelativeMouseMode) yields click-to-lock /
-	// ESC-to-unlock (SDL2's Emscripten port defers the lock to the next click + re-grabs after ESC). Mirrors
-	// engine-unreal1; native keeps the ini's CaptureMouse (revisit in the native pass).
+	// The pointer is locked while a level is up and released while a menu shows (UGameEngine::Tick drives
+	// SetMouseCapture; SDL's Emscripten port takes the lock on the next click).
 	GConfig->SetString( TEXT("NSDLDrv.NSDLClient"),  TEXT("CaptureMouse"),    TEXT("True") );
-	// ★ ufront 2.38 (web multiplayer): turn off the two 1999-era internet services the "Start new
-	// Multiplayer Game -> Server" tab still offers, BEFORE anything can spawn them. Both talk to hosts and
-	// subsystems that do not exist here, and the owner hit an exception starting a listen game from that
-	// page.
-	//
-	//  * ngWorldStats ("ngWorldStats Logging" checkbox -> GameInfo.bWorldLog). Its service died with the
-	//    1990s. Worse, it is not inert: GameInfo spawns a StatLogFile, and the world-log path ends in
-	//    AStatLog::execExecuteWorldLogBatcher -> appCreateProc(), i.e. fork/exec — of a batcher binary that
-	//    does not exist, from a browser, which has no processes at all. The owner asked for it to stop
-	//    bothering us; this is that switch. (bLocalLog goes with it: same StatLogFile, same appCreateProc.)
-	//  * "Advertise Server" (-> IpServer.UdpServerUplink DoUplink) uplinks to the GameSpy master server
-	//    list over UDP. There is no UDP in a browser and no master server left to answer. ⚠ It is also
-	//    NOT how our server browser finds anything — discovery is the PeerJS peer list (2.38) — so a
-	//    player who ticks it gains nothing and risks a failed socket on the way to their own match.
-	//
-	// Set as ini defaults rather than excised: the checkboxes still exist and still work for anyone who
-	// insists, they just start OFF and nothing spawns on a normal Start.
+	// The multiplayer Server tab's internet services start off: world and local stats logging (the batcher path
+	// ends in appCreateProc, a fork/exec a browser cannot do) and the master-server uplink (UDP). The checkboxes
+	// still work.
 	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bWorldLog"), TEXT("False") );
 	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bLocalLog"), TEXT("False") );
 	GConfig->SetString( TEXT("IpServer.UdpServerUplink"),  TEXT("DoUplink"),  TEXT("False") );
 #endif
 
 #ifndef __EMSCRIPTEN__
-	// ufront 2.33 introduced this for Windows, where a real UT99 install's ini killed the build before the
-	// first frame ("Can't find file for package 'WinDrv'"). ufront 2.34 makes it every non-web target,
-	// because native Linux has exactly the same problem with exactly the same inis — running the shipped
-	// retail ini natively segfaulted in the error path with an empty log.
-	//   ViewportManager=WinDrv.WindowsClient    -> WinDrv is not in this tree AT ALL (the ut99dc lineage
-	//     removed it); windowing/input is NSDLDrv on every target we build, Windows included.
-	//   AudioDevice=Galaxy.GalaxyAudioSubsystem -> the retail sound package, likewise absent.
-	// Each list is best-real-driver-first and contains NO null driver: SoundDrv's silent subsystem is an
-	// opt-out, not a fallback. NormalizeSubsystem leaves a present, deliberately-chosen value untouched,
-	// so this only ever fires on a driver this build cannot load. NetworkDevice is checked for the same
-	// reason, and lands on IpDrv.TcpNetDriver (WebRTC is only the web's substitute for it).
+	// Replace the subsystems the ini names but this build lacks (the retail WinDrv.WindowsClient and
+	// Galaxy.GalaxyAudioSubsystem). Each list is best real driver first.
 	{
 		static const TCHAR* const ViewportPreference[] = { TEXT("NSDLDrv.NSDLClient") };
 		static const TCHAR* const AudioPreference[]    = { TEXT("NOpenALDrv.NOpenALAudioSubsystem"),
@@ -548,10 +419,7 @@ static UEngine* InitEngine()
 	}
 #endif
 
-	// ufront 2.12: unified render-device selection — SHARED native+web, run BEFORE Engine->Init() (which loads
-	// the subsystems). A -*RENDERER switch wins, else a persisted hardware default OR the user's marked pick,
-	// else the preference order. (Was #ifdef __EMSCRIPTEN__; now also honors `./UnrealTournament -SOFTWARERENDERER`
-	// etc. on native.)
+	// A -*RENDERER switch, else the persisted choice, else the preference order.
 	SelectRenderDevice();
 
 	// Update first-run.
@@ -569,29 +437,20 @@ static UEngine* InitEngine()
 	);
 	UEngine* Engine = ConstructObject<UEngine>( EngineClass );
 #ifdef __EMSCRIPTEN__
-	// ufront 2.7d: drop UT99's retail ServerActors before Engine->Init() -> Browse() spins up a listen server
-	// and spawns them. The game ini's [Engine.GameEngine] lists six — IpDrv.UdpBeacon, IpServer.UdpServerQuery,
-	// 3x IpServer.UdpServerUplink (master-server uplinks) and UWeb.WebServer (web-admin) — every one a UDP /
-	// master-server / web-admin actor that is dead in a browser (no UDP sockets, no master server; UWeb's
-	// native class isn't even compiled -> "Can't bind to native class UWeb.WebRequest" aborts the listen
-	// server). A WebRTC listen game needs none of them; the game link is the glue webrtc_* ABI. Cleared on the
-	// engine object here in the LAUNCHER (mirrors the driver overrides above) — NOT in core UnLevel.cpp and NOT
-	// by mutating the pristine game-asset ini. Placement is load-bearing: after ConstructObject (the array is
-	// copied from the class-default object, which loads config at package-bind, so a GConfig clear would be too
-	// late — UGameEngine isn't CLASS_PerObjectConfig) and before Init() (which runs the listen path). Only
-	// UT99 configures these actors (unreal1/ut2004 need no equivalent). ServerPackages (skins) is left intact.
+	// Drop the game ini's ServerActors (UdpBeacon, UdpServerQuery, the master-server uplinks, UWeb.WebServer):
+	// UDP and web-admin actors a browser listen server cannot run. After ConstructObject, because the array is
+	// copied from the class default object, and before Init(), which starts the listen path.
 	if( Engine->IsA(UGameEngine::StaticClass()) )
 		((UGameEngine*)Engine)->ServerActors.Empty();
 #endif
 	Engine->Init();
-	// ufront 2.12: persist a -*RENDERER switch choice so it sticks next boot — SHARED native+web (writes the
-	// ufrontUserRenderDevice marker if Init didn't rewrite GameRenderDevice to a fallback).
+	// Persist a -*RENDERER choice that survived Init.
 	PersistRenderChoiceIfSwitched();
 #ifdef PLATFORM_DREAMCAST
 	malloc_stats();
 #endif
 #ifdef __EMSCRIPTEN__
-	// ufront 2.7d: expose the running engine to WebRTCDrv (listen-status push) + ue_exec_command (ADR-10).
+	// The running engine, for WebRTCDrv's listen-status push and ue_exec_command.
 	GWebRTCEngine = Engine;
 #endif
 	debugf( TEXT("Startup time: %f seconds."), appSeconds()-LoadTime );
@@ -640,8 +499,7 @@ DOUBLE OldTime = appSeconds();
 	while( GIsRunning && !GIsRequestingExit )
 	{
 #ifdef __EMSCRIPTEN__
-		// ufront 2.43 — hoisted out of the guard() blocks below (each opens its own scope, so a variable
-		// declared inside UpdateWorld is not visible in EnforceTickRate where the yield happens).
+		// Declared outside the guard() blocks, each of which opens its own scope.
 		DOUBLE PaceFrameStart = 0.0, PaceTickEnd = 0.0;
 #endif
 		// Update the world.
@@ -669,20 +527,8 @@ DOUBLE OldTime = appSeconds();
 		guard(EnforceTickRate);
 		FLOAT MaxTickRate = Engine->GetMaxTickRate();
 
-		// ufront 2.12: enforce a client frame-rate cap. UGameEngine::GetMaxTickRate() returns 0 for
-		// standalone play (no net driver), so without a cap this loop runs at hundreds/thousands of FPS on
-		// modern hardware. ULevel::Tick then FLOORS DeltaSeconds (UnLevTic.cpp) -> above that floor's frame
-		// rate the world advances MORE time than really elapsed, so the whole game runs faster the higher the
-		// frame rate (owner-reported: fast staring at a wall, slower in open areas, always too fast). Cap
-		// here so DeltaSeconds stays in ULevel::Tick's honest range. A net/demo cap (GetMaxTickRate>0) still
-		// wins; otherwise a sane default, overridable via [Engine.Engine] FrameRateCap in the ini (0 or
-		// negative => uncapped, restoring the old behavior if ever wanted).
-		//
-		// ufront 2.19: this is no longer native-only. It was, on the reasoning that "the web build never hits
-		// this because the browser's rAF/vsync caps it ~60 fps" — true when it was written, and untrue since
-		// 2.13.7 replaced the clamped yield with an unclamped MessagePort macrotask precisely so the engine
-		// could out-run vsync. The web client now reaches several hundred fps and hit exactly the bug this
-		// branch already guarded against, so the cap is resolved once, here, for both.
+		// Client frame-rate cap. GetMaxTickRate() is 0 in standalone play; then [Engine.Engine] FrameRateCap applies
+		// (120 by default, 0 or negative = uncapped). A net or demo max tick rate wins.
 		FLOAT Cap = MaxTickRate;
 		if( Cap<=0.0 )
 		{
@@ -690,26 +536,16 @@ DOUBLE OldTime = appSeconds();
 			if( ClientCap < -0.5f )
 			{
 				FLOAT V=0.f;
-				// ufront 2.61: the ini is the ONLY home. 2.19 also parsed a -FRAMERATECAP=<n> switch that won over
-				// it; that was a second way to set one setting, and a per-launch value the ini never learned. The
-				// launcher now sets this key like any other, with -ini:System:[Engine.Engine]:FrameRateCap=<n>,
-				// and only when the player changed it. <=0 means uncapped.
+				// Read once; from outside it is set with -ini:System:[Engine.Engine]:FrameRateCap=<n>.
 				ClientCap = ( GConfig->GetFloat(TEXT("Engine.Engine"),TEXT("FrameRateCap"),V) ) ? V : 120.f;
 				debugf( NAME_Init, TEXT("ufront: client frame rate cap %.0f fps%s"), ClientCap, ClientCap>0.f ? TEXT("") : TEXT(" (uncapped)") );
 			}
 			Cap = ClientCap;
 		}
 #ifdef __EMSCRIPTEN__
-		// ufront 2.7b — main-loop inversion (docs/10 §2), matching engine-unreal1/engine-ut2004: a browser
-		// cannot block its main thread, so each frame we yield via emscripten_sleep, which ASYNCIFY-suspends
-		// the wasm and lets the browser event loop run (rendering + rAF) before resuming. NOT
-		// emscripten_set_main_loop (its simulate_infinite_loop unwind collides with main()'s C++ try/catch).
-		//
-		// ufront 2.13.7: the ">= 1 ms always" floor is gone. When there is real budget left we still sleep it
-		// (that is the frame-rate cap, and emscripten_sleep is the right tool). When there is not — a frame
-		// that already overran its budget — we want only a task boundary, and the old `: 1` bought a
-		// browser-clamped >= 1 ms timer on every one of them. That distinction is preserved exactly: the cap
-		// below only ever converts spare time into sleep, and never adds a timer to a frame with none.
+		// The browser's event loop must run every frame, so the loop yields through Asyncify: emscripten_sleep
+		// spends the cap's spare budget, ufront_yield_frame gives a frame without budget only a task boundary.
+		// (emscripten_set_main_loop's unwind would collide with main()'s try/catch.)
 		{
 			DOUBLE Budget = Cap>0.0 ? (1.0/Cap) : 0.0;
 			INT SleepMs = (INT)((Budget - (appSeconds()-OldTime)) * 1000.0);
@@ -717,8 +553,8 @@ DOUBLE OldTime = appSeconds();
 				emscripten_sleep( SleepMs );
 			else
 				ufront_yield_frame();
-			// ufront 2.43 — one sample per frame. Recorded AFTER the yield so YieldMs covers the present
-			// point; SleepReqMs is INDEX_NONE on the yield path so the two mechanisms stay distinguishable.
+			// One pacing sample per frame, after the yield so YieldMs covers the present point; SleepReqMs is
+			// INDEX_NONE on the yield path.
 			const DOUBLE PaceEnd = appSeconds();
 			UfrontPaceRecord( PaceFrameStart, (FLOAT)((PaceTickEnd-PaceFrameStart)*1000.0), (FLOAT)((PaceEnd-PaceTickEnd)*1000.0), SleepMs>1 ? SleepMs : INDEX_NONE );
 		}
@@ -840,10 +676,8 @@ int main( int argc, char* argv[] )
 	// Set the package name.
 	appStrcpy( THIS_PACKAGE, appPackage() );	
 #endif
-	// Get the command line. ufront (from engine-uc2's launcher): 4096 characters, the size of Core's GCmdLine, and a
-	// token that does not fit is dropped whole, with a warning once the log is up. It was a TCHAR[1024] filled with
-	// appStrcat (strcat): the web's argv (the URL plus every -ini: seed) can pass 1023 characters, and that overran
-	// the stack buffer instead of stopping.
+	// Get the command line: up to 4096 characters, the size of Core's GCmdLine. A token that does not fit is
+	// dropped whole, with a warning once the log is up.
 	TCHAR CmdLine[4096], *CmdLinePtr=CmdLine;
 	*CmdLinePtr = 0;
 	UBOOL CmdLineCut = 0;
@@ -883,10 +717,8 @@ int main( int argc, char* argv[] )
 	GIsClient = 1;
 	GIsGuarded = 0;
 #ifdef __EMSCRIPTEN__
-	// ufront 2.7b (web port): the MEMFS root is "/", but UT99 runs from its System/ dir like a native
-	// install — Default.ini is preloaded at /System and the package-search Paths (../System, ../Maps, ...)
-	// resolve relative to appBaseDir(). FetchFS has created /System (from the manifest) in preRun. chdir
-	// here, BEFORE appInit() caches appBaseDir()=getcwd(), so the base dir becomes "/System/".
+	// The game runs from System/ like a native install: the inis are preloaded at /System and the package Paths
+	// (../System, ../Maps, ...) resolve from appBaseDir(), which appInit() takes from getcwd().
 	chdir( "/System" );
 #endif
 	appInit( TEXT("UnrealTournament"), CmdLine, &Malloc, &Log, &Error, &Warn, &FileManager, FConfigCacheIni::Factory, 1 );

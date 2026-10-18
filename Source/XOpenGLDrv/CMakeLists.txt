@@ -1,27 +1,22 @@
 project(XOpenGLDrv C CXX)
 
-# ufront step 2.7 (engine-ut99): XOpenGLDrv — the full OldUnreal OpenGL renderer, ported to vanilla
-# UT99 v400 (UE1). All v400 adaptations in Src/Inc are gated behind `#if ENGINE_VERSION==400` so the
-# same tree can later target Unreal v200. See the repo-root plan + ENGINE_CHANGES.md.
+# XOpenGLDrv — build glue for OldUnreal's OpenGL renderer, fetched from its v400 fork. The fork gates its
+# v400 adaptations behind `#if ENGINE_VERSION==400`; see ENGINE_CHANGES.md.
 #
-# Like NOpenGLESDrv, this device does NOT create its own GL context on v400 — it reuses the context
-# NSDLViewport already makes current (see Src/XOpenGL.cpp Init, gated). So it needs SDL/NSDLDrv.
+# On v400 the device creates no GL context of its own: it reuses the one NSDLViewport makes current, so it
+# needs SDL/NSDLDrv.
 if(NOT USE_SDL)
   message(FATAL_ERROR "XOpenGLDrv requires NSDLDrv (SDL) to function.")
 endif()
 
-# All Src/*.cpp are standalone translation units (incl. the *_GLSL.cpp shader files and the vendored
-# desktop-GL glad.cpp loader). Source is FETCHED (${XOPENGL_SOURCE_DIR}, set in the top-level
-# CMakeLists.txt); only this build glue lives in the engine tree.
+# All Src/*.cpp are standalone translation units (the *_GLSL.cpp shader files and the fork's desktop-GL
+# glad.cpp loader included), from the fetched ${XOPENGL_SOURCE_DIR}.
 file(GLOB SRC_FILES "${XOPENGL_SOURCE_DIR}/Src/*.cpp")
 
 add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
 
-# Isolated include set: the driver vendors its OWN desktop-GL `glad.h`/`glext.h` (Inc/) and its own
-# glm (glm/) — deliberately NOT the engine's Thirdparty/glad_es (GLES loader) or trimmed Thirdparty/glm
-# (missing gtc/), to avoid header/symbol clashes with NOpenGLESDrv. Inc/ and glm/ come from the fetched
-# driver source (${XOPENGL_SOURCE_DIR}); Render private headers (RenderPrivate.h/UnRender.h) come from
-# the engine's ../Render/Src (relative to this in-tree build glue), exactly as NOpenGLESDrv does.
+# Its own include set: the fork's desktop-GL `glad.h`/`glext.h` (Inc/) and glm (glm/), not the engine's
+# Thirdparty/glad_es or trimmed Thirdparty/glm; the Render private headers come from ../Render/Src.
 target_include_directories(${PROJECT_NAME}
   PRIVATE
   ${XOPENGL_SOURCE_DIR}/Inc

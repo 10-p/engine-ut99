@@ -72,17 +72,14 @@ void UNOpenGLESRenderDevice::StaticConstructor()
 	new(GetClass(), "UseBGRA",        RF_Public)UBoolProperty( CPP_PROPERTY(UseBGRA),        "Options", CPF_Config );
 	new(GetClass(), "MaxAnisotropy",  RF_Public)UFloatProperty( CPP_PROPERTY(MaxAnisotropy),  "Options", CPF_Config );
 	new(GetClass(), "NumAASamples",   RF_Public)UIntProperty( CPP_PROPERTY(NumAASamples),     "Options", CPF_Config );
-	// ufront 2.92: the compiled defaults of the config properties are set here, on the class default object, where
-	// the ini can override them. They were assigned in the constructor, which this v400 engine runs on an object the
-	// ini has ALREADY filled (the 2.91 UNSDLClient defect): every key of [NOpenGLESDrv.NOpenGLESRenderDevice] was
-	// ignored, and the launcher's Antialiasing switch could not turn NumAASamples off (measured: "antialiasing 4x"
-	// with NumAASamples=0 seeded). The values are the shipped web ini's.
+	// Compiled defaults, on the class default object, where the ini overrides them (the constructor runs on an
+	// object the ini has already filled). They match the web ini.
 	DetailTextures = true;
 	Overbright = true;
 	NoFiltering = false;
 	UseVAO = false;
 	UseBGRA = true;
-	MaxAnisotropy = 16.f;   // clamped at Init to whatever the driver actually reports
+	MaxAnisotropy = 16.f;   // clamped at Init to the driver's maximum
 	NumAASamples = 4;
 	unguardSlow;
 }
@@ -97,16 +94,8 @@ UNOpenGLESRenderDevice::UNOpenGLESRenderDevice()
 	BGRA capability.
 -----------------------------------------------------------------------------*/
 
-// ufront 2.19: glad's GLAD_GL_* extension-presence flags are filled by the loader, which the web build no
-// longer compiles (see NOpenGLESDrvPrivate.h). Ask the LIVE context instead — same question, same
-// semantics, just sourced from the thing that actually answers it. (Exactly the lesson of XOpenGL's S3TC
-// bug: a driver that asks anything other than its own context gets told "absent" and silently degrades.)
-// ufront 2.34: this is now the answer on EVERY platform, not just the web. Native used glad's
-// GLAD_GL_* flags, but this tree's glad_es was generated WITHOUT EXT_texture_filter_anisotropic, so
-// `GLAD_GL_EXT_texture_filter_anisotropic` simply does not exist and the native driver had not compiled
-// since 2.19. Asking the live context is the same question with a better source — and it cannot go stale
-// against the generator's extension list again. The web's token stream is unchanged (it already took
-// this branch), so the wasm is untouched.
+// Extension tests ask the live context's GL_EXTENSIONS, on every platform (the web compiles no glad, and the
+// vendored glad_es has no EXT_texture_filter_anisotropic flag).
 #include <string.h>
 #ifdef __EMSCRIPTEN__
 extern "C" int ufront_backbuffer_samples( int Samples ); // msaa-backbuffer.js
@@ -127,7 +116,7 @@ static UBOOL NOpenGLESHasExtension( const char* Name )
 	}
 	return 0;
 }
-// WebGL spells extensions WITHOUT the "GL_" prefix (EXT_texture_format_BGRA8888), so try both.
+// WebGL spells extensions without the "GL_" prefix (EXT_texture_format_BGRA8888), so try both.
 static UBOOL NOpenGLESHasExtensionEither( const char* GLName )
 {
 	if( NOpenGLESHasExtension( GLName ) )
@@ -139,8 +128,7 @@ static UBOOL NOpenGLESHasExtensionEither( const char* GLName )
 	  NOpenGLESHasExtensionEither( "GL_EXT_texture_format_BGRA8888" )   || \
 	  NOpenGLESHasExtensionEither( "GL_MESA_bgra" ) )
 
-// ufront 2.19: EXT_texture_filter_anisotropic tokens. gl2ext.h supplies them on the web and glad on
-// native, but both are optional extensions — define defensively so the driver still builds if absent.
+// EXT_texture_filter_anisotropic tokens, for headers that lack them.
 #ifndef GL_TEXTURE_MAX_ANISOTROPY_EXT
 #define GL_TEXTURE_MAX_ANISOTROPY_EXT 0x84FE
 #endif
@@ -156,10 +144,7 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 	debugf( NAME_Log, TEXT("NOpenGLESDrv::Init: NewX=%d, NewY=%d, ColorBytes=%d, Fullscreen=%d"), NewX, NewY, NewColorBytes, Fullscreen );
 
 #ifndef __EMSCRIPTEN__
-	// ufront 2.19: native still resolves GLES2 through the driver at runtime. On the web the entry points
-	// are linked in directly (see NOpenGLESDrvPrivate.h), and this call would go through
-	// SDL_GL_GetProcAddress — which resolves against nothing there, because the context belongs to the
-	// viewport and SDL never owned it (the same trap that cost XOpenGL its S3TC support, ufront 2.13.2).
+	// Resolve the GLES2 entry points through SDL.
 	if( !gladLoadGLES2Loader( &SDL_GL_GetProcAddress ) )
 	{
 		debugf( NAME_Warning, "Could not load GLES2: %s", SDL_GetError() );
@@ -169,8 +154,8 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 
 	debugf( NAME_Log, "Got OpenGL %s", glGetString( GL_VERSION ) );
 	{
-		// ufront 2.72: the depth the default framebuffer really has. Under -sOFFSCREEN_FRAMEBUFFER this is
-		// Emscripten's emulated framebuffer; 16 here is the banding z-fight (offscreen-depth24.sh makes it 24).
+		// The depth the default framebuffer really has (on the web, Emscripten's emulated framebuffer, which
+		// offscreen-depth24.sh makes 24-bit).
 		GLint DepthBits = 0, StencilBits = 0;
 		glGetIntegerv( GL_DEPTH_BITS, &DepthBits );
 		glGetIntegerv( GL_STENCIL_BITS, &StencilBits );
@@ -201,12 +186,11 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 	{
 		glGenBuffers( 1, &GLBuf );
 		glBindBuffer( GL_ARRAY_BUFFER, GLBuf );
-		glBufferData( GL_ARRAY_BUFFER, VtxDataSize * sizeof(FLOAT), (void*)VtxData, GL_DYNAMIC_DRAW ); // ufront 2.72: bytes, not floats (VAO path; web has UseVAO off)
+		glBufferData( GL_ARRAY_BUFFER, VtxDataSize * sizeof(FLOAT), (void*)VtxData, GL_DYNAMIC_DRAW ); // a size in bytes
 	}
 
-	// ufront 2.19: anisotropic filtering. Real numeric control — clamp the requested level to what this
-	// context actually advertises rather than trusting the ini, and turn it off cleanly if the extension is
-	// absent (1.0 == isotropic, the GL default, so the sampler code needs no special case).
+	// Anisotropic filtering: clamp the requested level to the context's maximum, 1 (isotropic) without the
+	// extension.
 	if( MaxAnisotropy > 1.f )
 	{
 		if( UFRONT_GLES_HAS_ANISO() )
@@ -227,8 +211,8 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 	}
 
 #ifdef __EMSCRIPTEN__
-	// ufront 2.92: antialiasing on the web is a multisampled emulated back buffer (msaa-backbuffer.js), which needs
-	// WebGL 2 (multisampled renderbuffers); asked for or given back on every Init, since a context outlives a device.
+	// Antialiasing on the web is a multisampled emulated back buffer (msaa-backbuffer.js), which needs WebGL 2;
+	// asked for or given back on every Init, since a context outlives a device.
 	{
 		const INT Got = ufront_backbuffer_samples( NumAASamples > 1 ? NumAASamples : 0 );
 		if( Got > 1 )
@@ -239,8 +223,7 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 			debugf( NAME_Log, "GLES2: antialiasing off" );
 	}
 #else
-	// NumAASamples is nominal: the context was made before this driver ran. Report what we were asked for so
-	// the log does not imply a sample count we cannot honour.
+	// Natively the context is made before this driver runs, so NumAASamples is only reported.
 	if( NumAASamples > 0 )
 		debugf( NAME_Log, "GLES2: AA requested (%d samples nominal)", NumAASamples );
 #endif
@@ -631,10 +614,7 @@ void UNOpenGLESRenderDevice::ReadPixels( FColor* Pixels )
 {
 	guard(UNOpenGLESRenderDevice::ReadPixels);
 
-	// ufront 2.91: was glPixelStorei( GL_UNPACK_ALIGNMENT, 0 ) -- the wrong parameter AND an invalid value, which
-	// Emscripten caches as given (libwebgl.js glPixelStorei) and then sizes every later texture upload AND this read
-	// from: (x + 0 - 1) & -0 = 0 bytes, so after one SHOT no texture uploaded and the shot itself read nothing. A
-	// read packs rows; RGBA rows are 4-byte aligned already, 1 just says so.
+	// A read packs rows: PACK alignment, 1 (RGBA rows are 4-byte aligned anyway).
 	glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 	glReadPixels( 0, 0, Viewport->SizeX, Viewport->SizeY, GL_RGBA, GL_UNSIGNED_BYTE, (void*)Pixels );
 
@@ -681,10 +661,8 @@ void UNOpenGLESRenderDevice::UpdateUniforms()
 	if( UniformsChanged[UF_Brightness] )
 	{
 		FlushTriangles();
-		// ufront 2.72: a modulated poly multiplies the framebuffer by 2*texel, so its neutral grey must stay exactly
-		// 0.5 — the brightness scale (0.5 + B in this shader) lifted every modulated sprite above neutral away from
-		// B=0.5 and stacked per overlapping quad: the sprite's square around lingering smoke (found on Unreal 1, whose
-		// copy of this driver scales by 0.5 + 1.5*B). Send the neutral value while PF_Modulated is the current blend.
+		// A modulated poly multiplies the framebuffer by 2*texel, so its neutral grey must stay exactly 0.5: send the
+		// neutral brightness while PF_Modulated is the current blend.
 		glUniform1f( ShaderInfo->Uniforms[UF_Brightness], ( CurrentPolyFlags & PF_Modulated ) ? 0.5f : CurrentBrightness );
 		UniformsChanged[UF_Brightness] = false;
 	}
@@ -957,7 +935,7 @@ void UNOpenGLESRenderDevice::SetBlend( DWORD PolyFlags, UBOOL InverseOrder )
 			glColorMask( Show, Show, Show, Show );
 		}
 		if( Xor & PF_Modulated )
-			UniformsChanged[UF_Brightness] = true; // ufront 2.72: brightness is neutral for modulated polys (UpdateUniforms)
+			UniformsChanged[UF_Brightness] = true; // brightness is neutral for modulated polys (UpdateUniforms)
 		if( Xor & PF_Occlude )
 			glDepthMask( (PolyFlags & PF_Occlude) != 0 );
 		if( Xor & PF_Masked )
@@ -988,8 +966,7 @@ void UNOpenGLESRenderDevice::UpdateTextureFilter( const FTextureInfo& Info, DWOR
 	{
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, ( Info.NumMips > 1 ) ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR );
 		glTexParameteri( GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR );
-		// ufront 2.19: anisotropy only makes sense on the smooth path, and only with mips to sample across.
-		// MaxAnisotropy is already clamped to the driver maximum at Init (1.0 when unsupported).
+		// Anisotropy on the smooth path, with mips to sample across; MaxAnisotropy is clamped at Init.
 		if( MaxAnisotropy > 1.f && Info.NumMips > 1 )
 			glTexParameterf( GL_TEXTURE_2D, GL_TEXTURE_MAX_ANISOTROPY_EXT, MaxAnisotropy );
 	}

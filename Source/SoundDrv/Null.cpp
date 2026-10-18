@@ -1,15 +1,8 @@
 /*=============================================================================
 	Null.cpp: A do-nothing audio subsystem (silent).
 
-	ufront step 2.7a (engine-ut99). ut99dc's shipped inis select
-	`SoundDrv.NullAudioSubsystem`, but the `SoundDrv` package was never included
-	in the ut99dc tree (only the Dreamcast `AICADrv` and the OSS-`/dev/dsp`
-	`Audio` subsystem, neither usable on native-Linux/WASM). This provides the
-	null subsystem the config already references — silent audio that works on
-	every platform. Mirrors engine-unreal1's `SoundDrv/Null.cpp`, adapted to
-	UT99 v400's `UAudioSubsystem` interface (Engine/Inc/UnAudio.h): the v400 ABI
-	adds GetViewport/RenderAudioGeometry/PostRender and takes an `FOutputDevice&`
-	in Exec. Real audio (SDL2/OpenAL) is a documented future enhancement.
+	The silent audio subsystem (SoundDrv.NullAudioSubsystem) on v400's
+	UAudioSubsystem interface; NOpenALDrv is the audio driver of every target.
 =============================================================================*/
 
 #include "Engine.h"
@@ -27,8 +20,7 @@ class DLL_EXPORT UNullAudioSubsystem : public UAudioSubsystem
 {
 	DECLARE_CLASS(UNullAudioSubsystem, UAudioSubsystem, CLASS_Config)
 
-	// Class registration hook (the ut99dc driver convention). No config
-	// properties — silent audio needs none.
+	// v200-era class hook; v400 never calls it. No config properties.
 	static void InternalClassInitializer( UClass* Class ) {}
 
 	// UAudioSubsystem interface (UT99 v400, Engine/Inc/UnAudio.h).

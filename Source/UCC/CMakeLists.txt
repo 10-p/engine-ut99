@@ -1,9 +1,7 @@
 project(UCC CXX)
 
-# ufront 2.12 Part B: ucc — the UT99 command-line tool (dedicated server / UnrealScript `make` / commandlets).
-# A headless console EXECUTABLE (no client, no SDL, no renderer): UCC.cpp sets GIsClient off and dispatches
-# UCommandlet subclasses from argv. Native-only (there is no ucc on the web build). Was previously an
-# `add_library` with a stray RENDER_EXPORTS def (why add_subdirectory(UCC) was commented out) — fixed here.
+# ucc — the command-line tool (dedicated server, UnrealScript `make`, commandlets): a headless executable
+# (no client, no SDL, no renderer) that dispatches UCommandlet subclasses from argv. Native only.
 set(SRC_FILES
   "Src/UCC.cpp"
 )
@@ -19,18 +17,10 @@ target_include_directories(${PROJECT_NAME}
 )
 
 if(BUILD_STATIC)
-  # ufront 2.79 — a STATIC build (the `native` and `windows` presets: UNREAL_STATIC) has no package .so files
-  # to load at runtime: appGetDllHandle answers from the in-binary export registry (Core/UnStaticExports),
-  # and a package is only in that registry if its objects are in THIS binary. Linking just Engine + Core
-  # as ordinary archives pulled in only the objects UCC.cpp references, so not even Engine's own
-  # registrants survived ("Loading: Package Engine" with no "Bound to Engine"), and every commandlet
-  # outside Core was missing -- `ucc server` said "Commandlet server not found".
-  #
-  # So link the package set the way the game target does (UnrealTournament/CMakeLists.txt), under
-  # --whole-archive so each package's GLoaded<Pkg> export and IMPLEMENT_CLASS registrants are kept -- minus
-  # everything a headless tool never opens: the viewport (NSDLDrv/SDL2), the render devices and the audio
-  # subsystems (no GIsClient in a dedicated server, so none of them is ever loaded; they would only drag
-  # SDL2/GL/OpenAL into the binary). Same shape as engine-ut2004's UCC.
+  # A static build (UNREAL_STATIC) loads no package libraries: appGetDllHandle answers from the in-binary export
+  # registry (Core/UnStaticExports), which holds only the packages linked into this binary. So link the package
+  # set as the game target does, under --whole-archive (each package's GLoaded<Pkg> export and IMPLEMENT_CLASS
+  # registrants are kept), minus what a headless tool never opens: the viewport, render devices and audio.
   #   Render  -- the software scene renderer; no external libraries, kept so client-flagged commandlets can load it.
   #   IpDrv   -- TcpNetDriver (the server's listen socket), UdpLink/TcpLink, the master/update commandlets.
   #   UWeb    -- the game ships UWeb.u, whose natives must bind when a server actor loads it.
@@ -46,6 +36,6 @@ else()
   target_link_libraries(${PROJECT_NAME} Engine Core)
 endif()
 
-# UCC.cpp is retail-era code: its file-manager #if uses the legacy uppercase __LINUX__ (the modernized
-# Launch.cpp includes FFileManagerLinux directly). Define it so ucc picks FFileManagerLinux + FMallocAnsi.
+# UCC.cpp's file-manager #if keys on __LINUX__: defined for every build here, so a non-WIN32 ucc takes
+# FFileManagerLinux + FMallocAnsi.
 target_compile_definitions(${PROJECT_NAME} PRIVATE UPACKAGE_NAME=${PROJECT_NAME} __LINUX__)

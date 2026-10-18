@@ -1,18 +1,17 @@
 #!/usr/bin/env bash
 # botmatch.sh -- a headless native bot match: a dedicated server, one client that joins it, and a poll of
-# the server's query port. Prints one summary line per run tree. (ufront 2.83: the 64-bit oracle loop.)
+# the server's query port. Prints one summary line per run tree.
 #
 #   tools/dev/botmatch.sh <server-run-tree> <seconds> [<client-run-tree>] [<map>]
 #
-# Bots come from [Botpack.DeathMatchPlus] MinPlayers in the SERVER tree's UnrealTournament.ini (it is
+# Bots come from [Botpack.DeathMatchPlus] MinPlayers in the server tree's UnrealTournament.ini (it is
 # globalconfig, not a URL option); a dedicated server only adds them once a human has joined. The server
 # port is that ini's [URL] Port; the query port is Port+1. The client may be another run tree, e.g. a
 # 32-bit client joining a 64-bit server. Output lands in <server-run-tree>/botmatch/.
 #
-# Traps this handles: `timeout xvfb-run ...` kills the wrapper and leaves the game running, so the timeout
-# is inside; stdout and the engine log are 4 KB block-buffered, so every process runs under `stdbuf -oL`.
-# A sanitizer report counts as a crash marker: an ASan abort in the CLIENT otherwise looks like a player
-# leaving -- the server keeps running and the summary stayed clean (ufront 2.83).
+# `timeout xvfb-run ...` would kill the wrapper and leave the game running, so the timeout is inside;
+# stdout and the engine log are block-buffered, so every process runs under `stdbuf -oL`. A sanitizer
+# report counts as a crash marker (an ASan abort in the client otherwise looks like a player leaving).
 set -eu
 SRV=$(readlink -f "${1:?usage: botmatch.sh <server-run-tree> <seconds> [<client-run-tree>] [<map>]}")
 SECS=${2:?}
@@ -49,7 +48,7 @@ while [ $((SECONDS-T0)) -lt "$SECS" ]; do
     echo "$((SECONDS-T0))s time=$(q '\level_property\TimeSeconds\') bots=$(q '\game_property\NumBots\') humans=$(q '\game_property\NumPlayers\') ended=$(q '\game_property\bGameEnded\')" >> "$OUT/poll.txt"
     sleep 15
 done
-# Stop the GAME, not the xvfb-run wrapper: xvfb-run then shuts its own X server down (killing the wrapper
+# Stop the game, not the xvfb-run wrapper: xvfb-run then shuts its own X server down (killing the wrapper
 # orphans Xvfb). The server's `timeout` forwards SIGTERM to ucc-bin. (No `pkill -f` on the map: it is a
 # regex and a map like DM-Deck16][ is not a valid one.)
 pkill -f "^./UnrealTournament 127.0.0.1:$PORT " 2>/dev/null || true

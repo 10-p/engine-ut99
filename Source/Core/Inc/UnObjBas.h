@@ -6,7 +6,7 @@
 		* Created by Tim Sweeney
 =============================================================================*/
 
-// ufront 2.83 -- the UnrealScript mirror contract. A native class is laid out twice: by the C++ compiler
+// The UnrealScript mirror contract. A native class is laid out twice: by the C++ compiler
 // from its header, and by UStruct::Link from the property list in the .u package, which puts every
 // member on a 4-byte boundary (Win32 /Zp4, what Epic compiled with). The two must agree member for
 // member. On 32-bit targets they do by construction (i386 aligns nothing past 4, and the web and MinGW
@@ -14,7 +14,7 @@
 // that declares a scripted native class, or a struct the script mirrors, packs its declarations to 4
 // explicitly. That is a no-op on every 32-bit target. -fpack-struct=4 cannot do this job at 64-bit: it
 // would also repack every system and library struct the engine includes.
-#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+#pragma pack (push,4) /* script-mirrored classes keep the Win32 /Zp4 layout on every target */
 
 /*-----------------------------------------------------------------------------
 	Core enumerations.
@@ -306,18 +306,9 @@ public: \
 
 // Declare a concrete class.
 //
-// NOTE the placement-new in InternalConstructor is deliberately written WITHOUT parentheses
-// (`new(X)TClass`, not `new(X)TClass()`). Empty parens mean VALUE-initialization, and under modern
-// C++ a class with no USER-PROVIDED default constructor is ZERO-INITIALIZED before its (implicit)
-// constructor runs. That would wipe the UObject header -- Index/Name/Outer/Class/ObjectFlags --
-// which StaticAllocateObject has just written, because StaticConstructObject calls the class
-// constructor immediately AFTER allocating and initializing the object. The result is a live object
-// with Class==NULL, which crashes the moment anything calls GetClass() (e.g. GetFullName()).
-// The 1998 MSVC this engine was written against did not zero-initialize here, so the parens were
-// harmless then; GCC implements the current rule. Dropping them restores default-initialization:
-// identical behaviour for every class that DOES declare a default constructor (the vast majority),
-// and no header clobbering for the plain ones (e.g. the legacy UVectors/UVerts/UBspNodes/UBspSurfs
-// containers in UnModel.cpp that only load <=v61 maps -- the case that exposed this).
+// The placement-new in InternalConstructor has no parentheses (`new(X)TClass`): empty parens would
+// value-initialize, which zero-fills a class without a user-provided default constructor and so wipes the
+// UObject header (Index/Name/Outer/Class/ObjectFlags) StaticAllocateObject has just written.
 #define DECLARE_CLASS( TClass, TSuperClass, TStaticFlags ) \
 	DECLARE_BASE_CLASS( TClass, TSuperClass, TStaticFlags ) \
 	friend FArchive &operator<<( FArchive& Ar, TClass*& Res ) \
@@ -504,7 +495,7 @@ public:
 	static void StaticShutdownAfterError();
 	static UObject* GetIndexedObject( INT Index );
 
-	// Script object references (ufront 2.83). Compiled UnrealScript keeps a 4-byte slot for every object
+	// Script object references. Compiled UnrealScript keeps a 4-byte slot for every object
 	// it names (a property, function, struct, class or object constant), and the retail packages computed
 	// every jump, skip, label and saved state offset around slots of that size. So in memory a slot holds
 	// the object's index in the object table rather than its address: the stream has the same layout on

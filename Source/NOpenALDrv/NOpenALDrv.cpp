@@ -1,18 +1,13 @@
 #include <stdlib.h>
 
-// ufront 2.61: every platform plays through openal-soft now — the web too (cmake/OpenALSoftWeb.cmake: mixed on
-// a pthread, played by an AudioWorklet), where 2.12 had Emscripten's built-in OpenAL 1.1 core and so compiled
-// out EFX reverb, HRTF and AL_METERS_PER_UNIT under NOPENAL_WEB. That guard is gone: one code path, the full
-// feature set on every target. Music is still pumped from Update() everywhere (no decoder thread, 2.12).
+// One code path on every target: the web links the openal-soft fork too (cmake/OpenALSoft.cmake: mixed on a
+// pthread, played by an AudioWorklet). Music is pumped from Update(); there is no decoder thread.
 
 #include "AL/al.h"
 #include "AL/alc.h"
 #include "AL/alext.h"
-// ufront 2.76: EFX IS RESOLVED AT RUN TIME AND NEVER LINKED. `AL_ALEXT_PROTOTYPES` used to be defined here,
-// which turns every EFX call into an ordinary linked symbol — seven of them (alGenEffects, alEffecti/f/fv,
-// alGenAuxiliaryEffectSlots, alDeleteAuxiliaryEffectSlots, alAuxiliaryEffectSloti). Against an OpenAL that
-// has no EFX that is a LINK error, not a fallback, and this driver is meant to run on whatever OpenAL a
-// platform has (the FunKey and other native builds). The pointers live in `Efx` below.
+// EFX is resolved at run time, never linked (no AL_ALEXT_PROTOTYPES), so the driver links against an OpenAL
+// without EFX and plays everything but reverb there. The pointers live in `Efx` below.
 #if defined(__has_include)
 #  if __has_include("AL/efx.h")
 #    define NOPENAL_HAVE_EFX_HEADERS 1
@@ -25,7 +20,7 @@
 #include "AL/efx-presets.h"
 #else
 // A core-only SDK (no <AL/efx.h>): spell out the handful of types and enums this driver uses, so it still
-// COMPILES. The EAX reverb preset table is efx-presets.h's and is not reproduced — without those headers the
+// compiles. The EAX reverb preset table is efx-presets.h's and is not reproduced — without those headers the
 // EAX path compiles out and there is no reverb.
 #define NOPENAL_NO_EAX 1
 typedef void (AL_APIENTRY *LPALGENEFFECTS)( ALsizei, ALuint* );
@@ -65,12 +60,9 @@ typedef void (AL_APIENTRY *LPALAUXILIARYEFFECTSLOTI)( ALuint, ALenum, ALint );
 IMPLEMENT_PACKAGE(NOpenALDrv);
 IMPLEMENT_CLASS(UNOpenALAudioSubsystem);
 
-// ufront 2.76 — EFX's entry points, resolved once in Init and NEVER referenced at link time (see the include
-// block above). `Present` is the whole test the rest of the driver makes: the device advertises ALC_EXT_EFX
-// AND every pointer resolved. A library that has neither (a core OpenAL 1.1) plays everything except reverb.
-//
-// File-static on purpose: it is per-process state, and the audio subsystem is a NATIVE UE1 class whose layout
-// script depends on — this adds no member to it.
+// EFX's entry points, resolved once in Init. `Present` is the test the rest of the driver makes: the device
+// advertises ALC_EXT_EFX and every pointer resolved. File-static, so the native class's script-visible layout
+// gains no member.
 static struct FNOpenALEfx
 {
 	LPALGENEFFECTS                 GenEffects;
@@ -84,7 +76,7 @@ static struct FNOpenALEfx
 	UBOOL                          Present;
 } Efx;
 
-// Resolve them. Call with the context CURRENT: alGetProcAddress is context-dependent.
+// Resolve them. Call with the context current: alGetProcAddress is context-dependent.
 static UBOOL ResolveEfx( ALCdevice* InDevice )
 {
 	appMemzero( &Efx, sizeof(Efx) );
@@ -112,13 +104,9 @@ static UBOOL ResolveEfx( ALCdevice* InDevice )
 void UNOpenALAudioSubsystem::StaticConstructor()
 {
 	guardSlow(UNOpenALAudioSubsystem::StaticConstructor);
-	// Register the config properties here. v400 calls StaticConstructor at class registration (wired by the
-	// DECLARE_CLASS macro, Core/Inc/UnObjBas.h) — the v200-style InternalClassInitializer hook this driver
-	// previously used is NEVER invoked by v400, so MusicVolume/SoundVolume/... were left UNREGISTERED. That
-	// made LoadConfig() read nothing (audio ran on the C++ ctor defaults) AND made the UWindow audio menu's
-	// `get/set ini:Engine.Engine.AudioDevice MusicVolume` find no property -> the sliders showed/forced 0.
-	// Mirrors URenderDevice::StaticConstructor (UnCamera.cpp). DeviceName stays unregistered (no UStrProperty
-	// for a fixed char[]); it stays "" -> the default AL device (alcOpenDevice(NULL)), which is correct.
+	// The config properties (v400 calls StaticConstructor at class registration); the UWindow audio menu reads
+	// and writes them with `get/set ini:Engine.Engine.AudioDevice`. DeviceName is not registered (a fixed char[]):
+	// it stays "", the default AL device.
 	new(GetClass(), TEXT("OutputRate"),         RF_Public)UIntProperty   ( CPP_PROPERTY( OutputRate         ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("MusicVolume"),        RF_Public)UByteProperty  ( CPP_PROPERTY( MusicVolume        ), TEXT("Audio"), CPF_Config );
 	new(GetClass(), TEXT("SoundVolume"),        RF_Public)UByteProperty  ( CPP_PROPERTY( SoundVolume        ), TEXT("Audio"), CPF_Config );
@@ -139,7 +127,7 @@ UNOpenALAudioSubsystem::UNOpenALAudioSubsystem()
 	MusicVolume = 63;
 	AmbientFactor = 0.6f;
 	DopplerFactor = 0.01f;
-	UseHRTF = false;	// ufront 2.61: the player's choice (see Init)
+	UseHRTF = false;	// the player's choice (see Init)
 	UseReverb = true;
 	ReverbKind = REVERB_EAX;
 	MusicInterpolation = XMP_INTERP_LINEAR;
@@ -149,13 +137,8 @@ UBOOL UNOpenALAudioSubsystem::Init()
 {
 	guard(UNOpenALAudioSubsystem::Init)
 
-	// Apply the [NOpenALDrv.NOpenALAudioSubsystem] ini config (MasterVolume/SoundVolume/MusicVolume/...) onto
-	// this live instance. The engine constructs us with ConstructObject + Init() and never LoadConfigs us:
-	// the ClassConstructor runs AFTER InitProperties (so the C++ ctor defaults clobber the memcpy'd class
-	// defaults), and the web static build's StaticConstructObject only repairs *wiped* native config objects
-	// (Class==NULL) — we have a real ctor so we're skipped. Without this the volume-menu sliders (which
-	// read/write `get/set ini:Engine.Engine.AudioDevice MusicVolume`) diverged from the audio the driver
-	// actually played. LoadConfig only touches our CPF_Config properties; it's idempotent + safe. (2.12)
+	// The constructor's defaults overwrite the ini values the class defaults carried, so read the
+	// [NOpenALDrv.NOpenALAudioSubsystem] section onto this instance again (only CPF_Config properties).
 	LoadConfig();
 
 	Viewport = NULL;
@@ -181,12 +164,9 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	if( MusicInterpolation > XMP_INTERP_SPLINE )
 		MusicInterpolation = XMP_INTERP_SPLINE;
 
-	// ufront 2.61 -- HRTF. This passed ALC_SOFT_HRTF, the extension's PRESENCE macro (value 1), as the attribute
-	// KEY where ALC_HRTF_SOFT (0x1992) belongs, so openal-soft ignored it and UseHRTF never did anything on any
-	// platform. And HRTF is a STEREO rendering: asked for alone, a 5.1/7.1 device renders surround and reports
-	// ALC_HRTF_UNSUPPORTED_FORMAT_SOFT (Firefox reports a 5.1 device's six channels to the page, measured in
-	// ufront 2.61 §3.1). So UseHRTF also asks for the stereo-HRTF output mode, and is off by default: it is the
-	// player's choice (the launcher's "Headphone audio"), because no browser can tell headphones from speakers.
+	// HRTF is a stereo rendering: a surround device asked for HRTF alone renders surround and reports
+	// ALC_HRTF_UNSUPPORTED_FORMAT_SOFT, so UseHRTF also asks for the stereo-HRTF output mode. Off by default: no
+	// browser can tell headphones from speakers, so it is the player's choice.
 	const ALint AttrList[] = {
 		ALC_FREQUENCY, OutputRate,
 		ALC_HRTF_SOFT, UseHRTF ? ALC_TRUE : ALC_FALSE,
@@ -205,8 +185,8 @@ UBOOL UNOpenALAudioSubsystem::Init()
 
 	alcMakeContextCurrent( Ctx );
 
-	// ufront 2.76: two tiers, decided here (context current, so the line below can report it) by what the LINKED
-	// library offers: EFX -> EFX's EAX reverb (the 2.61 path); no EFX at all -> everything except reverb plays.
+	// With EFX, reverb is EFX's EAX reverb; without it everything except reverb plays (the context is current,
+	// so the line below can report it).
 	ResolveEfx( Device );
 	ReverbKind = REVERB_EAX;
 	if( UseReverb && !Efx.Present )
@@ -272,7 +252,7 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	USound::Audio = this;
 	UMusic::Audio = this;
 
-	// Music is pumped from Update() (single-threaded; no background decoder thread — see the header note).
+	// Music is pumped from Update(); there is no decoder thread.
 
 	return true;
 
@@ -624,11 +604,8 @@ UBOOL UNOpenALAudioSubsystem::PlaySound( AActor* Actor, INT Id, USound* Sound, F
 	if( !Viewport )
 		return false;
 
-	// Lazily register the sound the first time it's played. On the web static build a sound's data-load-time
-	// RegisterSound hook (UnAudio.cpp, gated on USound::Audio being set) is unreliable — packages can load
-	// before the audio subsystem exists — leaving Sound->Handle==0, so every gameplay one-shot (weapon fire,
-	// impacts, screams) was silently dropped by the !Sound->Handle bail below while ambience (registered when
-	// its map loaded) still played. Register on demand, mirroring UGenericAudioSubsystem::GetSound(). (2.12)
+	// Register the sound the first time it is played, as UGenericAudioSubsystem::GetSound() does: packages can load
+	// before the audio subsystem exists, so the load-time RegisterSound hook (UnAudio.cpp) may not have run.
 	if( Sound && !Sound->Handle && Sound->Data.Num() )
 		RegisterSound( Sound );
 
@@ -772,9 +749,8 @@ void UNOpenALAudioSubsystem::Update( FPointRegion Region, FCoords& Listener )
 {
 	guard(UNOpenALAudioSubsystem::Update)
 
-	// Pump the music stream here every frame (web + native share this single music path; no background
-	// decoder thread). Done before the realtime early-return so menu/title music keeps streaming even when
-	// there's no live viewport.
+	// Pump the music stream every frame, before the realtime early-return, so menu and title music keeps
+	// streaming without a live viewport.
 	UpdateMusicBuffers();
 
 	if( !Viewport || !Viewport->IsRealtime() )
@@ -1042,7 +1018,7 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 	guard(UNOpenALAudioSubsystem::UpdateReverb)
 
 	if( ReverbKind == REVERB_NONE )
-		return;   // ufront 2.76: no EFX in this library — there is no slot to point at a zone
+		return;   // no EFX: there is no slot to point at a zone
 
 	const UBOOL bNewReverb = ( Viewport->Actor && Viewport->Actor->Region.Zone && Viewport->Actor->Region.Zone->bReverbZone );
 
@@ -1069,7 +1045,7 @@ void UNOpenALAudioSubsystem::UpdateReverb( FPointRegion& Region )
 			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, AL_EFFECT_NULL );
 			Efx.Effectf( ReverbEffect, AL_EAXREVERB_GAIN, ReverbZone->MasterGain / 255.f );
 			Efx.AuxiliaryEffectSloti( ReverbSlot, AL_EFFECTSLOT_EFFECT, ReverbEffect );
-			// ufront 2.61: reverb used to be unreachable on the web; say once that it really engages.
+			// Say once that reverb engages.
 			static UBOOL LoggedReverb = 0;
 			if( !LoggedReverb )
 			{
@@ -1087,7 +1063,7 @@ void UNOpenALAudioSubsystem::InitReverbEffect()
 	guard(UNOpenALAudioSubsystem::InitReverbEffect)
 
 	if( ReverbKind == REVERB_NONE )
-		return;   // ufront 2.76: no EFX — no effect object was created
+		return;   // no EFX: no effect object was created
 
 #if !NOPENAL_NO_EAX
 	EFXEAXREVERBPROPERTIES Reverb = EFX_REVERB_PRESET_GENERIC;
@@ -1150,6 +1126,5 @@ UBOOL UNOpenALAudioSubsystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	unguard;
 }
 
-// ufront 2.12: no background music thread — StartMusicThread/StopMusicThread/MusicThreadProc were removed.
-// Music is decoded incrementally in UpdateMusicBuffers(), pumped from Update() each frame (web + native).
+// Music is decoded incrementally in UpdateMusicBuffers(), pumped from Update() each frame.
 

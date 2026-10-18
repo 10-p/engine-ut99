@@ -49,7 +49,7 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define CDECL	    __cdecl					/* Standard C function */
 #define STDCALL		__stdcall				/* Standard calling convention */
 #define FORCEINLINE __forceinline			/* Force code to be inline */
-#define ALWAYS_INLINE __forceinline			/* ufront 2.83: see UnGnuG.h */
+#define ALWAYS_INLINE __forceinline
 #define appUnalignedCopy(Dest,Src,Count) memcpy(Dest,Src,Count)	/* an intrinsic for a constant count */
 #define ZEROARRAY                           /* Zero-length arrays in structs */
 
@@ -74,7 +74,7 @@ typedef	signed char			SBYTE;		// 8-bit  signed.
 typedef signed short		SWORD;		// 16-bit signed.
 typedef signed int  		INT;		// 32-bit signed.
 typedef signed __int64		SQWORD;		// 64-bit signed.
-typedef INT_PTR				PTRINT;		// Pointer-sized signed (ufront 2.83).
+typedef INT_PTR				PTRINT;		// Pointer-sized signed.
 typedef UINT_PTR			UPTRINT;	// Pointer-sized unsigned.
 
 // Character types.

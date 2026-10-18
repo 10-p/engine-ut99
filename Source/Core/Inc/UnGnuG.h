@@ -22,8 +22,8 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-// ufront 2.33 (Windows/MinGW): <alloca.h> and <strings.h> are glibc/musl spellings that MinGW does not
-// ship — alloca lives in <malloc.h> (included below) and the <strings.h> names are in <string.h>.
+// MinGW has no <alloca.h> or <strings.h>: alloca is in <malloc.h> (included below) and the <strings.h>
+// names are in <string.h>.
 #ifndef PLATFORM_WIN32
 #include <alloca.h>
 #endif
@@ -35,9 +35,7 @@
 #include <malloc.h>
 #include <dirent.h>
 #include <limits.h>
-// ufront 2.7b (web port): emscripten's musl libc doesn't pull PATH_MAX transitively the way the native
-// Linux headers do; UnUnix.cpp + the launcher use fixed TCHAR[PATH_MAX] buffers. Guard so native/DC (which
-// already define it) are untouched.
+// UnUnix.cpp and the launcher use TCHAR[PATH_MAX] buffers; Emscripten's musl headers do not always define it.
 #ifndef PATH_MAX
 #define PATH_MAX 4096
 #endif
@@ -60,12 +58,8 @@
 #undef MAXDWORD
 #undef MAXINT
 #ifndef PLATFORM_WIN32
-// ufront 2.34 — do NOT undefine VOID on Windows. Unlike the names above it is not an engine type that
-// the Win32 headers happen to collide with; it is <winnt.h>'s own `#define VOID void`, and the Windows
-// and GL headers included AFTER this point declare hundreds of prototypes with it (`VOID WINAPI ...`,
-// `void APIENTRY glFoo(... VOID)`). Undefining it here turns every one of them into a parse error far
-// from the cause — the same trap already fixed in engine-ut2004 and engine-unreal1 during 2.33. It
-// surfaced here the moment a GL render device (UTGLR) was enabled for the Windows build.
+// VOID stays defined on Windows: it is <winnt.h>'s own `#define VOID void`, and the Windows and GL headers
+// included after this point declare prototypes with it.
 #undef VOID
 #endif
 #undef CDECL
@@ -95,9 +89,8 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define DLL_EXPORT_CLASS
 #define VARARGS
 #define CDECL
-// ufront 2.33 (Windows/MinGW): on Windows STDCALL is a real calling convention, not decoration — the
-// Win32 callback typedefs (LPTHREAD_START_ROUTINE, used by IpDrv's resolver thread) carry __stdcall and a
-// plain cdecl function will not convert to them. Everywhere else it stays empty as before.
+// On Windows STDCALL is a real calling convention: the Win32 callback typedefs (LPTHREAD_START_ROUTINE,
+// used by IpDrv's resolver thread) carry __stdcall. Elsewhere it is empty.
 // Likewise __cdecl: it is a builtin keyword on MinGW, and #define'ing it away both warns and would strip
 // the convention from any system header declaration that uses it.
 #ifdef PLATFORM_WIN32
@@ -107,8 +100,8 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 #define __cdecl
 #endif
 #define FORCEINLINE /* Force code to be inline */
-// ufront 2.83: inlined at EVERY optimisation level -- the script VM (UnCorSc.cpp) is compiled at -Og, where
-// an ordinary inline function that grows past a few instructions becomes a call per bytecode operand.
+// Inlined at every optimisation level: the script VM (UnCorSc.cpp) is compiled at -Og, where an ordinary
+// inline function past a few instructions becomes a call per bytecode operand.
 #define ALWAYS_INLINE inline __attribute__((always_inline))
 // A copy of a small, constant number of bytes from a possibly unaligned address: one load where the CPU
 // allows unaligned loads, never a library call (the builtin expands inline at any optimisation level).
@@ -158,10 +151,8 @@ enum {CACHE_LINE_SIZE   = 32}; // Cache line size.
 // Unsigned base types.
 typedef uint8_t				BYTE;		// 8-bit  unsigned.
 typedef uint16_t			_WORD;		// 16-bit unsigned.
-// ufront 2.33 (Windows/MinGW): <minwindef.h> (included above under PLATFORM_WIN32) already declares DWORD
-// and SIZE_T, and a second typedef is a hard "conflicting declaration" error even though the types are
-// identical on Win32 — DWORD is `unsigned long` (32-bit) and SIZE_T is ULONG_PTR (32-bit). The #undef
-// block further up only handles the era when these were macros, not typedefs. Take the platform's.
+// <minwindef.h> (included above under PLATFORM_WIN32) already declares DWORD and SIZE_T as typedefs, and a
+// second typedef is a conflicting declaration: take the platform's.
 #ifndef PLATFORM_WIN32
 typedef uint32_t 			DWORD;		// 32-bit unsigned.
 #endif
@@ -173,7 +164,7 @@ typedef int16_t  			SWORD;		// 16-bit signed.
 typedef int32_t    			INT;		// 32-bit signed.
 typedef int64_t  			SQWORD;		// 64-bit signed.
 
-// Pointer-sized integers (ufront 2.83). Use these wherever a pointer passes through an integer: an
+// Pointer-sized integers. Use these wherever a pointer passes through an integer: an
 // address rounded up, a pointer parked in a script-visible slot, a pointer printed or hashed. INT and
 // DWORD stay 32-bit on every target, so a pointer through either is truncated on LP64.
 typedef intptr_t			PTRINT;		// Pointer-sized signed.
@@ -194,12 +185,8 @@ typedef size_t        		SIZE_T;     // Corresponds to C SIZE_T.
 #endif
 
 // Bitfield type.
-// ufront 2.33 (Windows/MinGW): must stay IDENTICAL to DWORD, not merely the same width. UE1 serialises
-// BITFIELD members through `Ar << Member` and relies on the DWORD overload of operator<< picking them up
-// — which works only while the two are the same type. Taking DWORD from <minwindef.h> (unsigned long)
-// while BITFIELD stayed uint32_t (unsigned int) made them distinct 32-bit types and every such serialise
-// became an ambiguous overload (Editor/Src/UnEdFact.cpp). UnVcWin32.h declares both `unsigned long` for
-// exactly this reason.
+// The same type as DWORD, not merely the same width: UE1 serialises BITFIELD members through
+// `Ar << Member` with the DWORD overload of operator<< (UnVcWin32.h declares both `unsigned long`).
 #ifdef PLATFORM_WIN32
 typedef DWORD				BITFIELD;	// For bitfields.
 #else
@@ -263,17 +250,7 @@ CORE_API DOUBLE appSecondsSlow();
 #define DEFINED_appRound 1
 inline INT appRound( FLOAT F )
 {
-	// NOT (INT)F. The MSVC original (UnVcWin32.h) is `fld [F]; fistp [I]`, and fistp ROUNDS using
-	// the FPU's current mode; the GCC port transliterated the shape and dropped that, leaving a
-	// plain cast. C++ float->int truncates toward zero, so this rounded nothing: appRound(3.7)
-	// returned 3. It disagreed with a true round on 49% of inputs, on every target -- native, ARM
-	// and the web alike, since the language rule is what changed, not the instruction set.
-	// engine-unreal1 has the correct definition in UnFile.cpp, which is why this never showed there.
-	//
-	// Owner-confirmed: restoring these two primitives fixed the long-standing horizontal-streak bug
-	// in the software renderer -- 1px-tall streaks that ran until the span buffer stopped them,
-	// taking their source's texture and lighting and degenerating into bright noise, on both BSP
-	// surfaces (stairs, marble) and meshes (barrel, rocket launcher, vehicles).
+	// A rounding, as the MSVC original's `fld [F]; fistp [I]` is; a plain (INT)F would truncate toward zero.
 	return (INT)floorf( F + 0.5f );
 }
 
@@ -283,18 +260,8 @@ inline INT appRound( FLOAT F )
 #define DEFINED_appFloor 1
 inline INT appFloor( FLOAT F )
 {
-	// Same story as appRound above: the MSVC original is `fld [F]; fsub [Half]; fistp [I]`, where
-	// fistp's round-to-nearest turns (F - 0.5) into floor(F). Without the rounding it is just a
-	// truncation of F-0.5, so appFloor(3.2) returned 2 and appFloor(-3.2) returned -3.
-	//
-	// The knock-on was worse than the off-by-one. IntY/YFloor come from here, so the effective
-	// scanline boundary sat at y.5 instead of y.0 -- which defeats the engine's own degeneracy
-	// guard (the deliberate `+1.0001` in FX15/FY15, UnCamera.cpp, exists to keep vertices off the
-	// boundary and is calibrated for integers). Edges straddling a half-pixel line then passed the
-	// rasterisers' `IntY != IntY` test with an arbitrarily small delta-Y, so 1/delta-Y exploded:
-	// UnRender.cpp's span rasteriser overflowed its DWORD fixed-point step and DrawPoly's edge
-	// walker lost its mantissa to cancellation. Both emitted one scanline at a garbage X, which is
-	// the horizontal streaks -- bounded in length only by the span buffer, hence half the screen.
+	// floor(F), as the MSVC original's `fld [F]; fsub [Half]; fistp [I]` is. The rasterisers' scanline
+	// boundaries (IntY/YFloor) come from here.
 	return (INT)floorf( F );
 }
 

@@ -83,7 +83,7 @@ static UBOOL GCheckNatives=1;
 
 //
 // A property's size and alignment in the compiled-script (32-bit) format -- UProperty::Link's rules
-// with the format's element sizes. See ScriptFormatStructSize in UnScrCom.h (ufront 2.83).
+// with the format's element sizes. See ScriptFormatStructSize in UnScrCom.h.
 //
 static INT ScriptFormatElementSize( UProperty* Property, INT& Alignment )
 {
@@ -1805,9 +1805,7 @@ int FScriptCompiler::ConversionCost
 			// The fewer classes traversed in this conversion, the better the quality.
 			check(Dest.Type==CPT_ObjectReference);
 			check(Dest.PropertyClass!=NULL);
-			// ufront 2.83: the loop reuses the outer Test. It used to declare its own, which Visual C++ 6's
-			// for-scope rules leaked into this scope -- so the check read the loop's variable there, and an
-			// uninitialised one on every standard compiler (random `Assertion failed: Test!=NULL`).
+			// The loop uses the outer Test, which the check below reads (Visual C++ 6 leaked a loop variable).
 			for( Test=Source.PropertyClass; Test && Test!=Dest.PropertyClass; Test=Test->GetSuperClass() )
 				Result++;
 			check(Test!=NULL);

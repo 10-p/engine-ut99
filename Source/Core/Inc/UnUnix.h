@@ -12,7 +12,7 @@
 #define PATH(s) appUnixPath( s )
 char* appUnixPath( const char* Path );
 
-// Networking. The IPv4 address in network byte order: 32 bits on every target (ufront 2.83: it was an
+// Networking. The IPv4 address in network byte order: 32 bits on every target (not an
 // unsigned long, which is 8 bytes on LP64).
 unsigned int appGetLocalIP( void );
 
@@ -24,7 +24,7 @@ char* strupr( char* s );
 // Globally Unique Identifiers.
 void appGetGUID( void* GUID );
 
-// ufront 2.33 — Windows side of this same platform layer (Core/Src/UnMinGW.cpp). WinSock needs an
+// Windows side of this same platform layer (Core/Src/UnMinGW.cpp). WinSock needs an
 // explicit process-wide startup that BSD sockets do not, and appComputerName/appGetLocalIP can run
 // before IpDrv has loaded.
 #ifdef PLATFORM_WIN32

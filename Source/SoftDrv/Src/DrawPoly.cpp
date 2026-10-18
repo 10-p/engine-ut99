@@ -4135,10 +4135,9 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 	//
 	// Volumetric fog on meshes.
 	//
-	// FLightManager::Fog() already fills FTransSample::Fog per vertex (UnMeshRn.cpp), and the MMX
-	// path interpolated it -- TriVertexType::Fog, TriDeltaFog and FPolyCSetup::FogRGB all exist for
-	// exactly this. The Pentium twin never grew it, so actors have been unfogged on every non-x86
-	// build. Same treatment as Light: scale into display units, then interpolate.
+	// FLightManager::Fog() fills FTransSample::Fog per vertex (UnMeshRn.cpp), and the MMX path
+	// interpolates it (TriVertexType::Fog, TriDeltaFog, FPolyCSetup::FogRGB); the portable path does
+	// the same, like Light: scale into display units, then interpolate.
 	//
 	// Clamped against what the light already claimed (GFloatRange minus this vertex's light) so
 	// light + fog can never exceed GMaxColor. Both interpolate linearly, so bounding the sum at the
@@ -4202,14 +4201,8 @@ void USoftwareRenderDevice::PentiumFlashTriangle
 				FLOAT U       = MipUScale * PB->U + YAdj * DU;
 				FLOAT V       = MipVScale * PB->V + YAdj * DV;
 
-				// X/Y/Z are R/G/B. The upstream UE1 source declares these as DR, DB, DG and pairs
-				// each with its OWN channel; porting FPlane .R/.G/.B to FVector .X/.Y/.Z substituted
-				// positionally instead, so DB took .Y (green) and DG took .Z (blue) while the
-				// assignments below still stepped G by DG and B by DB. Green therefore interpolated
-				// down each edge using blue's gradient and vice versa -- invisible under white light,
-				// but wrong colours in horizontal streaks under coloured light, since the error
-				// accumulates once per scanline. The MMX path a few hundred lines up got this right,
-				// which is why it only ever showed at ASM=0.
+				// X/Y/Z are R/G/B: each delta pairs with its own channel (DG steps G, DB steps B), as in
+				// the MMX path above.
 				FLOAT DR      = RDY * (TA->Light.X - TB->Light.X);
 				FLOAT DG      = RDY * (TA->Light.Y - TB->Light.Y);
 				FLOAT DB      = RDY * (TA->Light.Z - TB->Light.Z);

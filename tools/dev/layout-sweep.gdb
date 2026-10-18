@@ -3,14 +3,12 @@
 #   cd <run-tree>/System && gdb -batch -x <engine-repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make -nohomedir
 #   cd <run-tree>/System && gdb -batch -x <engine-repo>/tools/dev/layout-sweep.gdb --args ./UnrealTournament -SOFTWARERENDERER
 #
-# Run BOTH hosts (ufront 2.83). Some reflected layouts exist only in one process: the input alias struct is
-# built by UInput::StaticInitInput, which only a client (or the editor) calls, so `ucc make` never saw it and
-# its 64-bit layout crashed the first key bound to an alias. The client host stops at the first game tick
-# (map loaded, viewport open); headless it runs under Xvfb (any render device will do).
+# Run both hosts: some reflected layouts exist only in one process (the input alias struct is built by
+# UInput::StaticInitInput, which only a client or the editor calls). The client host stops at the first game
+# tick (map loaded, viewport open); headless it runs under Xvfb (any render device will do).
 #
-# (ufront 2.80) The runtime layout guard in UStruct::Link compares only a native class's C++ sizeof with
-# its script size. It cannot see a member that moved inside a class when a later one re-aligns, and it
-# stayed silent on the EditorEngine shift that crashed every `ucc make`. This compares OFFSETS, property
+# The runtime layout guard in UStruct::Link compares only a native class's C++ sizeof with its script size,
+# which cannot see a member that moved inside a class when a later one re-aligns. This compares offsets, property
 # by property: UE1 loads a native class's script properties at the offsets UStruct::Link computes (the
 # MSVC layout the scripts were compiled against), while the C++ reads its members at GCC/clang's offsets.
 # Bools are compared as (32-bit unit, bit). The two compilers' known disagreements -- GCC reusing a base's
@@ -21,7 +19,7 @@
 # the editor engine is destroyed at exit. Expected result on a healthy tree:
 #     SHIFT EditorEngine.Pad (IntProperty) ...     <- a reserved placeholder on both sides, never read
 #     checked=<n> shifted=1                        (the client host: shifted=0; it has no editor)
-#     structs=<n> checked=<n> shifted=0     <- script structs vs same-named C++ F<Name> (ufront 2.83)
+#     structs=<n> checked=<n> shifted=0     <- script structs vs same-named C++ F<Name>
 # A property may point at a same-named member of a nested struct rather than the class's own member
 # (UTGLR registers DCV.SinglePassFog and keeps a runtime copy SinglePassFog beside it): one level of
 # nested members is accepted as a match.
@@ -90,7 +88,7 @@ for i in range(count):
         field = field['Next']
 print("checked=%d shifted=%d" % (checked, shifted))
 
-# (ufront 2.83) Script STRUCTS mirrored by a C++ struct F<Name>. The runtime guard only knows native
+# Script structs mirrored by a C++ struct F<Name>. The runtime guard only knows native
 # classes, but a struct's size is also a stride (TArray<FBuilderPoly>) and its members are read by C++ at
 # its own offsets, so every script struct with a same-named C++ type is compared too: size, then each
 # property. A name can match an unrelated C++ type -- read a report before acting on it.

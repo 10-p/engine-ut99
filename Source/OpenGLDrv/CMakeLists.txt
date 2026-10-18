@@ -1,13 +1,12 @@
-# OpenGLDrv — UTGLR (Chris Dohnal's legacy-OpenGL UE1 render device) ported to engine-ut99.
+# OpenGLDrv — build glue for UTGLR (Chris Dohnal's legacy-OpenGL UE1 render device), fetched from its fork.
 #
-# Driver-only port (see PORTING.md). Package/class name is OpenGLDrv.OpenGLRenderDevice — the
-# faithful upstream name, which also makes NSDLDrv create the right context (its GL-window test
-# keys on the substring "OPENGL"; "GLES" is absent so native gets a desktop-GL compat context).
+# See PORTING.md. The package/class name is upstream's OpenGLDrv.OpenGLRenderDevice; NSDLDrv's GL-window test
+# keys on the substring "OPENGL", so natively it gets a desktop-GL compatibility context.
 #
 # Backends:
 #   default        -> resolves GL entry points at runtime via SDL_GL_GetProcAddress against the
-#                     desktop-GL context NSDLDrv creates (the native "compat oracle"). No -lGL:
-#                     every gl* call goes through UTGLR's own function-pointer table.
+#                     desktop-GL context NSDLDrv creates. No -lGL: every gl* call goes through
+#                     UTGLR's own function-pointer table.
 #   USE_GL4ES=ON   -> link the gl4es static lib (desktop GL -> GLES2) for the WebGL path. The
 #                     gl4es::GL alias + FetchContent live in the top-level Source/CMakeLists.txt.
 
@@ -17,8 +16,8 @@ if(NOT USE_SDL)
   message(FATAL_ERROR "OpenGLDrv (UTGLR) requires NSDLDrv/SDL2 to function.")
 endif()
 
-# Source is FETCHED (${UTGLR_SOURCE_DIR}, set in the top-level CMakeLists.txt) — the utglr-copy repo is
-# flat (files at root); only this build glue lives in the engine tree.
+# The source is fetched (${UTGLR_SOURCE_DIR}, set in the top-level CMakeLists.txt); the utglr-copy repo is
+# flat (files at root).
 set(SRC_FILES "${UTGLR_SOURCE_DIR}/OpenGL.cpp" "${UTGLR_SOURCE_DIR}/OpenGLDrv.cpp" "${UTGLR_SOURCE_DIR}/c_gclip.cpp")
 
 add_library(${PROJECT_NAME} ${LIB_TYPE} ${SRC_FILES})
@@ -43,9 +42,8 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE
   __UNIX__
 )
 
-# gl4es backend (M3 / WebGL path). Inert unless USE_GL4ES is ON and the gl4es::GL target exists
-# (created by the top-level FetchContent block). When active, gl4es supplies <GL/gl.h> and the GL
-# symbols instead of the system OpenGL (Pitfall: never also link system -lGL).
+# gl4es backend (the WebGL path), when USE_GL4ES is ON: the top-level FetchContent block creates gl4es::GL,
+# which supplies <GL/gl.h> and the GL symbols instead of the system OpenGL (never also link -lGL).
 if(USE_GL4ES)
   if(NOT TARGET gl4es::GL)
     message(FATAL_ERROR "OpenGLDrv: USE_GL4ES is ON but the gl4es::GL target is missing "

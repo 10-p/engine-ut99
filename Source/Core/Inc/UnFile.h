@@ -350,22 +350,13 @@ CORE_API UBOOL ParseUBOOL( const TCHAR* Stream, const TCHAR* Match, UBOOL& OnOff
 CORE_API UBOOL ParseObject( const TCHAR* Stream, const TCHAR* Match, class UClass* Type, class UObject*& DestRes, class UObject* InParent );
 CORE_API UBOOL ParseLine( const TCHAR** Stream, TCHAR* Result, INT MaxLen, UBOOL Exact=0 );
 CORE_API UBOOL ParseLine( const TCHAR** Stream, FString& Resultd, UBOOL Exact=0 );
-// ufront 2.38 — is this command-line token a GLOBAL OPTION (`Key=Value`) rather than a URL?
-//
-// ★ The startup code takes the FIRST token of the command line as the map/URL to browse, skipping it
-// only when it starts with '-'. That was enough while every launcher happened to pass a flag first —
-// and it silently stopped being enough the moment one did not: `CPUSPEED=3000` (a global option every
-// web launch carries) became "the map", failed to load, and the game never reached its main menu.
-// A `Key=Value` token is an option wherever it sits; a URL that carries options spells them after a
-// '?' (`DM-Deck16][?Game=X`), which is exactly what tells the two apart.
+// Is this command-line token a global option (`Key=Value`) rather than a URL? The startup code takes the
+// first token as the map/URL unless it starts with '-'; a `Key=Value` token is an option wherever it sits,
+// while a URL spells its options after a '?' (`DM-Deck16][?Game=X`).
 CORE_API UBOOL appIsGlobalOptionToken( const TCHAR* Token );
-// ufront 2.38 — apply every `-ini:<File>:[<Section>]:<Key>=<Value>` token on the command line.
-//
-// ★ The shipped launcher emits `-ini:User:[DefaultPlayer]:Name=<player>` for the Network panel's Player
-// Name box, and until 2.38 NOTHING in any of the four engines read it: the name only ever took effect
-// via a travel URL's `?Name=`, so hosting or joining from the game's OWN menus always logged you in as
-// "Player". `User` / `System` are the config cache's generic file names, translated by
-// FConfigCacheIni::Find, so no ini path is hardcoded. Call once, right after GConfig->Init.
+// Apply every `-ini:<File>:[<Section>]:<Key>=<Value>` token on the command line (the launcher sets the
+// player name, the frame cap and the rest this way). `User` / `System` are the config cache's generic file
+// names, translated by FConfigCacheIni::Find. Call once, right after GConfig->Init.
 CORE_API void appApplyIniOverrides();
 CORE_API UBOOL ParseToken( const TCHAR*& Str, TCHAR* Result, INT MaxLen, UBOOL UseEscape );
 CORE_API UBOOL ParseToken( const TCHAR*& Str, FString& Arg, UBOOL UseEscape );
@@ -441,26 +432,13 @@ CORE_API void appMemcpy( void* Dest, const void* Src, INT Count );
 //
 // C++ style memory allocation.
 //
-// ufront 2.7b (web port): the C++ standard requires the first parameter of a replacement global
-// operator new to be size_t. On 32-bit x86/SH4 (native/Dreamcast) size_t == unsigned int, so UT99's
-// original `unsigned int` matched; on wasm32 size_t == unsigned long, so clang rejects `unsigned int`.
-// Use size_t (as engine-unreal1 does) — correct everywhere; identical to unsigned int on the 32-bit twins.
+// The first parameter of a replacement global operator new is size_t (unsigned long on wasm32).
 //
-// UT_REPLACEMENT_ALLOC -- ufront 2.19d. The four no-extra-argument forms below are the REPLACEABLE
-// global ones, and a replacement operator new/delete may not be `inline` (clang says so:
-// -Winline-new-delete). Declared that way they are emitted OUT-OF-LINE as weak symbols whenever the
-// compiler does not inline them -- which at -O0 is always, in every object that allocates. wasm-ld then
-// resolves the PROGRAM-WIDE operator new to one of those, so Emscripten's own WasmFS static initializer
-// (priority 100, long before appInit) allocates through GMalloc, which at that moment is still the
-// pre-init error allocator and returns NULL -- make_shared builds its control block on nothing,
-// `weak_this` is never set, and OpenFileState::create dies in shared_from_this() with bad_weak_ptr.
-//
-// At -O2 and above they are inlined everywhere and never emitted, so system code keeps libc++'s
-// operator new. Forcing the inline makes -O0 behave EXACTLY as the optimised builds already did --
-// engine allocations to appMalloc, system allocations to libc++ -- rather than inventing a third
-// behaviour. Diagnosed on engine-ut2004 (110 objects emitted it at -O0, 0 at -O3); this engine carries
-// the same pattern and the same -sWASMFS. The Tag-taking placement forms are NOT replacement functions
-// and are left alone.
+// UT_REPLACEMENT_ALLOC: the four no-extra-argument forms below are the replaceable global ones. An inline
+// one the compiler does not inline is emitted out of line as a weak symbol, and wasm-ld would then resolve
+// the program-wide operator new to it, so Emscripten's WasmFS static initializer would allocate through
+// GMalloc before appInit (NULL). Forced inline, engine allocations go to appMalloc and system allocations
+// to libc++ at every optimisation level. The Tag-taking placement forms are not replacement functions.
 #define UT_REPLACEMENT_ALLOC __attribute__((always_inline))
 inline void* operator new( size_t Size, const TCHAR* Tag )
 {

@@ -112,9 +112,8 @@ inline FFrame::FFrame( UObject* InObject, UStruct* InNode, INT CodeOffset, void*
 ,	Locals		((BYTE*)InLocals)
 {}
 // The bytecode is a packed byte stream, so an operand can sit at any address: every multi-byte read
-// copies (ufront 2.83). A typed read of an unaligned address is undefined behaviour everywhere and a bus
-// error on 32-bit ARM (measured: execVectorConst, SIGBUS BUS_ADRALN on armeabi-v7a). A constant-size
-// copy compiles to the same single load wherever unaligned loads are legal (x86, arm64, wasm).
+// copies. A typed read of an unaligned address is undefined behaviour (a bus error on 32-bit ARM); a
+// constant-size copy compiles to a single load wherever unaligned loads are legal (x86, arm64, wasm).
 inline void FFrame::Step( UObject* Context, RESULT_DECL )
 {
 	guardSlow(FFrame::Step);

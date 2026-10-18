@@ -4,8 +4,8 @@
   "configurePresets": [
     {
       "name": "native",
-      "displayName": "Native (SDL2, all 5 renderers) -- the WASM twin / compat oracle, one binary",
-      "description": "32-bit native build (needs a 32-bit SDL2). Builds the full renderer set with no -D flags: NOpenGLESDrv + XOpenGLDrv + OpenGLDrv/UTGLR (system GL) + SoftDrv + NullDrv (2.12.0 sensible defaults). BUILD_STATIC links every package into ONE UnrealTournament -- no Core.so/Engine.so beside it, and appGetDllHandle resolves through the internal UNREAL_STATIC registry instead of dlopen (ufront 2.34; system libs SDL2/OpenAL/libGL stay dynamic). NOpenGLES and XOpenGL co-link in that single binary because Thirdparty/glad_es now carries a private symbol prefix -- keeping the compat oracle intact through the switch. Builds in build-native/.",
+      "displayName": "Native x86 (SDL2, all five renderers, one binary)",
+      "description": "32-bit native build (needs a 32-bit SDL2). The full renderer set: NOpenGLESDrv, XOpenGLDrv, OpenGLDrv/UTGLR (system GL), SoftDrv and NullDrv. BUILD_STATIC links every package into one UnrealTournament binary: appGetDllHandle resolves through the internal UNREAL_STATIC registry instead of dlopen, and only system libraries (SDL2, libGL) and the bundled libopenal.so.1 stay dynamic. NOpenGLESDrv and XOpenGLDrv co-link because Thirdparty/glad_es carries a private symbol prefix. Builds in build-native/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-native",
       "cacheVariables": {
@@ -22,8 +22,8 @@
     },
     {
       "name": "native64",
-      "displayName": "Native x86_64 (LP64) -- the 64-bit twin of `native` (ufront 2.83)",
-      "description": "64-bit (LP64) native build: the same one-binary package set as `native`, compiled for x86_64 instead of -m32. Needs the amd64 SDL2 development files (libsdl2-dev) for the client; ucc-bin needs no SDL, GL or audio. Retail 32-bit .u packages run unchanged: script object references stay 4-byte slots holding the object index, and the reflected-class headers are pack(4) (ufront docs/migration/steps/2.83-64bit-ue1.md). Builds in build-native64/.",
+      "displayName": "Native x86_64 (LP64), the 64-bit twin of `native`",
+      "description": "64-bit (LP64) native build: the same one-binary package set as `native`, compiled for x86_64 instead of -m32. Needs the amd64 SDL2 development files (libsdl2-dev) for the client; ucc-bin needs no SDL, GL or audio. Retail 32-bit .u packages run unchanged: script object references stay 4-byte slots holding the object index, and the reflected-class headers are pack(4). Builds in build-native64/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-native64",
       "cacheVariables": {
@@ -40,7 +40,7 @@
     {
       "name": "native64-asan",
       "inherits": "native64",
-      "displayName": "Native x86_64 + AddressSanitizer (ufront 2.83)",
+      "displayName": "Native x86_64 + AddressSanitizer",
       "description": "native64 with -fsanitize=address. Run with ASAN_OPTIONS=alloc_dealloc_mismatch=0 (UE1's sized operator delete pairing is reported but benign). Put the binary in the run tree's System/ itself: the engine takes its base dir from the executable path. Builds in build-native64-asan/.",
       "binaryDir": "${sourceDir}/../build-native64-asan",
       "cacheVariables": {
@@ -51,7 +51,7 @@
     },
     {
       "name": "android-arm64-ucc",
-      "displayName": "Android arm64 -- headless ucc-bin only (ufront 2.83)",
+      "displayName": "Android arm64 -- headless ucc-bin only",
       "description": "The dedicated server and commandlets as one Android executable (no SDL, no renderer, no audio, no APK): the 64-bit engine on an ARM device, run from adb shell. Needs ANDROID_NDK_HOME (e.g. ~/Android/Sdk/ndk/30.0.14904198). Builds in build-android-arm64/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-android-arm64",
@@ -78,7 +78,7 @@
     {
       "name": "android-armv7-ucc",
       "inherits": "android-arm64-ucc",
-      "displayName": "Android armv7 -- headless ucc-bin only, the 32-bit control (ufront 2.83)",
+      "displayName": "Android armv7 -- headless ucc-bin only, the 32-bit control",
       "description": "The same headless ucc-bin for armeabi-v7a: the 32-bit width control on the same ARM device. Builds in build-android-armv7/.",
       "binaryDir": "${sourceDir}/../build-android-armv7",
       "cacheVariables": { "ANDROID_ABI": "armeabi-v7a" }
@@ -86,7 +86,7 @@
     {
       "name": "wasm",
       "displayName": "Web (Emscripten/WASM) -- dev default",
-      "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build — named stacks and readable errors while the engine still runs at a playable speed. Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
+      "description": "Emscripten web build: -O2 + DWARF + assertions. The everyday dev build: named stacks and readable errors at a playable speed. Builds in build-wasm/. Run `source <emsdk>/emsdk_env.sh` first (sets EMSDK).",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
@@ -95,7 +95,7 @@
     {
       "name": "wasm-debug",
       "displayName": "Web (Emscripten/WASM) -- -O0, last resort",
-      "description": "Emscripten web build: -O0, nothing inlined, every local live. Reach for it when the OPTIMISER is the suspect — a bug that shows at one -O level and not another is almost always undefined behaviour. Builds in build-wasm-debug/.",
+      "description": "Emscripten web build: -O0, nothing inlined, every local live. For when the optimiser is the suspect: a bug that shows at one -O level and not another is almost always undefined behaviour. Builds in build-wasm-debug/.",
       "inherits": "wasm",
       "binaryDir": "${sourceDir}/../build-wasm-debug",
       "cacheVariables": { "UT_WEB_DEBUG": "ON" }
@@ -103,15 +103,15 @@
     {
       "name": "wasm-perf",
       "inherits": "wasm",
-      "displayName": "Web (Emscripten/WASM) -- max performance",
-      "description": "Emscripten web build (-O3, no debug -> smaller/faster). Builds in build-wasm-perf/. [wired in step 2.7b]",
+      "displayName": "Web (Emscripten/WASM) -- shipping build",
+      "description": "Emscripten shipping build: compiled at -O2, linked at -O3 -g0 without assertions, a symbol map beside the loader. Builds in build-wasm-perf/.",
       "binaryDir": "${sourceDir}/../build-wasm-perf",
       "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "UT_WEB_PERF": "ON" }
     },
     {
       "name": "windows",
       "displayName": "Windows x86 (MinGW-w64) -- one .exe + OpenAL32.dll",
-      "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the SAME preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe — no Core.dll/Engine.dll, and appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers: UTGLR (OpenGLDrv) + XOpenGLDrv, both hardware GL through the system opengl32 (they resolve every entry point via SDL_GL_GetProcAddress, so nothing GL ships beside the exe), plus SoftDrv + NullDrv (CPU-only, so the build still verifies headless under wine+Xvfb). NOpenGLESDrv is OFF here: it and XOpenGL vendor clashing glad globals in a non-Emscripten static link. Audio is the REAL NOpenALDrv (OpenAL Soft + libxmp), whose OpenAL32.dll the build copies next to the exe — a silent binary is not a usable default. [ufront 2.33, renderers + audio 2.34] BUILD_EDITOR is ON for the same reason the web build sets it: UT99 loads bot meshes/skins through Editor classes, so standalone bot matches abort without it. Builds in build-windows/.",
+      "description": "32-bit Windows build. Cross-compiles from Linux via the toolchain file (i686-w64-mingw32 + a fetched SDL2); the same preset works from an MSYS2 MINGW32 prompt, where pacman's SDL2 answers instead. BUILD_STATIC links every package into the exe: appGetDllHandle resolves through the internal registry, not LoadLibrary. Renderers: UTGLR (OpenGLDrv) and XOpenGLDrv, hardware GL through the system opengl32 (every entry point via SDL_GL_GetProcAddress, so nothing GL ships beside the exe), plus SoftDrv and NullDrv (CPU-only, so the build also runs headless under wine+Xvfb). Audio is NOpenALDrv (OpenAL Soft + libxmp); the build copies OpenAL32.dll next to the exe. BUILD_EDITOR is on: game content references Editor classes (bot meshes and skins). Builds in build-windows/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-windows",
       "toolchainFile": "${sourceDir}/cmake/toolchain-mingw-w64.cmake",

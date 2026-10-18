@@ -1,5 +1,5 @@
 //=============================================================================
-// U64Bench -- ufront 2.83: the cost of resolving script object references (an index per variable,
+// U64Bench -- the cost of resolving script object references (an index per variable,
 // property, function or class operand). Time the process from outside:
 //     /usr/bin/time ./ucc-bin U64Test.U64Bench 9000000
 // and subtract a run with 0. Stays under the VM's 10,000,000-iteration runaway limit.

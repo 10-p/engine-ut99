@@ -31,9 +31,8 @@
 	#error Unknown Compiler
 #endif
 
-// Pointer width (ufront 2.83). Taken from the compiler, never from a build-system flag, so it cannot
-// disagree with the code being compiled. UE1 was written for 32-bit; PLATFORM_64BITS marks the few places
-// where LP64 needs a different answer (the name matches UE2 and OldUnreal 469).
+// Pointer width, taken from the compiler (never from a build-system flag). PLATFORM_64BITS marks the few
+// places where LP64 needs a different answer (the name UE2 and OldUnreal 469 use).
 #if defined(_WIN64) || (defined(__SIZEOF_POINTER__) && __SIZEOF_POINTER__ == 8)
 	#define PLATFORM_64BITS 1
 #endif
@@ -69,10 +68,8 @@ enum ENoInit {E_NoInit = 0};
 		typedef ANSICHAR  TCHAR;
 		typedef ANSICHARU TCHARU;
 	#elif defined(PLATFORM_WIN32)
-		// ufront 2.33 (Windows/MinGW): MinGW's <tchar.h>, reached through the Win32 headers, sets
-		// _TCHAR_DEFINED and supplies TCHAR (== char here, since we do not build UNICODE) — but it knows
-		// nothing about UE1's TCHARU, so the branch above skipped BOTH and the engine failed to compile
-		// wherever TCHARU is used (UnCanvas.cpp).
+		// MinGW's <tchar.h> (reached through the Win32 headers) sets _TCHAR_DEFINED and supplies TCHAR (char
+		// here, no UNICODE), but not UE1's TCHARU, which the branch above would skip.
 		typedef ANSICHARU TCHARU;
 	#endif
 	#undef TEXT

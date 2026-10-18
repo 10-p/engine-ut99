@@ -10,7 +10,7 @@
 #include <unistd.h>
 #include <sys/stat.h>
 #include <cerrno>
-#include <climits>	// ufront: PATH_MAX (FindFiles)
+#include <climits>	// PATH_MAX (FindFiles)
 #include "FFileManagerGeneric.h"
 
 /*-----------------------------------------------------------------------------
@@ -213,7 +213,7 @@ protected:
 
 class FFileManagerLinux : public FFileManagerGeneric
 {
-	// ufront (from engine-hp2, the same file fixed there): FindFiles' wildcard match and directory test.
+	// FindFiles' wildcard match and directory test.
 	static UBOOL WildcardMatch( const ANSICHAR* Pattern, const ANSICHAR* Name )
 	{
 		// Iterative '*'/'?' glob with single-star backtracking; case-insensitive.
@@ -318,8 +318,7 @@ public:
 		guard(FFileManagerLinux::MakeDirectory);
 		if( Tree )
 			return FFileManagerGeneric::MakeDirectory( Path, Tree );
-		// ufront 2.33: Windows' mkdir takes no mode — permissions are not a filesystem attribute there.
-		// (This manager is the launcher's on every platform; see UnrealTournament/Src/Launch.cpp.)
+		// Windows' mkdir takes no mode (this manager is the launcher's on every GCC/Clang target).
 #ifdef PLATFORM_WIN32
 		return mkdir(TCHAR_TO_ANSI(Path))==0 || errno==EEXIST;
 #else
@@ -348,7 +347,7 @@ public:
 		char *Cur;
 		UBOOL Match;
 
-		// Initialize Path to Filename (bounded: it was a char[256] filled by appStrcpy).
+		// Initialize Path to Filename (bounded copy).
 		appStrncpy( Path, Filename, ARRAY_COUNT(Path) );
 
 		// Convert MS "\" to Unix "/".
@@ -379,14 +378,11 @@ public:
 		// Check each entry.
 		while( Direntp != NULL )
 		{
-			// ufront (engine-hp2's fix of this same code): a real wildcard match ('*' and '?' anywhere,
-			// case-insensitive, "*.*" = everything), the semantics of the Win32 FindFirstFile the game was written
-			// for. The stock matcher knew a few shapes, compared case-sensitively ("*.INT" found no "Core.int") and
-			// took "*.ext" as a substring test ("*.u" also returned .uax/.umx/.utx/.unr).
+			// A real wildcard match ('*' and '?' anywhere, case-insensitive, "*.*" = everything): the semantics of
+			// the Win32 FindFirstFile the game was written for.
 			Match = appStrcmp( File, "*.*" ) == 0 || WildcardMatch( File, Direntp->d_name );
 
-			// Honour the Files/Directories flags (the stock body returned both, and "." / ".."; a Tree
-			// DeleteDirectory then tried to Delete(".") and failed).
+			// Honour the Files/Directories flags, and never return "." or "..".
 			if( Match && (!appStrcmp(Direntp->d_name,".") || !appStrcmp(Direntp->d_name,"..")) )
 				Match = false;
 			if( Match && !(Files && Directories) )

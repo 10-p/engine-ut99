@@ -94,13 +94,10 @@ void UTexture::Lock( FTextureInfo& TextureInfo, DOUBLE CurrentTime, INT LOD, URe
 //
 // Lock a texture for a draw with these PolyFlags.
 //
-// PF_Masked makes palette index 0 transparent, and only the P8 mips can say which texels those are. The S3TC copy is
-// DXT1 without alpha (the engine's own encoder writes S3TC_ENCODE_ALPHA_NONE, below), so a masked draw of it shows
-// those texels opaque, usually black. UT's retail S3TC copies are the same (in v436's Textures folder, 4,530 of the
-// 4,571 DXT1 copies have no transparent texel), and they leave masked textures uncompressed (423 of the 425 bMasked
-// textures have no S3TC copy). A masked draw meets an S3TC copy where a map masks a texture that is not bMasked
-// (city.SkylineA1 in front of a sky), and on the two bMasked textures that have one. Such a draw takes the P8 mips:
-// the texture as the software renderer draws it.
+// PF_Masked makes palette index 0 transparent, and only the P8 mips say which texels those are: the S3TC copy is
+// DXT1 without alpha (the engine's own encoder writes S3TC_ENCODE_ALPHA_NONE, below; the retail copies are the
+// same), so a masked draw of it would show them opaque. A masked draw meets an S3TC copy where a map masks a texture
+// that is not bMasked (city.SkylineA1 in front of a sky); it takes the P8 mips, as the software renderer draws it.
 //
 void UTexture::LockForDraw( FTextureInfo& TextureInfo, DOUBLE CurrentTime, INT LOD, URenderDevice* RenDev, DWORD PolyFlags )
 {
@@ -789,13 +786,8 @@ UPalette* UPalette::ReplaceWithExisting()
 
 typedef	struct {BYTE rgba[4];} COLOR;
 
-// ufront 2.33: was `#ifdef WIN32`. These implementations call into Epic's S3TC encoder and Heckbert
-// quantiser (Engine/Lib/s3tc.lib plus the __declspec(dllexport) declarations in Palette.h), which NO
-// CMake target links — that .lib is an MSVC-era artifact left in the tree. So the block only ever built
-// under Epic's original MSVC project, and "WIN32" quietly meant "MSVC". Under MinGW it compiled and then
-// failed at link with undefined S3TCencode/S3TCdecode/HeckbertQuantize.
-// Every build this repo actually produces — Linux, web, and now Windows/MinGW — takes the #else stub
-// below, exactly as it always has, so this changes nothing for any of them.
+// MSVC only: these call Epic's S3TC encoder and Heckbert quantiser (Engine/Lib/s3tc.lib, which no CMake
+// target links). Every GCC/Clang build, MinGW included, takes the #else stub below.
 #if _MSC_VER
 
 //

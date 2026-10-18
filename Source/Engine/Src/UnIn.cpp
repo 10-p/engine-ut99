@@ -57,9 +57,7 @@ void UInput::StaticInitInput()
 	FArchive ArDummy;
 
 	// Create input alias struct.
-	// (ufront 2.83: its layout comes from FAlias itself. It was sizeof(FName)+sizeof(FString) with Command at
-	// sizeof(FName), true only without padding: at 64-bit FString is 8-aligned, so FAlias is 24 bytes with
-	// Command at 8, and every key bound to an alias crashed on a pointer made of the string's length.)
+	// (Its layout comes from FAlias itself: at 64-bit FString is 8-aligned, so Command is not at sizeof(FName).)
 	UStruct* AliasStruct = new(StaticClass(),TEXT("Alias"))UStruct( NULL );
 	AliasStruct->SetPropertiesSize( sizeof(FAlias) );
 	new(AliasStruct,TEXT("Alias"),  RF_Public)UNameProperty( EC_CppProperty, STRUCT_OFFSET(FAlias,Alias),   TEXT(""), CPF_Config );

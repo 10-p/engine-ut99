@@ -673,11 +673,8 @@ void ULevel::NotifyReceivedText( UNetConnection* Connection, const TCHAR* Text )
 		else if( ParseCommand(&Text,TEXT("LOGIN")) )
 		{
 			// Admit or deny the player here.
-			// ufront 2.80: the retail test, precedence and all. Epic wrote `!CR(Challenge)==Response`, which
-			// is (!CR)==Response, and BOTH retail Engine.dlls compile exactly that (v400 and v436: sete on
-			// CR==0, cmp with Response, je FAILURE): any non-zero response is admitted. The Dreamcast port
-			// "fixed" it to a real equality test, refusing any client whose response differs from ours --
-			// kept retail's, because what a server admits is what the clients of that era were built for.
+			// The retail test, precedence and all: `!CR(Challenge)==Response` is (!CR)==Response, as both retail
+			// Engine.dlls (v400 and v436) compile it, so any non-zero response is admitted.
 			INT Response=0;
 			if
 			(	!Parse(Text,TEXT("RESPONSE="),Response)

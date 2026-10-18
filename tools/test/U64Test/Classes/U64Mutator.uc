@@ -1,10 +1,10 @@
 //=============================================================================
-// U64Mutator -- ufront 2.83: the script VM checks for the 64-bit (LP64) port.
+// U64Mutator -- the script VM checks for the 64-bit (LP64) port.
 //
 // Add it to a match (?mutator=U64Test.U64Mutator) and read the log:
 //     U64 PASS <case> / U64 FAIL <case>, then U64 DONE passed=<n> failed=<n>.
 // Every case must pass on the 32-bit build first (the control), then on 64-bit. The cases are the
-// mechanisms 2.83 changed: script object references are 4-byte object indices, and a None context
+// 64-bit mechanisms: script object references are 4-byte object indices, and a None context
 // zero-fills its result with the compiler's (32-bit) size, which the VM must widen.
 //=============================================================================
 class U64Mutator expands Mutator;

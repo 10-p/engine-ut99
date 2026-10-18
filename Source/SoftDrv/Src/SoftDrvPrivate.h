@@ -9,12 +9,8 @@
 
 #include "RenderPrivate.h"
 
-// ufront 2.33 (Windows/MinGW): the Win32 headers reached through the chain above define IN and OUT as
-// EMPTY parameter-annotation macros, which silently deletes any local named `IN` — DrawSurf.cpp's
-// bilinear filter has one, and the error it produces ("expected unqualified-id before '='") points at the
-// assignment rather than at the macro. Undefining is preferable to renaming the local: it is
-// preprocessor-only, so the Linux and web builds are textually and byte-for-byte unaffected. Nothing in
-// this engine uses the annotations.
+// The Win32 headers define IN and OUT as empty parameter annotations, which would delete DrawSurf.cpp's local
+// named `IN`; nothing here uses the annotations.
 #ifdef PLATFORM_WIN32
 #undef IN
 #undef OUT
@@ -24,28 +20,16 @@
 	Software rendering private definitions.
 ------------------------------------------------------------------------------------*/
 
-// ufront: SoftDrv ported into engine-ut99 (ut99 software renderer step). This is the v400 UT99 source,
-// which already carries portable #if !ASM paths for its x86 __asm rasterization; we build with -DASM=0.
-// Portability shims below mirror engine-unreal1's SoftDrv. If ASM is disabled but we're on x86 (the native
-// -m32 preset), also force-disable MMX so the portable Pentium path is taken.
+// Built with -DASM=0 through the portable #if !ASM paths. Without ASM on x86, MMX is off too, so the portable
+// Pentium path is taken.
 #if !ASM && __INTEL__
 #define GIsMMX false
 #endif
 
-// Maximum supported sizes. 2.12: 1200/2048 -> 4096 so high-res viewports don't overrun the SizeY-indexed
-// span tables (Setup/MMXSetup/SpanIndex) or the SizeX-indexed ones (UCoordTable/Photon). Mirrors
-// engine-unreal1's SoftDrv; the DrawTile span-fill also hard-clamps to this ceiling.
-//
-// ufront 2.19f: overridable at build time (-DSOFTDRV_MAX_SCREEN=n), because these are the bounds of
-// STATIC arrays — they cost their full size in .bss at every resolution, not just at the ceiling.
-// Measured on ut99 at 4096: Setup 128K + MMXSetup 128K + Photon 64K + UCoordTable 16K + two SpanIndex
-// 32K = 368 KB resident whether the viewport is 4K or 240x240. (The other 160 KB of SoftDrv .bss —
-// TexSetupHeap and Shade — is genuinely fixed-size and unaffected by this.) At a 256 ceiling the same
-// tables cost 23 KB, which is what makes the software renderer plausible on a 64 MB target.
-//
-// Lowering it is safe and fail-soft, not a landmine: SetRes clamps the requested width to
-// MaximumXScreenSize, DrawPoly skips the frame outright above MaximumYScreenSize, and DrawTile clamps
-// its span-fill to the ceiling. A viewport above the ceiling degrades rather than corrupting.
+// Maximum supported sizes: the bounds of the SizeY-indexed span tables (Setup/MMXSetup/SpanIndex) and the
+// SizeX-indexed ones (UCoordTable/Photon). Static arrays, so overridable at build time
+// (-DSOFTDRV_MAX_SCREEN=n). A viewport above the ceiling degrades rather than corrupting: SetRes clamps the
+// width, DrawPoly skips the frame above MaximumYScreenSize, and DrawTile clamps its span-fill.
 #ifndef SOFTDRV_MAX_SCREEN
 #define SOFTDRV_MAX_SCREEN 4096
 #endif
@@ -60,7 +44,7 @@ extern FLOAT FastSqrtTbl[2<<FASTAPPROX_MAN_BITS];
 void SetupFastSqrt();
 
 //
-// _rotl / _rotr alternatives for non-MSVC platforms (mirrors engine-unreal1's SoftDrv shim).
+// _rotl / _rotr for non-MSVC platforms.
 //
 #ifdef PLATFORM_WIN32
 #include <stdlib.h> // for _rotl and _rotr
@@ -70,13 +54,13 @@ void SetupFastSqrt();
 inline unsigned int _rotl( unsigned int a, int s )
 {
 	s &= 31;
-	if( s == 0 ) return a; // 2.12: avoid UB shift-by-32 at s==0 (inert on wasm/x86; matters non-x86 native)
+	if( s == 0 ) return a; // a shift by 32 would be undefined
 	return (a << s) | (a >> (32 - s));
 }
 inline unsigned int _rotr( unsigned int a, int s )
 {
 	s &= 31;
-	if( s == 0 ) return a; // 2.12: avoid UB shift-by-32 at s==0 (inert on wasm/x86; matters non-x86 native)
+	if( s == 0 ) return a; // a shift by 32 would be undefined
 	return (a >> s) | (a << (32 - s));
 }
 #endif

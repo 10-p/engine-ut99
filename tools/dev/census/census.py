@@ -5,7 +5,7 @@ Runs gcov (JSON) on every instrumented object under <build-dir> (a --coverage bu
 then aggregates per function across translation units: a function counts as executed if its own entry count
 is non-zero in any TU or any line inside it ran in any TU (so inlined bodies count). Only functions whose
 source lies under one of the roots are reported. Writes census.json (every function, `ran` true/false) into the
-current directory and prints a per-directory summary. ufront 2.83; the recipe is in BUILD.md "Coverage census".
+current directory and prints a per-directory summary. The recipe is in BUILD.md "Coverage census".
 """
 import json, os, subprocess, sys, collections, tempfile
 

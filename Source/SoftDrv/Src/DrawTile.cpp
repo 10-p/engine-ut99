@@ -3077,10 +3077,8 @@ void USoftwareRenderDevice::DrawTile( FSceneNode* Frame, FTextureInfo& Texture, 
 		{
 			SavedX = Viewport->SizeX;
 			SavedY = Viewport->SizeY;
-			// ufront 2.12: clamp the span-table height to the array capacity so SizeY > MaximumYScreenSize
-			// can NEVER overrun SpanIndex (that overflow clobbered DefaultSpan.Next into a self-loop -> the
-			// tile blitter's for(Span;Span;Span=Span->Next) walk hung the main thread — the web SoftDrv
-			// tab-freeze at >1200-tall viewports). Above the ceiling the bottom rows just aren't spanned.
+			// Clamp the span-table height to the array capacity, so SizeY > MaximumYScreenSize cannot overrun
+			// SpanIndex; above the ceiling the bottom rows are not spanned.
 			const INT SpanY = Min( Viewport->SizeY, (INT)MaximumYScreenSize );
 			TempSpanBuffer.Index  = SpanIndex;
 			TempSpanBuffer.StartY = 0;
@@ -3224,9 +3222,7 @@ void USoftwareRenderDevice::DrawTile( FSceneNode* Frame, FTextureInfo& Texture, 
 	{
 		// Allocate a new Spritepalet, including the (colordepth specific) palette memory.
 		SpritePalet = (LitPalette*)GCache.Create( CacheID, Item, sizeof( LitPalette ) +  NewPaletteSize );
-		// The palette memory follows the struct (ufront 2.83: it was `&OutPalette + 4`, which assumed a 4-byte
-		// pointer -- on LP64 the palette overwrote the pointer's own high half, and the next write went
-		// through it: SIGSEGV in the first translucent sprite). The same address on every 32-bit target.
+		// The palette memory follows the struct (not `&OutPalette + 4`, which assumes a 4-byte pointer).
 		SpritePalet->OutPalette.PtrVOID = (BYTE*)(SpritePalet + 1); // point to allocated palette
 		RemakeColors = 1;
 	}

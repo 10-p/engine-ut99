@@ -1448,12 +1448,8 @@ FSceneNode* URender::CreateChildFrame
 /*-----------------------------------------------------------------------------
 	World polygon rasterizer.
 -----------------------------------------------------------------------------*/
-// HackRaster is a shared per-scanline span table indexed by Viewport->SizeY (see SetupRaster) and used by
-// ALL render devices (incl. the default NOpenGLES). Any SizeY>1200 (1440p/4K/…) overran the old [2880] cap,
-// stomping the heap (BSP poly flicker, adjacent-global corruption — e.g. Fire textures — then a wasm
-// "memory access out of bounds"). Sized for 8K in any orientation with margin; SetupRaster also hard-clamps
-// EndY to this capacity so NO resolution can overflow it (fail-soft, like SoftDrv's MaximumYScreenSize
-// guard). Mirrors the engine-unreal1 fix. (Dreamcast keeps its original 480 cap.)
+// HackRaster is a per-scanline span table indexed by Viewport->SizeY (SetupRaster), shared by every render
+// device. Sized for 8K in any orientation; SetupRaster also clamps EndY to it. The Dreamcast keeps 480.
 #ifdef PLATFORM_DREAMCAST
 #define MAX_RASTER_Y 480
 #else
@@ -1465,8 +1461,7 @@ static UBOOL SetupRaster( FTransform** Pts, INT NumPts, FSpanBuffer* Span, INT E
 {
 	guard(SetupRaster);
 
-	// Clamp to the span-table capacity so a very tall viewport can never index HackRaster out of bounds
-	// (heap corruption / wasm OOB). A no-op at every realistic resolution (<= MAX_RASTER_Y, incl. 8K).
+	// Clamp to the span-table capacity, so no viewport can index HackRaster out of bounds.
 	EndY = Min<INT>( EndY, MAX_RASTER_Y - 1 );
 
 	// Compute integer coords.
@@ -3211,26 +3206,11 @@ void URender::DrawWorld( FSceneNode* Frame )
 	&&	(Frame->Viewport->Actor->ShowFlags & SHOW_Actors) )
 	{
 		GUglyHackFlags|=1;
-		// ufront 2.29 — SHOW SCRIPT THE *BASE* FOV WHILE IT PLACES THE VIEWMODEL.
-		//
-		// Inventory.uc:239 computes the first-person weapon's position as
+		// Script sees the base FOV while it places the viewmodel: Inventory.uc computes
 		//     DrawOffset = (0.9/PawnOwner.FOVAngle * PlayerViewOffset) >> ViewRotation
-		// and PlayerViewOffset's X is the FORWARD component (X=30, then *=100). So the divide does
-		// not merely scale the offset — it pulls the weapon TOWARDS THE CAMERA as the FOV widens.
-		// RenderOverlays runs inside AutoFOV's scope, so script was reading the CORRECTED angle: at
-		// 32:9 (base 90 -> effective 138.89) the gun sat 3000/138.89 = 21.6 units ahead instead of
-		// 33.3, i.e. at 65% of its distance. Measured ~1.5x larger and hard against the near plane —
-		// the "gigantic weapon that clips" report.
-		//
-		// ★ The sibling engine settles what the right value is: unreal1's Inventory.uc uses the
-		// CONSTANT 0.01, and 0.9/90 == 0.01 exactly. UT99 generalised that constant over a FOV that
-		// was never meant to move, so pinning script to the base angle reproduces the stock geometry
-		// exactly rather than approximating it. (ut2004 divides by the weapon's OWN DisplayFOV, which
-		// AutoFOV never touches — which is why this is a UT99-family fix only.)
-		//
-		// This is half the job: the weapon must still be PROJECTED with the corrected FOV so its
-		// on-screen size stays independent of screen width. UCanvas::execDrawActor does that half;
-		// together they keep the viewmodel identical to its 4:3 self at any aspect.
+		// with PlayerViewOffset's X forward, so a wider FOV would pull the weapon towards the camera. The
+		// corrected FOV it is projected with is UCanvas::execDrawActor's half; together the viewmodel keeps its
+		// 4:3 look at any aspect.
 		APlayerPawn* FovActor  = Frame->Viewport->Actor;
 		FLOAT        SavedFov  = FovActor->FovAngle;
 		UBOOL        bBaseSwap = Abs( SavedFov - GAutoFovFrameBase ) > 0.01f;

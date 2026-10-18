@@ -185,8 +185,7 @@ void UGameEngine::Init()
 	(	!ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 )
 	||	(appStricmp(Parm,TEXT("SERVER"))==0 && !ParseToken( Tmp, Parm, ARRAY_COUNT(Parm), 0 ))
 	||	Parm[0]=='-'
-	// ufront 2.38: …and a global option is not a map either. See appIsGlobalOptionToken — one launcher
-	// dropping its leading flag turned `CPUSPEED=3000` into "the map" and cost the main menu entirely.
+	// …and a global option (`CPUSPEED=3000`) is not a map either (appIsGlobalOptionToken).
 	||	appIsGlobalOptionToken(Parm) )
 		appStrcpy( Parm, *FURL::DefaultLocalMap );
 	FURL URL( &DefaultURL, Parm, TRAVEL_Partial );
@@ -202,10 +201,8 @@ void UGameEngine::Init()
 	if( !Success )
 #ifdef __EMSCRIPTEN__
 	{
-		// 2.6g (mirrors engine-unreal1): a bad startup/autoplay map must not be fatal — appErrorf throws to
-		// unwind, which can't cross Asyncify frames (uncaught -> module abort). Entry (the menu) is already
-		// loaded into GEntry; fall back to it so the user can pick a valid map / host from the UI instead of
-		// crashing. LoadMap now returns NULL gracefully for a missing map (above), so Success is a clean false.
+		// A bad startup map is not fatal on the web (appErrorf would abort the module): fall back to Entry, the
+		// menu, already loaded into GEntry. LoadMap returns NULL for a missing map, so Success is a clean false.
 		debugf( NAME_Warning, TEXT("Startup map '%s' failed to load (%s) — falling back to the menu"), Parm, *Error );
 		if( !GLevel )
 			GLevel = GEntry;
@@ -285,10 +282,8 @@ void UGameEngine::Destroy()
 void UGameEngine::SetProgress( const TCHAR* Str1, const TCHAR* Str2, FLOAT Seconds )
 {
 	guard(UGameEngine::SetProgress);
-	// 2.12 hardening: the viewport can exist with a NULL Actor — e.g. right after DissociateViewports tears the
-	// player pawn down during a failed travel/open. SetProgress dereferences Actor below (Actor->ProgressMessage[0]
-	// = Str1 is an FString assignment → FArray::Realloc), so without an Actor null-check this is a NULL/garbage-heap
-	// deref → "memory access out of bounds" abort on the web build (catching is off). Only message a live actor.
+	// The viewport can exist with a NULL Actor (DissociateViewports tears the player pawn down during a failed
+	// travel or open): only message a live actor.
 	if( Client && Client->Viewports.Num() && Client->Viewports(0)->Actor )
 	{
 		APlayerPawn* Actor = Client->Viewports(0)->Actor;
@@ -316,7 +311,7 @@ void UGameEngine::SetProgress( const TCHAR* Str1, const TCHAR* Str2, FLOAT Secon
 	Command line executor.
 -----------------------------------------------------------------------------*/
 
-// ufront port (from engine-uc2): WHEREAMI / TELEPORT <x> <y> <z> (UnCheats.cpp) and the frame rate in the log,
+// WHEREAMI / TELEPORT <x> <y> <z> (UnCheats.cpp) and the frame rate in the log,
 // [Engine.GameEngine] FpsLogSeconds / FPSLOG (UnFpsLog.cpp).
 ENGINE_API UBOOL UfrontCheatExec( UEngine* Engine, const TCHAR* Cmd, FOutputDevice& Ar );
 ENGINE_API void UfrontFpsLogTick( UEngine* Engine );
@@ -330,7 +325,7 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UGameEngine::Exec);
 	const TCHAR* Str=Cmd;
-	// ufront: first, because the web's ue_exec_command reaches this engine only (never the viewport); the typed
+	// First, because the web's ue_exec_command reaches this engine only (never the viewport); the typed
 	// console arrives here too, after the viewport, the player and the scripts.
 	if( UfrontCheatExec( this, Cmd, Ar ) )
 		return 1;
@@ -519,11 +514,9 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 	debugf( TEXT("Browse: %s"), *URL.String() );
 
 #ifdef __EMSCRIPTEN__
-	// ufront 2.7d: the web frontend forms a client-connect URL as "<host>?connect" — the host lands in
-	// URL.Map with no URL.Host, which UE1 would treat as a LOCAL map load (IsLocalInternal) and fail. When
-	// the "connect" option is present with no Host, promote the map token to Host so Browse takes the
-	// network path (IsInternal + Host -> UPendingLevel -> WebRTCNetDriver connect). Web-only + guarded on the
-	// connect option, so local map browsing is unaffected. Mirrors engine-unreal1's 2.6c fix.
+	// The frontend forms a client-connect URL as "<host>?connect": the host lands in URL.Map with no URL.Host,
+	// which would be a local map load. With the connect option and no Host, promote the map token to Host, so
+	// Browse takes the network path (UPendingLevel -> WebRTCNetDriver connect).
 	if( URL.HasOption(TEXT("connect")) && URL.Host.Len()<=0 && URL.Map.Len()>0 )
 	{
 		URL.Host = URL.Map;
@@ -579,9 +572,8 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 			TCHAR Filename[256], SavedPortal[256];
 			appSprintf( Filename, TEXT("%s") PATH_SEPARATOR TEXT("Game%i.usa"), *GSys->SavePath, GLevel->GetLevelInfo()->HubStackLevel-1 );
 			appStrcpy( SavedPortal, *URL.Portal );
-			// Same Unix '/' vs URL-syntax hazard as the load branch below: parsing this "../Save/GameN.usa"
-			// path as URL text would mangle it to the default map. Carry the base's options via TRAVEL_Partial
-			// (which also drops the "pop"/push/peer ops as before), then set the file path on Map directly.
+			// As in the load branch below, the "../Save/GameN.usa" path must not be parsed as URL text: carry the
+			// base's options with TRAVEL_Partial (which drops the "pop"/push/peer ops), then set the path on Map.
 			FURL PopURL( &URL, TEXT(""), TRAVEL_Partial );
 			PopURL.Map    = Filename;
 			PopURL.Portal = SavedPortal;
@@ -603,12 +595,9 @@ UBOOL UGameEngine::Browse( FURL URL, const TMap<FString,FString>* TravelInfo, FS
 		// Handle loadgame.
 		guard(LoadURL);
 		FString Error;
-		// The savegame file path (e.g. "../Save/Save1000.usa") must NOT be parsed as URL text. On Unix
-		// PATH_SEPARATOR is '/', which FURL treats as URL host/portal syntax and mangles the path down to
-		// the default map ("Index.unr") -- so quickload failed with "Can't find file 'Index.unr'". (On
-		// Windows the separator is '\', which FURL leaves alone, so this never bit there.) Build the URL
-		// from the base's carried options plus the "load" flag, then assign the file path to Map directly,
-		// bypassing the text parser. This reproduces exactly the FURL layout stock UT gets on Windows.
+		// The savegame path ("../Save/Save1000.usa") must not be parsed as URL text: with '/' as PATH_SEPARATOR,
+		// FURL would read it as host/portal syntax and resolve the default map. Build the URL from the base's
+		// options plus "load", then assign the path to Map directly: the FURL stock UT gets on Windows.
 		FURL LoadURL( &LastURL, TEXT("?load"), TRAVEL_Partial );
 		LoadURL.Map = FString::Printf( TEXT("%s") PATH_SEPARATOR TEXT("Save%i.usa"), *GSys->SavePath, appAtoi(Option) );
 		if( LoadMap(LoadURL,NULL,NULL,Error) )
@@ -744,10 +733,9 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 					&PackageMap->List(i).Guid
 				);
 #ifdef __EMSCRIPTEN__
-			// ufront (2.79o): with catching off, a package that cannot be had comes back NULL from GetPackageLinker --
-			// not found, or found in ANOTHER VERSION than the server's ("version mismatch": a mod the player has in a
-			// different version, which aborted the whole module on a real server). Fail the join HERE with the reason
-			// the native throw carries: before VerifyLinker dereferences it, and before the live level is torn down.
+			// On the web a package that cannot be had comes back NULL from GetPackageLinker: not found, or found in
+			// another version than the server's. Fail the join here with the reason the native throw carries, before
+			// VerifyLinker dereferences it and before the live level is torn down.
 			for( i=0; i<PackageMap->List.Num(); i++ )
 				if( !PackageMap->List(i).Linker )
 				{
@@ -768,13 +756,9 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		ULevel* Verified = LoadObject<ULevel>( MapParent, TEXT("MyLevel"), *URL.Map, LOAD_Verify | LOAD_Throw | LOAD_NoWarn, NULL );
 		EndLoad();
 #ifdef __EMSCRIPTEN__
-		// 2.12 hardening (mirrors engine-unreal1 LoadMap / ut2004): with C++ exception CATCHING disabled on the
-		// web build, SafeLoadError no longer re-throws, so a failed VERIFY of a missing/bad map arrives here as a
-		// NULL object (the catch() below is dead code). Bail NOW — BEFORE DissociateViewports/ExitLevel tear down
-		// the live level + player actor. Otherwise a RUNTIME `open <missing>` destroys the current player actor and
-		// nulls GLevel, then the old post-teardown guard returns NULL leaving Client->Viewports(0)->Actor dangling,
-		// and the very next UGameEngine::Tick NULL-derefs it (Actor->GetLevel()). At boot the teardown is a no-op
-		// (no viewport yet, GLevel already NULL), which is why the old guard sufficed only for the autostart path (2.6g).
+		// On the web SafeLoadError does not re-throw, so a failed verify of a missing or bad map arrives here as
+		// NULL: fail now, before DissociateViewports/ExitLevel tear down the live level and the player actor (an
+		// `open <missing>` would otherwise leave Client->Viewports(0)->Actor dangling).
 		if( !Verified )
 		{
 			Error = FString(TEXT("Could not load map ")) + URL.Map;
@@ -881,10 +865,8 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	unguard;
 
 #ifdef __EMSCRIPTEN__
-	// 2.6g (mirrors engine-unreal1): the real load can now return NULL on the web build — a missing package/map
-	// resolves to NULL (GetPackageLinker) and StaticLoadObject no longer throws ObjectNotFound — even under
-	// LOAD_NoFail. Return NULL gracefully (the caller / UGameEngine::Init falls back to the Entry menu) instead
-	// of falling through to check(GLevel) below, which would abort on the NULL level.
+	// On the web the load returns NULL for a missing package or map, even under LOAD_NoFail: return NULL (the
+	// caller, or UGameEngine::Init's fallback to Entry, handles it) rather than reach check(GLevel) below.
 	if( !GLevel )
 	{
 		Error = FString(TEXT("Could not load map ")) + URL.Map;
@@ -1264,14 +1246,10 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 // Draw a global view.
 //
 //
-// Scoped AutoFOV override (step 2.16). Everything that consumes the FOV during a frame reads it from
-// Viewport->Actor->FovAngle: the engine's own clip planes via FSceneNode::ComputeRenderSize, and EVERY
-// render device independently (they each re-derive their frustum from it — NOpenGLESDrv, SoftDrv,
-// XOpenGLDrv, UTGLR, PVRDrv). Overriding it for the duration of the draw is therefore the ONLY lever
-// that keeps culling and the drawn projection in agreement across all of them, and it needs no
-// per-driver change at all. It is restored on every exit path, so the value script sees is untouched —
-// which matters: PlayerPawn.uc derives MouseScale from DesiredFOV, so writing the actor's FOV
-// permanently (as the driver-level AutoFOV this replaces did) silently rescales the player's aim.
+// Scoped AutoFOV override. Everything that consumes the FOV during a frame reads Viewport->Actor->FovAngle:
+// the clip planes (FSceneNode::ComputeRenderSize) and every render device, so overriding it for the draw keeps
+// culling and projection in agreement with no per-driver change. Restored on every exit path, so script
+// (PlayerPawn.uc's MouseScale derives from DesiredFOV) keeps the player's FOV.
 //
 struct FScopedAutoFov
 {
@@ -1388,12 +1366,9 @@ void UGameEngine::Draw( UViewport* Viewport, UBOOL Blit, BYTE* HitData, INT* Hit
 		Frame->ComputeRenderSize();
 #endif
 		Viewport->RenDev->EndFlash();
-		// AutoFOVUI (step 2.16b): scale the game's OWN global HudScale for the duration of the HUD's
-		// PostRender, so widget SIZES follow height instead of width while positions stay put. Found by
-		// NAME through reflection rather than a compile-time member, because the property lives on the
-		// retail script class (Botpack.ChallengeHUD) -- which also means a total conversion's HUD inherits
-		// it and gets scaled without us knowing anything about it. Restored immediately so a SaveConfig
-		// can never capture our factor.
+		// AutoFOVUI: scale the HUD's own HudScale for the duration of its PostRender, so widget sizes follow the
+		// height while positions stay put. Found by name through reflection (the property lives on the script
+		// class, Botpack.ChallengeHUD, so any subclass is covered); restored at once, so SaveConfig never sees it.
 		{
 			AActor* Hud = Viewport->Actor->myHUD;
 			UFloatProperty* HudScaleProp = Hud ? FindField<UFloatProperty>( Hud->GetClass(), TEXT("HudScale") ) : NULL;
@@ -1551,7 +1526,7 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 	guard(UGameEngine::Tick);
 	INT LocalTickCycles=0;
 	clock(LocalTickCycles);
-	UfrontFpsLogTick( this );	// ufront: FpsLogSeconds / FPSLOG; nothing unless asked for
+	UfrontFpsLogTick( this );	// FpsLogSeconds / FPSLOG; nothing unless asked for
 
 	// If all viewports closed, time to exit.
 	if( Client && Client->Viewports.Num()==0 )
@@ -1563,26 +1538,8 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 
 	// If game is paused, release the cursor.
 	//
-	// ufront 2.12 (web mouse — pointer-lock RE-engagement): NATIVE ONLY. On the web this stock
-	// pause/unpause path FIGHTS the whole-game-lock block below and strands the pointer permanently
-	// unlocked after the first menu. In a menu the web sets bShowWindowsMouse=1, so IsPaused flips
-	// true and this calls SetMouseCapture(0,0,0) -> SDL_SetRelativeMouseMode(SDL_FALSE). The block
-	// below only re-asserts capture when its cached Want CHANGES — but Want never changes (a live
-	// level stays up in the menu), so relative-mouse-mode is left OFF, and SDL's Emscripten mousedown
-	// re-grab (relative_mode && !has_pointer_lock -> emscripten_request_pointerlock) can then never
-	// fire again. Net effect the owner saw: the mouse locks EXACTLY ONCE, then never re-locks after
-	// the first ESC (the console shows zero further requestPointerLock calls). On the web the block
-	// below is the SOLE capture authority (owner wants the whole game LOCKED, menus included), so
-	// skip this release entirely — relative-mouse-mode is set once at boot and stays on.
-	//
-	// ufront 2.12 (native menu mouse): NATIVE SDL is now excluded here too (guard broadened to also skip
-	// PLATFORM_SDL) and uses the whole-game-lock block below. The native menu was broken the same way as the
-	// web one: releasing relative-mouse-mode in a menu drops NSDLViewport::TickInput into its ABSOLUTE-motion
-	// branch, where the OS pointer is window-bounded, so xrel/yrel stop at the screen edge and the UWindow
-	// cursor (driven by IK_MouseX/Y axis deltas) can't reach the corners in fullscreen. Holding relative mode
-	// (whole-game-lock) feeds unbounded deltas -> full-speed, corner-reachable cursor. This stock release block
-	// is thus left only for the legacy Win32 (WinDrv) path. WEB PREPROCESSING IS UNCHANGED: __EMSCRIPTEN__ is
-	// defined on web, so this block stays excluded exactly as before (was plain #ifndef __EMSCRIPTEN__).
+	// The stock pause/unpause capture path, for a client other than SDL's; SDL builds (the web included) use
+	// the capture block below instead, which this path would fight.
 #if !defined(__EMSCRIPTEN__) && !defined(PLATFORM_SDL)
 	static UBOOL WasPaused=1;
 	if
@@ -1605,36 +1562,11 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 #endif
 
 #ifdef PLATFORM_SDL
-	// ufront 2.12 (web + native SDL mouse — robust pointer lock; guard broadened __EMSCRIPTEN__ -> PLATFORM_SDL
-	// so NATIVE SDL uses this same whole-game-lock, fixing the native menu mouse — see the stock-block note
-	// above). WEB PREPROCESSING IS UNCHANGED: PLATFORM_SDL is defined on web too (USE_SDL is ON for Emscripten),
-	// so this block is still compiled on web exactly as before -> web wasm byte-identical. On native,
-	// SetMouseCapture -> SDL_SetRelativeMouseMode directly (there is no browser pointer-lock/ESC dance, so the
-	// SDL Emscripten re-grab notes below are web-only, harmless as comments).
-	//
-	// The stock capture path above only arms via the
-	// pause->unpause transition gated on Client->CaptureMouse (or the MOUSE_FirstHit click gates), and neither
-	// reliably engages SDL relative-mouse-mode on the web. Drive it directly here instead.
-	//
-	// Owner feedback (2.12): keep the mouse LOCKED for the WHOLE game, menus included. ⚠ SUPERSEDED BY
-	// 2.38 — see below. The 2.12 reasoning was: "UT99's UWindow menu cursor is RELATIVE (moved by
-	// IK_MouseX/IK_MouseY axis; UWindow ignores the absolute WindowsMouseX/Y). An UNLOCKED relative cursor
-	// desynced from the browser cursor (~half speed + offscreen-reentry drift, so the lower-right menu
-	// buttons were unreachable)."
-	//
-	// ★★ The premise was WRONG. UWindow does NOT ignore WindowsMouseX/Y — `WindowConsole.RenderUWindow`
-	// reads them directly, gated on `Viewport.bWindowsMouseAvailable`, and NSDLViewport simply never set
-	// that flag (engine-ut2004's SDL2Viewport does, which is why its menus have always been absolute).
-	// So the 2.12 cursor was relative only because the absolute path was switched off, and locking the
-	// pointer through menus was a workaround for a flag.
-	//
-	// 2.38 sets the flag (NSDLViewport::ResizeViewport) and pairs it here: RELEASE relative capture while
-	// a menu is up, so the browser delivers absolute motion, WindowsMouseX/Y track the real cursor, and
-	// the UWindow cursor lands exactly under it — the UT2004 model, and what makes a menu button
-	// addressable by position at all. Captured whenever a live level is up and NO menu is showing; the
-	// browser drops pointer lock on ESC anyway (which is what opens the menu), and SDL's Emscripten
-	// mousedown handler re-grabs it on the first click after the menu closes. State-change only (no
-	// per-frame SetRelativeMouseMode churn).
+	// SDL builds (native and web): relative capture whenever a live level is up and no menu shows; released
+	// while a menu is up, so absolute motion arrives and UWindow puts its cursor at WindowsMouseX/Y (the viewport
+	// sets bWindowsMouseAvailable on windowed viewports). On the web the browser drops the pointer lock on ESC
+	// (which opens the menu) and SDL's Emscripten port re-grabs it on the first click after the menu closes.
+	// Acts on state changes only.
 	{
 		static INT WebCap = -1;
 		static INT WebMenu = -1;
@@ -1832,16 +1764,8 @@ void UGameEngine::SaveGame( INT Position )
 	guard(UGameEngine::SaveGame);
 
 	TCHAR Filename[256];
-	// ufront 2.35 — Tree=1, i.e. create the WHOLE chain, not just the last component.
-	//
-	// Stock passes 0 (a single mkdir), which is fine for the base game's one-level `SavePath=../Save`:
-	// the parent is the VFS root, so the mkdir succeeds. A total conversion that nests its saves —
-	// Spatial Fear ships `SavePath=../spatial-fear/save` — needs the intermediate directory first, so the
-	// single mkdir fails with ENOENT, ULinkerSave's CreateFileWriter then returns NULL, and it appThrowf's
-	// "Error opening file". On a build with exceptions ENABLED that is a caught, recoverable "save failed";
-	// with -fno-exceptions it is ___cxa_throw -> abort(), and the whole engine thread dies mid-play.
-	// Same shape as the case-order package bug (engine-ut99 1e35a01): an ordinary error made fatal by
-	// exceptions being off. Reproduced with `?conv=-ini=spatialfear.ini` + `savegame 0`.
+	// Tree=1: create the whole SavePath chain, so a total conversion's nested save folder
+	// (`SavePath=../spatial-fear/save`) works.
 	GFileManager->MakeDirectory( *GSys->SavePath, 1 );
 	appSprintf( Filename, TEXT("%s") PATH_SEPARATOR TEXT("Save%i.usa"), *GSys->SavePath, Position );
 	GLevel->GetLevelInfo()->LevelAction=LEVACT_Saving;

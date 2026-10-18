@@ -1,6 +1,6 @@
 /*=============================================================================
 	NullDrv.cpp: Null (GPU-free) render device.
-	ufront: a no-op URenderDevice — selected via -NULLRENDERER for a headless run (no WebGL context).
+	A URenderDevice that draws nothing, selected with -NULLRENDERER for a headless run.
 =============================================================================*/
 
 #include "NullDrvPrivate.h"
@@ -40,9 +40,8 @@ UBOOL UNullRenderDevice::SetRes( INT NewX, INT NewY, INT NewColorBytes, UBOOL Fu
 	guard(UNullRenderDevice::SetRes);
 	if( NewColorBytes!=2 && NewColorBytes!=4 )
 		NewColorBytes = 4;
-	// Claim a software (non-GL) surface. The NSDL viewport keys the GL-vs-software decision on the device
-	// NAME containing "OPENGL", which this device lacks -> an SDL_Texture surface, NO WebGL context. We
-	// never write to the surface (every Draw* below is a no-op) — the point is a GPU-free run.
+	// Claim a software surface: the SDL viewport makes a GL context only for a device name containing "OPENGL".
+	// Nothing is ever written to it (every Draw* below is a no-op).
 	return Viewport->ResizeViewport( BLIT_DibSection, Align(NewX,2), NewY, NewColorBytes );
 	unguard;
 }

@@ -30,11 +30,8 @@
 #define ROLLOFF_FACTOR 1.1f
 #define DESPATIALIZE_FACTOR 0.1f
 
-// ufront 2.12 (web + native): this driver pumps the libxmp music decoder from Update() on BOTH platforms
-// (the web build is single-threaded, so it must; native follows the same path for one code path), so there
-// is no background decoder thread and no cross-thread music state. UT99's Core (v400) has no FMutex/
-// FScopedLock (those were v200 additions in engine-unreal1), so define trivial no-op equivalents here to
-// keep the music-locking call sites unchanged and correct — all music access is on the main (game) thread.
+// The libxmp music decoder is pumped from Update(), on the game thread, so there is no cross-thread music
+// state. v400's Core has no FMutex/FScopedLock: these no-op equivalents keep the music-locking call sites.
 struct FMutex
 {
 	FMutex( const TCHAR* = NULL ) {}
@@ -61,8 +58,7 @@ class DLL_EXPORT UNOpenALAudioSubsystem : public UAudioSubsystem
 	FLOAT DopplerFactor;
 	UBOOL UseReverb;
 	UBOOL UseHRTF;
-	// ufront 2.76: REVERB_NONE is an OpenAL with no EFX at all (a core 1.1 library). Decided at Init from what
-	// the LINKED library offers, never at build time.
+	// REVERB_NONE: an OpenAL without EFX (a core 1.1 library). Decided at Init from the linked library.
 	enum EReverbKind { REVERB_EAX=0, REVERB_NONE=1 };
 	INT ReverbKind;			// resolved at Init
 
@@ -120,7 +116,7 @@ private:
 	ALuint FreeMusicBuffers[NUM_MUSIC_BUFFERS];
 	INT NumFreeMusicBuffers;
 
-	// Single-threaded music: pumped from Update() (no background thread). See the FMutex note above.
+	// Music is pumped from Update() on the game thread; see the FMutex note above.
 	FMutex MusicMutex { "MusicMutex" };
 
 	enum ENVoiceOp

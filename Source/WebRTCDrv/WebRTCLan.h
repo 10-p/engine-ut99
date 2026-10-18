@@ -1,7 +1,7 @@
 /*=============================================================================
-	WebRTCLan.h — the IpDrv-facing face of the synthetic LAN (ufront 2.38).
+	WebRTCLan.h — the IpDrv-facing face of the synthetic LAN.
 
-	Deliberately free of IpDrv types (no AUdpLink, no sockaddr): IpDrv calls INTO
+	Deliberately free of IpDrv types (no AUdpLink, no sockaddr): IpDrv calls into
 	WebRTCDrv, never the reverse, so there is no module cycle. The link is
 	identified by an opaque id — AUdpLink passes its own `this`.
 
@@ -11,7 +11,7 @@
 #ifndef WEBRTCLAN_H
 #define WEBRTCLAN_H
 
-/** A UdpLink bound a port. Binding the beacon port is what starts Unreal 1's passive discovery. */
+/** A UdpLink bound a port. Binding the beacon port starts the passive (ClientBeaconReceiver) discovery. */
 void WebRTCLan_Bind( const void* LinkId, INT Port );
 
 /** A UdpLink went away — drop its pending replies. */

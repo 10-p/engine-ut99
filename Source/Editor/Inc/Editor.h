@@ -12,7 +12,7 @@
 
 #include "Engine.h"
 
-#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+#pragma pack (push,4) /* script-mirrored classes keep the Win32 /Zp4 layout on every target */
 
 // FBuilderPoly is the script struct BrushBuilder.BuilderPoly, and TArray<FBuilderPoly> strides by its size.
 struct EDITOR_API FBuilderPoly

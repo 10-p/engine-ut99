@@ -19,12 +19,7 @@ IMPLEMENT_CLASS( UNSDLClient );
 void UNSDLClient::StaticConstructor()
 {
 	guard(UNSDLClient::StaticConstructor);
-	// ufront 2.19: was InternalClassInitializer, the UE1 *v200* class hook — which this v400 engine NEVER
-	// invokes (v400's IMPLEMENT_CLASS calls StaticConstructor). See NSDLViewport.cpp, where the identical
-	// dead hook cost UT99 its keyboard, and NOpenGLESDrv, fixed the same way in this step. Consequence
-	// here: NONE of the nine options below were registered, so [NSDLDrv.NSDLClient] in the ini was inert
-	// and joystick / fullscreen / dead-zone settings silently did nothing. The class-name guard the v200
-	// hook needed is gone with it — StaticConstructor already runs per concrete class.
+	// The driver's nine config options (v400's IMPLEMENT_CLASS calls StaticConstructor once per class).
 	new(GetClass(), "DefaultDisplay",    RF_Public)UIntProperty(CPP_PROPERTY(DefaultDisplay),     "Display",  CPF_Config );
 	new(GetClass(), "StartupFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), "Display",  CPF_Config );
 	new(GetClass(), "UseJoystick",       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       "Joystick", CPF_Config );
@@ -35,31 +30,14 @@ void UNSDLClient::StaticConstructor()
 	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
 	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
 
-	// ★ COMPILED DEFAULTS (ufront 2.35). Registration above only makes an option ADDRESSABLE by the ini;
-	// it assigns no value. UClient::StaticConstructor (Engine/Src/UnCamMgr.cpp) is the same — it registers
-	// its ~15 display options and assigns none of them — so with no [NSDLDrv.NSDLClient] section EVERY
-	// setting below fell back to a zero-initialised default, and the zeroes are wrong:
-	//
-	//   Decals = 0            -> ADecal::execAttachDecal (UnScript.cpp) early-returns on
-	//                            `!Engine->Client->Decals`, so no decal is ever placed. Silently.
-	//   Brightness = 0        -> a black picture.
-	//   WindowedViewportX/Y=0 -> a 0x0 window (measured: 320x240 under Xvfb during the 2.34 Windows pass).
-	//   CurvedSurfaces = 0    -> flat-shaded curved geometry.
-	//   MinDesiredFrameRate=0 -> the dynamic-detail governor has no target to hold.
-	//
-	// ⚠ THE NATIVE CONFIG NEVER SUPPLIED THEM. Config/System/web/Default.ini carries a full section, so the
-	// WEB build has always been fine; Config/System/UnrealTournament.ini and Default.ini carry NONE, which
-	// is why a native install writes `Decals=False` back into its own ini and then honours it forever. That
-	// is the "no decals" the owner kept hitting. Fixed in both places: the values here, and a matching
-	// section added to the native ini so the knob is documented rather than merely implied.
-	//
-	// Values mirror Config/System/web/Default.ini's section exactly, so the compiled default and the shipped
-	// ini now AGREE. Every line stays overridable by ini, like any other config option.
+	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
+	// [NSDLDrv.NSDLClient] section a zero would mean no decals, a black picture and a 0x0 window. They match the
+	// section in Config/System/web/Default.ini; the ini overrides any of them.
 	CaptureMouse        = 1;
 	CurvedSurfaces      = 1;
 	ScreenFlashes       = 1;
 	NoLighting          = 0;
-	Decals              = 1;   // ← the one the owner asked for; off-by-default was never a decision
+	Decals              = 1;
 	NoDynamicLights     = 0;
 
 	WindowedViewportX   = 1280;
@@ -73,12 +51,11 @@ void UNSDLClient::StaticConstructor()
 	MipFactor           = 1.0f;
 	MinDesiredFrameRate = 20.0f;
 
-	// TextureDetail / SkinDetail index the `Details` enum (High, Medium, Low, Ultra Low), so 0 is already
-	// High. Written out so it is a decision rather than a coincidence.
+	// TextureDetail / SkinDetail index the `Details` enum (High, Medium, Low, Ultra Low).
 	TextureLODSet[1]    = 0;   // TextureDetail = High
 	TextureLODSet[2]    = 0;   // SkinDetail    = High
 
-	// This driver's own nine, likewise unassigned until now.
+	// This driver's own nine.
 	DefaultDisplay      = 0;
 	StartupFullscreen   = 0;
 	UseJoystick         = 1;
@@ -98,11 +75,8 @@ void UNSDLClient::StaticConstructor()
 UNSDLClient::UNSDLClient()
 {
 	guard(UNSDLClient::UWindowsClient);
-	// ufront 2.91: nothing configurable is assigned here. This v400 engine runs the C++ constructor on an object
-	// whose config the ini has ALREADY filled (StaticAllocateObject copies the class defaults, which LoadConfig set),
-	// so the assignments this held (UseJoystick=true, ScaleXYZ/RUV=100, the dead zones, DefaultDisplay) overwrote the
-	// ini every time: `UseJoystick=False` connected the pad anyway (measured 2026-10-14) and the Scale keys never
-	// applied. The compiled defaults live in StaticConstructor, where the ini can override them.
+	// Nothing configurable is assigned here: the constructor runs on an object whose config the ini has already
+	// filled (StaticAllocateObject copies the class defaults), so an assignment would override the ini.
 	Controller = NULL;
 	unguard;
 }
@@ -119,19 +93,15 @@ void UNSDLClient::Init( UEngine* InEngine )
 	// Init base.
 	UClient::Init( InEngine );
 
-	// ★ SAY WHAT THE CLIENT ACTUALLY RESOLVED TO (ufront 2.35). These options are read off this object by
-	// the renderer and by ADecal::execAttachDecal, and until now the resolved values were invisible -- so
-	// "why are there no decals" had no answer short of reading the ini and knowing which of the four client
-	// sections this build even uses. Same lesson as 2.30's "GL4ES: Vertex buffers:" line: a silent decision
-	// is indistinguishable from a broken one. One line, at Init, naming the values that matter.
+	// Log the resolved display options (read off this object by the renderer and by ADecal::execAttachDecal).
 	debugf( NAME_Init, TEXT("NSDLClient: %ix%i, Brightness=%.2f, Decals=%i, CurvedSurfaces=%i, ScreenFlashes=%i, NoDynamicLights=%i, MinDesiredFrameRate=%.0f"),
 		WindowedViewportX, WindowedViewportY, Brightness, (INT)Decals, (INT)CurvedSurfaces,
 		(INT)ScreenFlashes, (INT)NoDynamicLights, MinDesiredFrameRate );
 
 	Controller = NULL;
 
-	// ufront 2.91: the game-controller subsystem is always up; whether a pad is USED is UseJoystick, which the
-	// viewport reads every tick (UNSDLViewport::TickInput), so the game's own option takes effect at once.
+	// The game-controller subsystem is always up; whether a pad is used is UseJoystick, which the viewport reads
+	// every tick (UNSDLViewport::TickInput).
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER ) < 0 )
 	{
 		appErrorf( "SDL_Init failed: %s", SDL_GetError() );
@@ -141,8 +111,7 @@ void UNSDLClient::Init( UEngine* InEngine )
 	atexit( SDL_Quit );
 
 	// A pad already connected (on the web: one pressed on the launcher page). Later ones arrive through
-	// SDL_CONTROLLERDEVICEADDED (UNSDLViewport::UpdateInput): there was no hot-plug before, so on the web, where a
-	// browser lists a pad only once a button is pressed on it, a pad practically never worked.
+	// SDL_CONTROLLERDEVICEADDED (UNSDLViewport::UpdateInput); a browser lists a pad only once a button is pressed.
 	SDL_GameControllerEventState( SDL_ENABLE );
 	if( UseJoystick )
 	{
@@ -454,9 +423,6 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 	if( RenderClass )
 	{
 		Viewport->RenDev = ConstructObject<URenderDevice>( RenderClass );
-		// (On web the device's inherited CPF_Config feature flags -- Coronas, VolumetricLighting,
-		// ShinySurfaces, DetailTextures, HighDetailActors -- are loaded centrally in
-		// UObject::StaticConstructObject, which repairs the value-init ClassConstructor wipe; see UnObj.cpp.)
 		if( Engine->Audio && !GIsEditor )
 			Engine->Audio->SetViewport( NULL );
 		if( Viewport->RenDev->Init( Viewport, Viewport->SizeX, Viewport->SizeY, Viewport->ColorBytes, Fullscreen ) )
@@ -479,14 +445,14 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 }
 
 /*-----------------------------------------------------------------------------
-	ufront: game pads (from the UC2 port's SDL2Drv/Src/SDL2Pads.cpp, one pad here).
+	Game pads (one pad: the first connected).
 -----------------------------------------------------------------------------*/
 
 #ifdef __EMSCRIPTEN__
 //
-// H-3: the buttons pressed right now on the browser's first listed pad named Id (bit i = Gamepad.buttons[i].pressed,
+// The buttons pressed right now on the browser's first listed pad named Id (bit i = Gamepad.buttons[i].pressed,
 // the W3C "standard" layout), 0 if none. A browser lists a pad only at its first press, and that press is already
-// down in the snapshot SDL's Emscripten driver keeps as the pad's starting state (it reports CHANGES only), so SDL
+// down in the snapshot SDL's Emscripten driver keeps as the pad's starting state (it reports changes only), so SDL
 // never reports it: read it once here. Runs on the page's main thread (the engine is on a worker).
 // (In the EM_ASM block: no top-level commas and no // comments.)
 //

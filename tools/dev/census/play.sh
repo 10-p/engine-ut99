@@ -1,8 +1,7 @@
 #!/usr/bin/env bash
-# play.sh <run-tree> <device-switch> <url> <out-dir> [<console command>...] -- a scripted PLAYER session
-# (ufront 2.83). Bots and -NULLRENDERER exercise almost none of what a player reaches: the 64-bit alias-key
-# crash (65e2f5a), the SoftDrv lit palette (da98ddb) and the `shot` overrun (9d74a86) were all on player-only
-# paths. This boots <url> on an X display, presses keys bound to aliases (Fire, AltFire, movement, Jump),
+# play.sh <run-tree> <device-switch> <url> <out-dir> [<console command>...] -- a scripted player session,
+# for the paths bots and -NULLRENDERER do not reach (alias keys, the software renderer's palettes, `shot`).
+# It boots <url> on an X display, presses keys bound to aliases (Fire, AltFire, movement, Jump),
 # turns two full circles (procedural and scripted textures only tick when seen), types each command into the
 # console with a screenshot after it, and ends with `exit`.
 #

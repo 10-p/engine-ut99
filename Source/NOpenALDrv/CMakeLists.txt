@@ -2,17 +2,11 @@ project(NOpenALDrv C CXX)
 
 set(SRC_FILES "NOpenALDrv.cpp")
 
-# ufront 2.12 (web + native audio): SFX via OpenAL — openal-soft everywhere since 2.61 (on the web built by
-# cmake/OpenALSoft.cmake, full EFX/reverb/HRTF like native; before that Emscripten's built-in OpenAL 1.1
-# core with EFX/HRTF compiled out). libxmp (the tracker decoder for Unreal's .umx music)
-# is not reliably shipped by either toolchain, so fetch + build it as a static lib on BOTH targets — it is
-# portable C and cross-compiles cleanly under emcc and gcc. Depackers/ProWizard are disabled (Unreal music
-# is raw modules; depackers pull archive deps + bloat). NOTE: libxmp's BUILD_STATIC option collides by name
-# with the engine's own BUILD_STATIC ("single binary"); under libxmp's capped policy (CMP0077 OLD) its
-# option() would reset the inherited value and disable its static build (-> its "both disabled" FATAL_ERROR),
-# so we force the cache var for its configure and restore the engine's afterward (see the save/restore
-# around BUILD_STATIC below). Ported from engine-unreal1's NOpenALDrv (which carries the same latent
-# collision) + extended to the native branch below.
+# Sound through OpenAL (the openal-soft fork, cmake/OpenALSoft.cmake), music through libxmp, the tracker
+# decoder for .umx, fetched and built as a static library on every target. Depackers and ProWizard are off
+# (Unreal music is raw modules). libxmp's BUILD_STATIC option shares its name with the engine's: under
+# libxmp's CMP0077 OLD policy its option() would reset the inherited value, so the cache variable is forced
+# for its configure and the engine's restored afterwards (the save/restore around BUILD_STATIC below).
 include(FetchContent)
 set(LIBXMP_SOURCE_DIR "" CACHE PATH "Local libxmp checkout. Empty => fetch from git.")
 set(LIBXMP_GIT_REPOSITORY "https://github.com/libxmp/libxmp.git" CACHE STRING "Upstream libxmp git repo")
@@ -24,11 +18,9 @@ else()
   message(STATUS "libxmp: fetching ${LIBXMP_GIT_REPOSITORY}@${LIBXMP_GIT_TAG}")
   FetchContent_Declare(libxmp GIT_REPOSITORY "${LIBXMP_GIT_REPOSITORY}" GIT_TAG "${LIBXMP_GIT_TAG}" GIT_SHALLOW TRUE)
 endif()
-# libxmp's BUILD_STATIC (its own option) collides with the engine's BUILD_STATIC. Save the engine's
-# cached value, force ON for libxmp's configure, and RESTORE it after MakeAvailable (below) — otherwise
-# the FORCE persists and poisons the engine on the next *reconfigure* of this build dir: the top-level
-# read (LIB_TYPE) flips to STATIC and the NOpenGLES/XOpenGL glad-clash guard fires. libxmp runs under
-# CMP0077 OLD, so the value must be in the cache before its option() (a normal variable won't take).
+# Save the engine's cached BUILD_STATIC, force it ON for libxmp's configure, and restore it after
+# MakeAvailable (below), so a reconfigure of this build dir still reads the engine's own value. Under
+# CMP0077 OLD the value must be in the cache before libxmp's option().
 set(_UFRONT_SAVED_BUILD_STATIC "$CACHE{BUILD_STATIC}")
 set(BUILD_STATIC ON  CACHE BOOL "" FORCE)   # libxmp static lib (restored after MakeAvailable)
 set(BUILD_SHARED OFF CACHE BOOL "" FORCE)
@@ -47,20 +39,18 @@ endif()
 set(LIBXMP_LIBRARY xmp_static)
 
 if(EMSCRIPTEN)
-  # ufront 2.61: openal-soft, built by the parent (cmake/OpenALSoft.cmake WEB) — was Emscripten's built-in
-  # -lopenal. Linking the target also gives this driver openal-soft's <AL/alext.h>/<AL/efx.h>.
+  # openal-soft, built by the parent (cmake/OpenALSoft.cmake WEB); the target also brings its <AL/alext.h> and
+  # <AL/efx.h>.
   set(OPENAL_LIBRARY OpenAL)
 elseif(TARGET OpenAL)
-  # ufront 2.70: native Linux — the parent built the same fork SHARED (cmake/OpenALSoft.cmake NATIVE); the
-  # launcher copies libopenal.so.1 beside the binary and links with $ORIGIN, so this DT_NEEDED resolves there.
+  # Native Linux: the parent built the same fork as a shared library (cmake/OpenALSoft.cmake NATIVE); the
+  # launcher copies libopenal.so.1 beside the binary and links with $ORIGIN.
   set(OPENAL_LIBRARY OpenAL)
 elseif(MINGW AND CMAKE_CROSSCOMPILING)
-  # ufront 2.34 — cross-building for Windows: no system OpenAL, so fetch OpenAL Soft's official prebuilt
-  # Windows binaries (same pattern as SDL2Mingw). Real audio on Windows, because a silent build is not a
-  # usable default; see cmake/OpenALMingw.cmake for why this one library is loaded rather than linked.
+  # Cross-building for Windows: OpenAL Soft's official prebuilt Windows binaries (cmake/OpenALMingw.cmake).
   include(OpenALMingw)
 else()
-  # Native (Linux): system OpenAL (openal-soft) provides the full feature set (EFX/reverb/HRTF).
+  # Native without the bundled fork: the system OpenAL.
   find_package(OpenAL)
   if(NOT OPENAL_LIBRARY)
     set(OPENAL_LIBRARY "-lopenal")   # fall back to a plain link if find_package didn't populate it

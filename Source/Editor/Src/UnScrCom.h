@@ -91,7 +91,7 @@ enum EPropertyType
 };
 
 //
-// The size a value of a struct has in the compiled-script format (ufront 2.83). The compiler records
+// The size a value of a struct has in the compiled-script format. The compiler records
 // value sizes in the bytecode (the zero-fill of a None context, a switch's compare), and the .u format
 // is the 32-bit one every engine reads: an object reference is 4 bytes there, a string or dynamic array
 // 12, a map 20. On a 64-bit host the linked struct is larger, so its size is recomputed with the
@@ -122,8 +122,7 @@ public:
 	UClass* MetaClass;
 
 	// Constructors.
-	// Enum(NULL) clears the whole union (ufront 2.83). It used to clear BitMask, 4 bytes: on LP64 the
-	// pointer members kept a garbage high half, so a plain byte had an Enum and `B = 7` was a type mismatch.
+	// Enum(NULL) clears the whole union, pointer members included (BitMask alone is 4 bytes).
 	FPropertyBase( EPropertyType InType )
 	:	Type(InType), ArrayDim(1), PropertyFlags(0), Enum(NULL), MetaClass(NULL)
 	{}
@@ -206,7 +205,7 @@ public:
 			sizeof(INT),
 			sizeof(DWORD),
 			sizeof(FLOAT),
-			SCRIPT_FORMAT_OBJECT_SIZE,	// ufront 2.83: the format's size, not this host's pointer.
+			SCRIPT_FORMAT_OBJECT_SIZE,	// the format's size, not this host's pointer
 			sizeof(FName),
 			0,
 			0,
@@ -726,7 +725,7 @@ public:
 	FArchive& operator<<( class FName& N )
 		{NAME_INDEX W=N.GetIndex(); return *this << W;}
 	FArchive& operator<<( class UObject*& Res )
-		{INT Ref = UObject::GetScriptRef( Res ); return *this << Ref;}	// An object index (ufront 2.83).
+		{INT Ref = UObject::GetScriptRef( Res ); return *this << Ref;}	// An object index.
 	FArchive& operator<<( TCHAR* S )
 		{Serialize(S,appStrlen(S)+1); return *this;}
 	FArchive& operator<<( enum EExprToken E )

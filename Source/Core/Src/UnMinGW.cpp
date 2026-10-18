@@ -1,14 +1,8 @@
 /*=============================================================================
-	UnMinGW.cpp: Win32 calls the portable core does not have.
+	UnMinGW.cpp: Win32 calls the portable core does not have (MinGW builds only).
 
-	ufront step 2.33 — the Windows build.
-
-	The engine's platform layer for every GCC/Clang target is UnUnix.cpp (Core/CMakeLists.txt picks
-	UnVcWin32.cpp only for MSVC). That layer is very nearly portable to MinGW already; this file exists
-	for the few places where there is no POSIX answer at all, so that Windows work stays OUT of the
-	shared sources instead of accreting as #ifdefs inside them.
-
-	COMPILED ON WINDOWS ONLY — Linux and web never see it, which is exactly the point.
+	The platform layer of every GCC/Clang target is UnUnix.cpp (Core/CMakeLists.txt picks
+	UnVcWin32.cpp only for MSVC); this file holds the few calls with no POSIX answer.
 =============================================================================*/
 
 #ifdef PLATFORM_WIN32

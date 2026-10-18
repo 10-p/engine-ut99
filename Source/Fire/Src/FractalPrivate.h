@@ -11,14 +11,13 @@
 
 #include "Engine.h"
 
-#pragma pack (push,4) /* ufront 2.83: the UnrealScript mirror contract (Win32 /Zp4) on every target -- see Core/Inc/UnObjBas.h */
+#pragma pack (push,4) /* script-mirrored classes keep the Win32 /Zp4 layout on every target */
 
 /*----------------------------------------------------------------------------
 	General structures.
 ----------------------------------------------------------------------------*/
 
-// This file uses MSVC's __int64 spelling. Supply it where the compiler does not — but NOT on MinGW,
-// where __int64 is a builtin keyword and typedef'ing it is a syntax error (ufront 2.33).
+// This file uses MSVC's __int64 spelling: supply it where the compiler does not (MinGW has it built in).
 #if !_MSC_VER && !defined(__MINGW32__)
 	typedef SQWORD __int64;
 #endif

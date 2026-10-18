@@ -1,6 +1,6 @@
 /*=============================================================================
 	NullDrvPrivate.h: Null render device (GPU-free) private header.
-	ufront: a no-op URenderDevice for a headless / "poor-man's dedicated server" run.
+	A URenderDevice that draws nothing, for a headless run.
 =============================================================================*/
 
 #include "RenderPrivate.h"
@@ -10,13 +10,9 @@
 ------------------------------------------------------------------------------------*/
 
 //
-// ufront: a null render device — implements the v400 URenderDevice interface with no-op draw calls and no
-// GL context. Selected via -NULLRENDERER. The NSDL viewport decides GL-vs-software purely from the render
-// device NAME containing "OPENGL" (UNSDLViewport::OpenWindow, before Init runs; it ignores the BLIT_* type
-// and the device class). "NullDrv.NullRenderDevice" lacks "OPENGL", so the viewport creates an SDL_Texture
-// software surface and NO WebGL context — the game runs GPU-free. This mirrors, for the older UE1
-// immediate-mode interface, what UT2004's Engine.NullRenderDevice (UE2.5 / FRenderInterface) does: a valid
-// render device that draws nothing, so a listen server can run with an empty tab.
+// The v400 URenderDevice interface with no-op draw calls, selected with -NULLRENDERER. UNSDLViewport::OpenWindow
+// makes a GL context only for a device name containing "OPENGL", so this one gets a software surface and the
+// game runs without a GPU (a listen server with an empty tab).
 //
 class DLL_EXPORT UNullRenderDevice : public URenderDevice
 {

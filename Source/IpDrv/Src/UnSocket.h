@@ -39,7 +39,7 @@
 	#define ioctlsocket			ioctl
 	#define WSAGetLastError()	errno
 
-	#define GCC_OPT_INT_CAST	(socklen_t*)	/* ufront 2.83: not DWORD* -- 32-bit bionic's socklen_t is a signed int */
+	#define GCC_OPT_INT_CAST	(socklen_t*)	/* not DWORD*: 32-bit bionic's socklen_t is a signed int */
 #endif
 
 // IP address macros.
