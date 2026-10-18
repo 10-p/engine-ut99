@@ -38,6 +38,7 @@ UHTTPDownload::UHTTPDownload()
 	ConnectStartTime = 0.0;
 #ifdef __EMSCRIPTEN__
 	WebHandle = -1;
+	WebActivityTime = 0.0;
 #endif
 	unguard;
 }
@@ -396,7 +397,8 @@ void UHTTPDownload::WebReceiveFile()
 		return;
 	}
 	debugf( TEXT("HTTPDownload: fetching %s"), *Url );
-	ConnectStartTime = appSeconds();
+	WebActivityTime = appSeconds();
+	// HTTP_ReceivingHeader: waiting for the response to begin (the hook parses the header).
 	HTTPState = HTTP_ReceivingHeader;
 
 	// Show progress while connecting.
@@ -470,9 +472,9 @@ void UHTTPDownload::WebTick()
 	}
 	else if( bGotData )
 	{
-		ConnectStartTime = appSeconds();
+		WebActivityTime = appSeconds();
 	}
-	else if( appSeconds() - ConnectStartTime > WEBHTTP_STALL_SECONDS )
+	else if( appSeconds() - WebActivityTime > WEBHTTP_STALL_SECONDS )
 	{
 		debugf( NAME_DevNet, TEXT("HTTPDownload: fetch stalled") );
 		DownloadError( LocalizeError(TEXT("ConnectionFailed"),TEXT("Engine")) );
