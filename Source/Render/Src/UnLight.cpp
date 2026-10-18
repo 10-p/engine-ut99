@@ -246,10 +246,27 @@ public:
 	static AActor*			Actor;
 	static const FLocalEffectEntry Effects[LE_MAX];
 
-	// Memory cache info.
-	enum {MAX_UNLOCKED_ITEMS=256};
+	// Memory cache info. The cache items locked while lighting one surface, unlocked by FinishSurf. A surface
+	// can push more than one item per light (a colour palette in the fog pass and again in the dynamic pass,
+	// plus a shadow or illumination map), so the array is a multiple of MAX_LIGHTS.
+	enum {MAX_UNLOCKED_ITEMS=MAX_LIGHTS*4};
 	static FCacheItem* ItemsToUnlock[MAX_UNLOCKED_ITEMS];
 	static FCacheItem** TopItemToUnlock;
+	static FCacheItem* UnlockOverflow;
+	static FCacheItem** LastUnlock;
+
+	// Every push goes through here, and the GCache.Create that may follow it fills the same slot
+	// (LastPushed). A full array hands out UnlockOverflow instead of writing past the end (the item then
+	// stays locked: a bounded leak).
+	static FCacheItem*& PushUnlock()
+	{
+		LastUnlock = TopItemToUnlock < &ItemsToUnlock[MAX_UNLOCKED_ITEMS] ? TopItemToUnlock++ : &UnlockOverflow;
+		return *LastUnlock;
+	}
+	static FCacheItem*& LastPushed()
+	{
+		return *LastUnlock;
+	}
 };
 
 FCoords*						FLightManager::MapCoords;
@@ -288,6 +305,8 @@ FLOAT							FLightManager::BackdropBrightness;
 FLOAT							FLightManager::LightSqrt[4096];
 FCacheItem*						FLightManager::ItemsToUnlock[MAX_UNLOCKED_ITEMS];
 FCacheItem**					FLightManager::TopItemToUnlock;
+FCacheItem*						FLightManager::UnlockOverflow;
+FCacheItem**					FLightManager::LastUnlock = &FLightManager::UnlockOverflow;
 
 const FLocalEffectEntry FLightManager::Effects[LE_MAX] =
 {
@@ -1424,12 +1443,12 @@ void FLightInfo::ComputeFromActor( FTextureInfo* Map, FSceneNode* Frame )
 		// Cache the scaler palette.
 		STAT(clock(GStat.ExtraTime));
 		QWORD CacheID = MakeCacheID( CID_LightPalette, Actor );
-		FVector* Color = (FVector*)GCache.Get(CacheID,*FLightManager::TopItemToUnlock++);
+		FVector* Color = (FVector*)GCache.Get(CacheID,FLightManager::PushUnlock());
 		if( !Color || *Color!=FloatColor || Actor->bLightChanged )
 		{
 			// Create or replace the palette.
 			if( !Color )
-				Color = (FVector*)GCache.Create(CacheID,FLightManager::TopItemToUnlock[-1],sizeof(FVector)+256*sizeof(FColor));
+				Color = (FVector*)GCache.Create(CacheID,FLightManager::LastPushed(),sizeof(FVector)+256*sizeof(FColor));
 			*Color = FloatColor;
 			Palette = (FColor*)(Color+1);
 			INT FixR = 0; INT FixDR=appFloor(FloatColor.X*65536.0);
@@ -1472,12 +1491,12 @@ void FLightInfo::ComputeFromActor( FTextureInfo* Map, FSceneNode* Frame )
 		// Cache the volumetric color scaler palette
 		STAT(clock(GStat.ExtraTime));
 		QWORD CacheID = MakeCacheID( CID_VolumetricScaler, Actor );
-		FPlane* Color = (FPlane*)GCache.Get(CacheID,*FLightManager::TopItemToUnlock++);
+		FPlane* Color = (FPlane*)GCache.Get(CacheID,FLightManager::PushUnlock());
 		if( !Color || *Color!=VolumetricColor || Actor->bLightChanged )
 		{
 			// Create or replace the palette.
 			if( !Color )
-				Color = (FPlane*)GCache.Create(CacheID,FLightManager::TopItemToUnlock[-1],sizeof(FPlane)+256*sizeof(FColor));
+				Color = (FPlane*)GCache.Create(CacheID,FLightManager::LastPushed(),sizeof(FPlane)+256*sizeof(FColor));
 			*Color = VolumetricColor;
 			VolPalette = (FColor*)(Color+1);
 			INT FixR = 0; INT FixDR=appFloor(VolumetricColor.X*65536.0);
@@ -1761,7 +1780,7 @@ void FLightManager::SetupForSurf
 	unguard;
 
 	// Handle static lighting.
-	DWORD* Stream = (DWORD*)GCache.Get(LightMap.CacheID,*TopItemToUnlock++);
+	DWORD* Stream = (DWORD*)GCache.Get(LightMap.CacheID,PushUnlock());
 	struct FMoverStamp{ INT iLeaf; FVector Location; FRotator Rotation; };
 	if( Mover && Stream )
 	{
@@ -1775,7 +1794,7 @@ void FLightManager::SetupForSurf
 		guard(StaticLighting);
 		StaticLightingChanged=1;
 		if( !Stream )
-			Stream = (DWORD*)GCache.Create( LightMap.CacheID, TopItemToUnlock[-1], (LightMap.USize*LightMap.VClamp) * sizeof(DWORD) + sizeof(FColor) + sizeof(FMoverStamp), DEFAULT_ALIGNMENT, LightMap.USize*(LightMap.VSize-LightMap.VClamp) );
+			Stream = (DWORD*)GCache.Create( LightMap.CacheID, LastPushed(), (LightMap.USize*LightMap.VClamp) * sizeof(DWORD) + sizeof(FColor) + sizeof(FMoverStamp), DEFAULT_ALIGNMENT, LightMap.USize*(LightMap.VSize-LightMap.VClamp) );
 		if( Mover )
 		{
 			((FMoverStamp*)Stream)->iLeaf    = Mover->Region.iLeaf;
@@ -1838,11 +1857,11 @@ void FLightManager::SetupForSurf
 		else
 		{
 			// Cache it.
-			Stream = (DWORD*)GCache.Get( LightMap.CacheID, *TopItemToUnlock++ );
+			Stream = (DWORD*)GCache.Get( LightMap.CacheID, PushUnlock() );
 			if( !Stream || *(DOUBLE*)Stream!=Frame->Viewport->CurrentTime )
 			{
 				if( !Stream )
-					Stream = (DWORD*)GCache.Create( LightMap.CacheID, TopItemToUnlock[-1], (LightMap.USize*LightMap.VClamp + 3) * sizeof(DWORD), DEFAULT_ALIGNMENT, LightMap.USize*(LightMap.VSize-LightMap.VClamp) );
+					Stream = (DWORD*)GCache.Create( LightMap.CacheID, LastPushed(), (LightMap.USize*LightMap.VClamp + 3) * sizeof(DWORD), DEFAULT_ALIGNMENT, LightMap.USize*(LightMap.VSize-LightMap.VClamp) );
 				*(DOUBLE*)Stream = Frame->Viewport->CurrentTime;
 				Stream += 2;
 				LightMap.MaxColor = (FColor*)Stream++;
@@ -1892,11 +1911,11 @@ void FLightManager::SetupForSurf
 					// we will be generating its illumination map per frame.
 					//note: we use iSurf because only (iLightMap,Actor,Mover) is unique.
 					QWORD CacheID = MakeCacheID( CID_ShadowMap, Draw->iSurf/*iLightMap*/, 0, Info->Actor );
-					ShadowMap = (BYTE *)GCache.Get( CacheID, *TopItemToUnlock++ );
+					ShadowMap = (BYTE *)GCache.Get( CacheID, PushUnlock() );
 					if( !ShadowMap  )
 					{
 						// Create and generate its shadow map.
-						ShadowMap = (BYTE *)GCache.Create( CacheID, TopItemToUnlock[-1], ShadowMaskSpace*8 );
+						ShadowMap = (BYTE *)GCache.Create( CacheID, LastPushed(), ShadowMaskSpace*8 );
 						ShadowMapGen( LightMap, Info->ShadowBits, ShadowMap );
 					}
 
@@ -1910,7 +1929,7 @@ void FLightManager::SetupForSurf
 					// shadow map. See if the illumination map is already cached:
 					//note: we use iSurf because only (iLightMap,Actor,Mover) is unique.
 					QWORD CacheID = MakeCacheID( CID_IlluminationMap, Draw->iSurf/*iLightMap*/, 0, Info->Actor );
-					Info->IlluminationMap = (BYTE *)GCache.Get( CacheID, *TopItemToUnlock++ );
+					Info->IlluminationMap = (BYTE *)GCache.Get( CacheID, PushUnlock() );
 					if( !Info->IlluminationMap || Info->Actor->bLightChanged )
 					{
 						// Build a temporary shadow map.
@@ -1919,7 +1938,7 @@ void FLightManager::SetupForSurf
 
 						// Build and cache an illumination map
 						if( !Info->IlluminationMap )
-							Info->IlluminationMap = (BYTE *)GCache.Create( CacheID, TopItemToUnlock[-1], (LightMap.UClamp*(LightMap.VClamp+1)+1) * sizeof(BYTE) );
+							Info->IlluminationMap = (BYTE *)GCache.Create( CacheID, LastPushed(), (LightMap.UClamp*(LightMap.VClamp+1)+1) * sizeof(BYTE) );
 						Info->Effect.SpatialFxFunc( LightMap, Info, ShadowMap, Info->IlluminationMap );
 					}
 				}
@@ -2105,7 +2124,7 @@ DWORD FLightManager::SetupForActor( FSceneNode* InFrame, AActor* InActor, FVolAc
 		} *Senders;
 		UBOOL FirstSeeActor = 0;
 		QWORD CacheID  = MakeCacheID( CID_ActorLightCache, Actor );
-		Senders        = (FInfo*)GCache.Get( CacheID, *TopItemToUnlock++ );
+		Senders        = (FInfo*)GCache.Get( CacheID, PushUnlock() );
 		if( Senders )
 		{
 			// Look up actors from cache.
@@ -2127,7 +2146,7 @@ DWORD FLightManager::SetupForActor( FSceneNode* InFrame, AActor* InActor, FVolAc
 			// Create cache item.
 			guardSlow(CacheCreate);
 			FirstSeeActor = 1;
-			Senders  = (FInfo*)GCache.Create( CacheID, TopItemToUnlock[-1], (MaxActorLights+1) * sizeof(FInfo) );
+			Senders  = (FInfo*)GCache.Create( CacheID, LastPushed(), (MaxActorLights+1) * sizeof(FInfo) );
 			Num      = (INT*)Senders++;
 			*Num     = 0;
 			unguardSlow;
