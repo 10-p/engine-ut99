@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 // web-smoke.mjs — bare-loader smoke test for the web artifact.
 // Serves the built SDLLaunch.{js,wasm,data} over a minimal host page and drives it in headless Chromium
-// (Playwright, resolved from the frontend repo). Confirms the module downloads, compiles, instantiates and
-// main() runs. The host page injects no FetchFS, so the engine stops at package loading, before any WebGL:
-// no GPU needed. Usage: node tools/web-smoke.mjs [artifactDir] [seconds]
+// (Playwright, resolved from the frontend repo, $UFRONT_DIR). The page sends no COOP/COEP headers and sets
+// no Module.UE, which the threaded artifact needs, so it reports the abort rather than a boot; the
+// frontend's E2E suite is the web gate. Usage: node tools/web-smoke.mjs [artifactDir] [seconds]
 import { createServer } from 'node:http';
 import { readFileSync, existsSync, writeFileSync } from 'node:fs';
 import { extname, join, resolve } from 'node:path';
@@ -13,7 +13,7 @@ const DIR = resolve(process.argv[2] || 'build-wasm/SDLLaunch');
 const SECS = Number(process.argv[3] || 20);
 const PORT = 8792;
 // Playwright lives in the frontend repo, not this engine repo.
-const require = createRequire('/home/ion/ufrontend/packages/e2e/');
+const require = createRequire(`${process.env.UFRONT_DIR || '/home/ion/WorkUnreal/unreal-frontend-arch-private'}/packages/e2e/`);
 const { chromium } = require('playwright');
 
 if (!existsSync(join(DIR, 'SDLLaunch.js'))) {
