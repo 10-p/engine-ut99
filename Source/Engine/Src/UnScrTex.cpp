@@ -40,7 +40,7 @@ static inline INT DrawString
 
 	for( INT i=0; Text[i]; i++ )
 	{
-		INT Ch = Font->RemapChar(Text[i]); // v436-compat port: remapped glyph.
+		INT Ch = Font->RemapChar(Text[i]); // v436: remapped glyph.
 
 		INT NewPage = Ch / Font->CharactersPerPage;
 		if( NewPage<Font->Pages.Num() && Font->Pages(NewPage).Texture )
@@ -83,7 +83,7 @@ static inline void GetCharSize( UFont* Font, TCHAR InCh, INT& Width, INT& Height
 	guardSlow(GetCharSize);
 	Width = 0;
 	Height = 0;
-	INT Ch    = Font->RemapChar(InCh); // v436-compat port: remapped glyph.
+	INT Ch    = Font->RemapChar(InCh); // v436: remapped glyph.
 	INT Page  = Ch / Font->CharactersPerPage;
 	INT Index = Ch - Page * Font->CharactersPerPage;
 	if( Page<Font->Pages.Num() && Index<Font->Pages(Page).Characters.Num() )
@@ -327,7 +327,7 @@ void UScriptedTexture::execDrawText( FFrame& Stack, RESULT_DECL )
 		return;
 	}
 
-	// v436-compat port: 436 rounds the text position (fistp), not truncates.
+	// As v436 does, the text position is rounded, not truncated.
 	DrawString(this, Font, appRound(X), appRound(Y), *InText);
 	
 	unguardexec;
@@ -411,7 +411,7 @@ void UScriptedTexture::execDrawColoredText( FFrame& Stack, RESULT_DECL )
 	}
 
 	BYTE PaletteEntry = Palette->BestMatch(Color, 0);
-	// v436-compat port: 436 rounds the text position (fistp), not truncates.
+	// As v436 does, the text position is rounded, not truncated.
 	DrawString(this, Font, appRound(X), appRound(Y), *InText, 1, PaletteEntry);
 	unguardexec;
 }

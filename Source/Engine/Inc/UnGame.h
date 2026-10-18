@@ -52,7 +52,7 @@ class ENGINE_API UGameEngine : public UEngine
 	virtual ULevel* LoadMap( const FURL& URL, UPendingLevel* Pending, const TMap<FString,FString>* TravelInfo, FString& Error );
 	virtual void SaveGame( INT Position );
 	virtual void CancelPending();
-	void FixUpLevel(); // v436-compat port
+	void FixUpLevel(); // v436: per-map fix-ups before play.
 	virtual void PaintProgress();
 	virtual void UpdateConnectingMessage();
 	virtual void BuildServerMasterMap( UNetDriver* NetDriver, ULevel* InLevel );

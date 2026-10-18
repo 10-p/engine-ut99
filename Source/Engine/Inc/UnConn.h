@@ -40,8 +40,8 @@ struct DelayedPacket
 #endif
 
 //
-// v436-compat port: one download manager offered by the server (its DLMGR line) or defaulted by the
-// client. 436 keeps them in order and falls through to the next when one fails.
+// A download manager the server offered (its DLMGR line) or the client's default. They are tried in
+// order; when one fails, the next takes over.
 //
 struct FDownloadInfo
 {
@@ -71,7 +71,7 @@ class ENGINE_API UNetConnection : public UPlayer
 
 	// Negotiated parameters.
 	INT				ProtocolVersion;		// Protocol version we're communicating with (<=PROTOCOL_VERSION).
-	INT				RemoteVersion;			// v436-compat port: the remote engine version number (server side, from HELLO).
+	INT				RemoteVersion;			// The remote engine version number (server side, from HELLO).
 	INT				MaxPacket;				// Maximum packet size.
 	INT				PacketOverhead;			// Bytes overhead per packet sent.
 	UBOOL			InternalAck;			// Internally ack all packets, for 100% reliable connections.
@@ -137,9 +137,6 @@ class ENGINE_API UNetConnection : public UPlayer
 	TMap<AActor*,UActorChannel*> ActorChannels;
 
 	// File Download.
-	// v436-compat port: 436's UNetConnection is 0x14 bytes bigger than v400's. 0x04 of that is
-	// RemoteVersion (above); these two are the other 0x10 -- Download at +0x3e98 and the
-	// DownloadInfo array at +0x3e9c in the retail v436 Engine.dll.
 	UDownload*				Download;
 	TArray<FDownloadInfo>	DownloadInfo;
 

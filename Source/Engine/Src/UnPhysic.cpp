@@ -43,7 +43,7 @@ void AActor::execAutonomousPhysics( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	// round acceleration to be consistent with replicated acceleration
-	// v436-compat port: rounded like the replicated vector (appRound), not truncated.
+	// v436: rounded like the replicated vector (appRound), not truncated.
 	Acceleration.X = 0.1f * appRound(10.f * Acceleration.X);
 	Acceleration.Y = 0.1f * appRound(10.f * Acceleration.Y);
 	Acceleration.Z = 0.1f * appRound(10.f * Acceleration.Z);
@@ -273,7 +273,7 @@ void APawn::physicsRotation(FLOAT deltaTime, FVector OldVelocity)
 {
 	guard(APawn::physicsRotation);
 
-	// v436-compat port: every float->int conversion below is rounded (appRound), not truncated.
+	// v436: every float->int conversion below is rounded (appRound), not truncated.
 	// Accumulate a desired new rotation.
 	FRotator NewRotation = Rotation;	
 

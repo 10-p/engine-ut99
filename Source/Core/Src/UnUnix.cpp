@@ -125,7 +125,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		Ar.Logf( TEXT("MEMSTAT command not available.") );
 		return 1;
 	}
-	// v436-compat port: EXIT/QUIT moved to UGameEngine::Exec (436 USystem::Exec no longer has them).
+	// As v436 does, EXIT and QUIT are handled by UGameEngine::Exec.
 	else if( ParseCommand(&Cmd,TEXT("APP")) )
 	{
 		//!UNIX No APP command.
@@ -606,7 +606,7 @@ static INT GetFileAgeDays( const TCHAR* Filename )
 		FileTime = Buf.st_mtime;
 		time( &CurrentTime );
 		DOUBLE DiffSeconds = difftime( CurrentTime, FileTime );
-		return appRound( DiffSeconds / 60.0 / 60.0 / 24.0 ); // v436-compat port: rounded, not truncated.
+		return appRound( DiffSeconds / 60.0 / 60.0 / 24.0 ); // v436: rounded to the nearest day.
 	}
 	return 0;
 	unguard;

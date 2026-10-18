@@ -318,8 +318,8 @@ ENGINE_API void UfrontFpsLogTick( UEngine* Engine );
 ENGINE_API UBOOL UfrontFpsLogExec( const TCHAR* Cmd, FOutputDevice& Ar );
 
 //
-// v436-compat port: leave a server cleanly. 436 closes the client's control channel and
-// flushes the connection, so the server sees the close immediately instead of timing out.
+// Leave a server cleanly, as v436 does: close the control channel and flush, so the server
+// sees the close at once instead of timing out.
 //
 static void CloseServerConnection( ULevelBase* Level )
 {
@@ -337,7 +337,7 @@ static void CloseServerConnection( ULevelBase* Level )
 }
 
 //
-// v436-compat port: "SET <Class> ..." naming an Actor class that is not a GameInfo.
+// Whether Cmd is "SET <Class> ..." naming an Actor class that is not a GameInfo.
 //
 static UBOOL IsClientSetBlocked( const TCHAR* Cmd )
 {
@@ -423,8 +423,7 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( ParseCommand(&Cmd,TEXT("EXIT")) || ParseCommand(&Cmd,TEXT("QUIT")) )
 	{
-		// v436-compat port: EXIT/QUIT live here in 436 (moved from USystem::Exec), and leave any
-		// server cleanly first.
+		// As v436 does, EXIT/QUIT are handled here so that any server is left cleanly first.
 		CloseServerConnection( GLevel );
 		CloseServerConnection( GPendingLevel );
 		Ar.Log( TEXT("Closing by request") );
@@ -449,7 +448,7 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( ParseCommand( &Str, TEXT("OBJCLEAN") ) )
 	{
-		// v436-compat port: force-purge destroyed actors (436 UGameEngine::Exec).
+		// v436: force-purge destroyed actors.
 		if( GLevel )
 			GLevel->CleanupDestroyed( 1 );
 		return 1;
@@ -462,9 +461,8 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( ParseCommand( &Cmd, TEXT("CANCEL") ) )
 	{
-		// v436-compat port: CANCEL is guarded against re-entry, and it first asks the pending level to
-		// skip just the file being downloaded; only when nothing can be skipped does it cancel the
-		// whole connection (436 UGameEngine::Exec).
+		// As v436 does: guard against re-entry, and first ask the pending level to skip just the file
+		// being downloaded; cancel the whole connection only when nothing can be skipped.
 		static UBOOL InCancel = 0;
 		if( !InCancel )
 		{
@@ -495,8 +493,8 @@ UBOOL UGameEngine::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	}
 	else if( GLevel && GLevel->GetLevelInfo()->NetMode==NM_Client && IsClientSetBlocked(Cmd) )
 	{
-		// v436-compat port: a network client may not SET properties of Actor classes (GameInfo
-		// excepted); 436 refuses the command here, before UEngine/UObject::StaticExec see it.
+		// As v436 does, a network client may not SET properties of Actor classes (GameInfo
+		// excepted); the command is refused before UEngine/UObject::StaticExec see it.
 		return 0;
 	}
 	else if( UEngine::Exec( Cmd, Ar ) )
@@ -544,9 +542,8 @@ void UGameEngine::CancelPending()
 }
 
 //
-// v436-compat port: map-specific fixes applied when a level is brought up for play (436
-// UGameEngine::FixUpLevel). Only CTF-Coret has one: its two AlternatePaths become two-way and
-// PlayerStart5 is disabled.
+// v436: map-specific fixes applied when a level is brought up for play. Only CTF-Coret has one:
+// its two AlternatePaths become two-way and PlayerStart5 is disabled.
 //
 void UGameEngine::FixUpLevel()
 {
@@ -1072,7 +1069,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	}
 	unguard;
 
-	// v436-compat port: let the audio subsystem clean up after the purge (436 LoadMap).
+	// v436: let the audio subsystem clean up after the purge.
 	if( Audio )
 		Audio->CleanUp();
 
@@ -1177,7 +1174,7 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	GLevel->iFirstDynamicActor = 0;
 	if( !Info->bBegunPlay )
 	{
-		// v436-compat port: per-map fix-ups before play begins (436 UGameEngine::LoadMap).
+		// v436: per-map fix-ups before play begins.
 		FixUpLevel();
 
 		// Lock the level.
@@ -1218,16 +1215,10 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 		Info->bStartup = 1;
 
 		// Init the game.
-		//
-		// v436-compat port: the passes below skip actors whose script is already initialized
-		// (bScriptInitialized, set by Actor.SetInitialState -- 436 Actor.uc: "set to prevent
-		// re-initializing of actors spawned during level startup"). Actors spawned during InitGame
-		// or during a pass (mutators, etc.) went through SpawnActor, which -- bBegunPlay being true
-		// here -- already sent them PreBeginPlay..SetInitialState; re-sending those events is what
-		// made Infiltration's InfilWeapons register itself twice as a damage mutator (a
-		// NextDamageMutator loop, "infinite script recursion" on friendly fire). This replaces the
-		// earlier fix that bounded the passes to the pre-InitGame actor count: 436 loops over the
-		// live Actors.Num() and tests the flag (436 UGameEngine::LoadMap).
+		// As v436 does, the passes below skip actors whose script is already initialized
+		// (bScriptInitialized, set by Actor.SetInitialState): one spawned during InitGame or a pass
+		// already got PreBeginPlay..SetInitialState from SpawnActor; a second round registers
+		// mutators twice.
 		if( Info->Game )
 			Info->Game->eventInitGame( Options, Error );
 
@@ -1289,8 +1280,8 @@ ULevel* UGameEngine::LoadMap( const FURL& URL, UPendingLevel* Pending, const TMa
 	unguard;
 
 	// Rearrange actors: static first, then others.
-	// v436-compat port: 436 puts the static always-relevant actors after the other static ones and
-	// records where they start, so ULevel::ServerTickClient never has to look at the rest.
+	// As v436 does, static always-relevant actors go after the other static ones, from
+	// iFirstNetRelevantActor, so ULevel::ServerTickClient can skip the rest.
 	guard(Rearrange);
 	TArray<AActor*> Actors;
 	Actors.AddItem(GLevel->Actors(0));
@@ -1832,8 +1823,8 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 			guard(PendingFailed);
 			SetProgress( LocalizeError("ConnectionFailed"), *GPendingLevel->Error, 4.0 );
 			debugf( NAME_Log, LocalizeError("Pending"), *GPendingLevel->URL.String(), *GPendingLevel->Error );
-			// v436-compat port: the pending level now only records the server's FAILCODE; tell the
-			// console here (e.g. to prompt for a password), as 436's UGameEngine::Tick does.
+			// As v436 does, pass the server's FAILCODE, recorded by the pending level, to the console
+			// (e.g. to prompt for a password).
 			if( GPendingLevel->FailCode!=TEXT("") && Client && Client->Viewports.Num() && Client->Viewports(0) && Client->Viewports(0)->Console )
 				Client->Viewports(0)->Console->eventConnectFailure( GPendingLevel->FailCode, GPendingLevel->FailURL );
 			delete GPendingLevel;

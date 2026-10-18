@@ -450,11 +450,9 @@ IMPLEMENT_FUNCTION( AActor, EPOLL_FinishInterpolation, execPollFinishInterpolati
 /////////////////////////
 
 //
-// v436-compat port: the actor's view of an animation sequence (v436 AActor::GetAnim, a new
-// virtual). A skeletal mesh keeps no sequences of its own: they live in the actor's linked
-// animation (SkelAnim, set by LinkSkelAnim or by USkeletalMesh::GetFrame on first draw) or, until
-// one is linked, in the mesh's DefaultAnimation. Every other mesh answers as in v400. The retail
-// DLL does not NULL-check Mesh or DefaultAnimation here; callers test Mesh first.
+// v436: the actor's view of an animation sequence. A skeletal mesh's sequences live in the actor's
+// linked animation (SkelAnim) or, until one is linked, in the mesh's DefaultAnimation; any other
+// mesh answers itself. As in v436, Mesh and DefaultAnimation are not NULL-checked: callers test Mesh.
 //
 FMeshAnimSeq* AActor::GetAnim( FName SequenceName )
 {
@@ -481,7 +479,7 @@ void AActor::execPlayAnim( FFrame& Stack, RESULT_DECL )
 	// Set one-shot animation.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436: via GetAnim, for skeletal meshes.
 		if( Seq )
 		{
 			if( AnimSequence == NAME_None )
@@ -562,7 +560,7 @@ void AActor::execLoopAnim( FFrame& Stack, RESULT_DECL )
 	// Set looping animation.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436: via GetAnim, for skeletal meshes.
 		if( Seq )
 		{
 			if ( (AnimSequence == SequenceName) && bAnimLoop && IsAnimating() )
@@ -644,7 +642,7 @@ void AActor::execTweenAnim( FFrame& Stack, RESULT_DECL )
 	// Tweening an animation from wherever it is, to the start of a specified sequence.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436: via GetAnim, for skeletal meshes.
 		if( Seq )
 		{
 			AnimSequence  = SequenceName;
@@ -700,7 +698,7 @@ void AActor::execGetAnimGroup( FFrame& Stack, RESULT_DECL )
 	*(FName*)Result = NAME_None;
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436: via GetAnim, for skeletal meshes.
 		if( Seq )
 		{
 			*(FName*)Result = Seq->Group;
@@ -721,7 +719,7 @@ void AActor::execHasAnim( FFrame& Stack, RESULT_DECL )
 	// Check for a certain anim sequence.
 	if( Mesh )
 	{
-		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436-compat: via GetAnim.
+		const FMeshAnimSeq* Seq = GetAnim( SequenceName ); // v436: via GetAnim, for skeletal meshes.
 		if( Seq )
 		{
 			*(DWORD*)Result = 1;
@@ -969,14 +967,14 @@ void AActor::execGetSoundDuration( FFrame& Stack, RESULT_DECL )
 	P_GET_OBJECT(USound,Sound);
 	P_FINISH;
 
-	// v436-compat port: no sound, no duration.
+	// v436: no sound, no duration.
 	*(FLOAT*)Result = Sound ? Sound->GetDuration() : 0.f;
 
 	unguardexec;
 }
 
-// v436-compat port: LinkSkelAnim links an animation object to the actor (v436: SkelAnim = Anim).
-// USkeletalMesh::GetFrame and AActor::GetAnim then take the skeletal sequences from it.
+// v436: LinkSkelAnim links an animation object to the actor; USkeletalMesh::GetFrame and
+// AActor::GetAnim then take the skeletal sequences from it.
 void AActor::execLinkSkelAnim( FFrame& Stack, RESULT_DECL )
 {
 	guard(AActor::execLinkSkelAnim);
@@ -986,8 +984,9 @@ void AActor::execLinkSkelAnim( FFrame& Stack, RESULT_DECL )
 	unguardexec;
 }
 
-// v436-compat port: stubs for named natives added to Actor after v400. The download cache is
-// not used in offline play, so these are behavior-safe no-ops (report "nothing"). See EngineClasses.h.
+// v436 Actor natives over the download cache's cache.ini (which UDownload::DownloadDone writes).
+// They exist so v436 Actor binds; neither is implemented: GetCacheEntry finds no entry and
+// MoveCacheEntry moves nothing.
 
 void AActor::execGetCacheEntry( FFrame& Stack, RESULT_DECL )
 {
@@ -996,7 +995,7 @@ void AActor::execGetCacheEntry( FFrame& Stack, RESULT_DECL )
 	P_GET_STR_REF(GUID);
 	P_GET_STR_REF(Filename);
 	P_FINISH;
-	// No download-cache manager offline: report no entry.
+	// Not implemented: no entry.
 	*(DWORD*)Result = 0;
 	unguardexec;
 }
@@ -1007,7 +1006,7 @@ void AActor::execMoveCacheEntry( FFrame& Stack, RESULT_DECL )
 	P_GET_STR(GUID);
 	P_GET_STR_OPTX(NewFilename,TEXT(""));
 	P_FINISH;
-	// No download-cache manager offline: report failure (nothing moved).
+	// Not implemented: nothing moved.
 	*(DWORD*)Result = 0;
 	unguardexec;
 }
@@ -1970,11 +1969,8 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 	P_GET_VECTOR_OPTX(DecalDir,FVector(0,0,0));
 	P_FINISH;
 
-	// v436-compat port: v436's signature is `native function Texture AttachDecal(...)` — it
-	// returns the Texture of the surface the decal attached to (so callers such as OldSkool/ONP's
-	// TVShadow can read the ground's FootStepSound). v400 returned an int success flag (0/1), so
-	// v436 script read the return as (Texture*)1 -> a garbage 0x1 pointer and crashed on the next
-	// member access. Return the surface texture on success, NULL on any failure.
+	// v436: AttachDecal returns the Texture of the surface the decal attached to (callers read
+	// e.g. its FootStepSound), NULL on any failure.
 	UTexture* ResultTexture = NULL;
 	*(UTexture**)Result = NULL;
 	if( !GetLevel()->Engine->Client || !GetLevel()->Engine->Client->Decals )
@@ -2022,7 +2018,7 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 		// setup vertices for main decal surface.
 		guard(FindMainSurfaceVertices);
 		FBspSurf &Surf = Model->Surfs(SurfIndex);
-		ResultTexture = Surf.Texture;  // v436-compat: AttachDecal returns the attached surface's texture
+		ResultTexture = Surf.Texture;  // AttachDecal returns this surface's texture.
 		FVector &SurfNormal = Model->Vectors(Surf.vNormal);
 		FVector &SurfBase = Model->Points(Surf.pBase);
 		FVector DecalCenter = FLinePlaneIntersection( Location, Location + EndVect, SurfBase, SurfNormal );
@@ -2183,7 +2179,7 @@ void ADecal::execAttachDecal( FFrame& Stack, RESULT_DECL )
 		MainDecal->Vertices[3] -= SurfBase;
 		unguard;
 	}
-	*(UTexture**)Result = ResultTexture;  // v436-compat: success -> return attached surface texture
+	*(UTexture**)Result = ResultTexture;  // Success: the attached surface's texture.
 #endif
 	unguard;
 }

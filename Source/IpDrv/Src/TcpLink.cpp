@@ -19,9 +19,9 @@ IMPLEMENT_CLASS(ATcpLink);
 
 #ifdef __EMSCRIPTEN__
 /*-----------------------------------------------------------------------------
-	2.79o -- connections a browser build plays itself (WebLinks.h): in Proxy networking mode, the
-	stock server browser's master query is answered from the game proxy's list. A link the table
-	turns down fails exactly as it always did on the web.
+	Connections a web build plays itself through GWebLinks: in Proxy networking mode, the
+	stock server browser's master query is answered from the game proxy's list. A connection
+	the table turns down fails to open.
 -----------------------------------------------------------------------------*/
 #include "WebLinks.h"
 FWebLinkHooks* GWebLinks = NULL;
@@ -109,8 +109,8 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 	LINGER ling;
 
 #ifdef __EMSCRIPTEN__
-	// 2.79o -- there is no socket to bind. In Proxy mode the link may still open a connection this
-	// build plays (Open decides which), so report it bound and let the stock script get that far.
+	// There is no socket to bind. In Proxy mode the link may still open a connection this build
+	// plays (Open decides which), so report it bound and let the stock script get that far.
 	if( WebLinksActive() )
 	{
 		LinkState = STATE_Ready;
@@ -261,8 +261,8 @@ UBOOL ATcpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 	UBOOL Result = Super::Tick( DeltaTime, TickType );
 
 #ifdef __EMSCRIPTEN__
-	// 2.79o -- a connection this build plays: what the script sent goes to it, and its text comes back
-	// through the STOCK events, so the browser's own parsing runs unmodified.
+	// A connection this build plays: what the script sent goes to it, and its text comes back
+	// through the stock events, so the browser's own parsing runs unmodified.
 	if( WebTcpFind( this ) != INDEX_NONE )
 	{
 		const INT Handle = GWebTcp(WebTcpFind( this )).Handle;
@@ -550,8 +550,8 @@ void ATcpLink::execOpen( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 #ifdef __EMSCRIPTEN__
-	// 2.79o -- a connection this build plays itself (a master's list port, in Proxy mode). Anything
-	// else fails, as every outbound TcpLink always did on the web.
+	// A connection this build plays itself (a master's list port, in Proxy mode). Anything else
+	// fails: there is no socket for it.
 	if( WebLinksActive() && !HasSocket() )
 	{
 		WebTcpForget( this );
@@ -810,7 +810,7 @@ void ATcpLink::execSendText( FFrame& Stack, RESULT_DECL )
 
 	*(DWORD*)Result = 0;
 #ifdef __EMSCRIPTEN__
-	if( WebTcpFind( this ) != INDEX_NONE )	// 2.79o -- queued here, handed over by Tick
+	if( WebTcpFind( this ) != INDEX_NONE )	// queued here, handed over by Tick
 	{
 		if( LinkMode == MODE_Line )
 			Str += TEXT("\r\n");

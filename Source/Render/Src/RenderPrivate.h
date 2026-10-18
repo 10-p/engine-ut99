@@ -122,15 +122,15 @@ struct FDynamicSprite : public FDynamicItem
 	FActorLink*		Volumetrics;
 	FVolActorLink*	LeafLights;
 
-	// v436-compat port: the items of an actor whose render iterator is filtered by volume
-	// (bFilterByVolume). Only that actor's own sprite has any: it alone is filtered through the Bsp,
-	// and DrawFrame draws these instead of it. They are chained through their RenderNext.
+	// Sub-sprites: the render-iterator items of a bFilterByVolume actor, chained through RenderNext.
+	// Only that actor's own sprite has them; it alone is filtered through the Bsp, and DrawFrame
+	// draws these in its place.
 	FDynamicSprite*		FirstSub;
 	FDynamicSprite**	LastSub;
 
 	// Functions.
 	FDynamicSprite( FSceneNode* Frame, INT iNode, AActor* Actor );
-	FDynamicSprite( FSceneNode* Frame, AActor* Actor );	// v436-compat port: set up but not filtered (a sub-sprite).
+	FDynamicSprite( FSceneNode* Frame, AActor* Actor );	// Set up but not filtered (a sub-sprite).
 	FDynamicSprite( AActor* InActor ) : Actor( InActor ), SpanBuffer( NULL ), Volumetrics( NULL ), LeafLights( NULL ), FirstSub( NULL ), LastSub( &FirstSub ) {}
 	UBOOL Setup( FSceneNode* Frame );
 	FRasterPoly* SetupProxy( FSceneNode* Frame );

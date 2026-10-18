@@ -955,7 +955,7 @@ public:
     {
         ProcessEvent(FindFunctionChecked(ENGINE_PostBeginPlay),NULL);
     }
-    // v436-compat port: v436 Actor.uc event, sent by UActorChannel::ReceivedBunch.
+    // v436: Actor.uc event, sent by UActorChannel::ReceivedBunch.
     void eventPostNetBeginPlay()
     {
         ProcessEvent(FindFunctionChecked(ENGINE_PostNetBeginPlay),NULL);
@@ -2463,7 +2463,7 @@ public:
         ProcessEvent(FindFunctionChecked(ENGINE_ServerTravel),&Parms);
     }
     DECLARE_CLASS(ALevelInfo,AZoneInfo,0|CLASS_NativeReplication)
-    #include "ALevelInfo.h"   // v436-compat port: nativereplication in v436 (was NO_DEFAULT_CONSTRUCTOR)
+    #include "ALevelInfo.h"   // v436: nativereplication.
 };
 
 
@@ -2718,8 +2718,8 @@ public:
     BITFIELD bSpecialCost:1;
     BITFIELD bOneWayPath:1;
     BITFIELD bNeverUseStrafing:1;
-    BITFIELD bAutoBuilt:1;	// v436-compat port: the 436 NavigationPoint bools after bNeverUseStrafing
-    BITFIELD bTwoWay:1;		// (same word, so no layout change); bTwoWay is set by FixUpLevel.
+    BITFIELD bAutoBuilt:1;	// v436: the NavigationPoint bools after bNeverUseStrafing
+    BITFIELD bTwoWay:1;		// (same word, so no layout change); FixUpLevel sets bTwoWay.
     DECLARE_FUNCTION(execdescribeSpec);
     BITFIELD eventAccept(class AActor* Incoming, class AActor* Source)
     {
@@ -2885,7 +2885,7 @@ public:
     class APlayerReplicationInfo* PlayerOwner;
     class APawn* Bugs;
     DECLARE_CLASS(ACarcass,ADecoration,0)
-    #include "ACarcass.h"   // v436-compat port: UpdateFrequency (was NO_DEFAULT_CONSTRUCTOR)
+    #include "ACarcass.h"   // v436: UpdateFrequency.
 };
 
 
@@ -3060,10 +3060,8 @@ public:
     #include "AInventory.h"
 };
 
-// v436-compat port: APickup/AAmmo are native (nativereplication) script classes in v436 Engine
-// (Pickup.uc/Ammo.uc) absent from stock v400; without them UClass::Bind aborts. Layout copied
-// from the v432 reference (== v436 var order). No script natives; their nativereplication
-// GetOptimizedRepList lives in APickup.h/AAmmo.h.
+// v436: Pickup and Ammo are native (nativereplication) Engine classes, so UClass::Bind needs them;
+// the layout follows v436's var order. No script natives; they replicate in C++ (GetOptimizedRepList).
 class ENGINE_API APickup : public AInventory
 {
 public:
@@ -3156,7 +3154,7 @@ public:
     class UTexture* MuzzleFlare;
     FLOAT FlareOffset;
     DECLARE_CLASS(AWeapon,AInventory,0|CLASS_NativeReplication)
-    #include "AWeapon.h"   // v436-compat port: nativereplication in v436 (was NO_DEFAULT_CONSTRUCTOR)
+    #include "AWeapon.h"   // v436: nativereplication.
 };
 
 

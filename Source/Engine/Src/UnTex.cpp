@@ -122,8 +122,8 @@ void UTexture::LockMips( FTextureInfo& TextureInfo, DOUBLE CurrentTime, INT LOD,
 	// See if format needs translating.
 	TArray<FMipmap>& WhichMips = UseComp ? CompMips : Mips;
 
-	// v436-compat port: a stored (non-parametric) texture with no mipmaps, e.g. one ripped out
-	// of a package without its data, is given a blank base mip instead of indexing an empty array.
+	// As v436 does, a stored (non-parametric) texture with no mipmaps, such as one ripped from a
+	// package without its data, is given a blank base mip instead of indexing an empty array.
 	if( !bParametric && WhichMips.Num()==0 )
 	{
 		guard(RippedTextureFixup);
@@ -203,7 +203,7 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 	guard(UTexture::Tick);
 
 	// Prime the texture.
-	// v436-compat port: through the virtual Prime() (436 calls it first thing in Tick).
+	// v436: through the virtual Prime, first thing in Tick.
 	Prime();
 
 	// Update.
@@ -215,7 +215,7 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 	else
 	{
 		// Catch up.
-		// v436-compat port: frame rates clamp to 0.1..100 fps (0.01 in v400).
+		// v436: frame rates clamp to 0.1..100 fps.
 		FLOAT MinTime  = 1.f/Clamp(MaxFrameRate,0.1f,100.0f);
 		FLOAT MaxTime  = 1.f/Clamp(MinFrameRate,0.1f,100.0f);
 		Accumulator   += DeltaSeconds;
@@ -242,7 +242,7 @@ void UTexture::Tick( FLOAT DeltaSeconds )
 
 //
 // Prime the texture: run the algorithmic update PrimeCount times before its first use.
-// v436-compat port: split out of Tick as a virtual in 436 (Engine.dll UTexture::Prime).
+// A virtual, as v436's UTexture::Prime is, so UFractalTexture can override it.
 //
 void UTexture::Prime()
 {

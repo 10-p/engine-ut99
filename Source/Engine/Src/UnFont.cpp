@@ -24,13 +24,11 @@ void UFont::Serialize( FArchive& Ar )
 	UBOOL GSavedLazyLoad = GLazyLoad;
 	GLazyLoad = 1;
 	Ar << Pages << CharactersPerPage;
-	// v436-compat port: v69 packages (the 436 patch) append the char-remap table + flag to
-	// UFont. Retail v68 fonts predate it. Consuming these keeps the export's serial size in
-	// sync (SmallFont: Got 4107 -> Expected 4112). See UnTex.h.
+	// v436: package version 69 and later append the char-remap table and its flag; v68 fonts have neither.
 	if( Ar.Ver() >= 69 )
 		Ar << CharRemap << IsRemapped;
 	else
-		IsRemapped = 0; // v436-compat port: a pre-v69 font is never remapped (436 clears it).
+		IsRemapped = 0; // As v436 does, a pre-v69 font is never remapped.
 	check(!(CharactersPerPage&(CharactersPerPage-1)));
 	if( !GLazyLoad )
 		for( INT c=0,p=0; c<256; c+=CharactersPerPage,p++ )

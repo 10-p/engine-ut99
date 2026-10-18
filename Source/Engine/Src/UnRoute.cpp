@@ -8,8 +8,8 @@ Revision history:
 
 #include "EnginePrivate.h"
 
-// v436-compat port: 436 rounds (appRound) every float->int conversion in the routing code
-// where v400 truncated with an (INT) cast -- path distances, collision sizes, list midpoints.
+// As v436 does, every float->int conversion in the routing code (path distances, collision
+// sizes, list midpoints) is rounded with appRound, not truncated.
 
 /* clearPaths()
 clear all temporary path variables used in routing

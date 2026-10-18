@@ -133,8 +133,7 @@ FLOAT FSoundData::GetPeriod()
 		INT BitsPerSample = *WaveInfo.pBitsPerSample;
 		INT WaveDataSize = *WaveInfo.pWaveDataSize;
 #endif
-		// v436-compat port: no 22050 Hz stand-in for a zero sample rate -- that sound's period
-		// is 0 (436 FSoundData::GetPeriod).
+		// v436: a zero sample rate gives a period of 0 (no default-frequency stand-in).
 		INT DurDiv = Channels * BitsPerSample * SPS;
 		if ( DurDiv ) Period = WaveDataSize * 8.f / (FLOAT)DurDiv;
 		//debugf(TEXT("Name %19s pChannels %9i pBitsps %9i pSampPs %9i pWaveDataSize %9i Time %9f"),Owner->GetName(),Channels,BitsPerSample,SPS,WaveDataSize, Period );
@@ -761,8 +760,8 @@ IMPLEMENT_CLASS(UMusic);
 
 IMPLEMENT_CLASS(UAudioSubsystem);
 
-// v436-compat port: 436 adds this hook; the base does nothing (436 UAudioSubsystem::CleanUp is a
-// bare `ret`), a driver may override it to drop per-level state after LoadMap's purge.
+// v436: called by LoadMap after the level purge. The base does nothing; a driver may override it
+// to drop per-level state.
 void UAudioSubsystem::CleanUp()
 {
 }

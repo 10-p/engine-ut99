@@ -7,7 +7,7 @@
 	ACarcass() {}
 
 	// AActor interface.
-	// v436-compat port: a resting carcass replicates at no more than 4 Hz.
+	// v436: a resting carcass replicates at no more than 4 Hz.
 	virtual FLOAT UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos );
 
 /*-----------------------------------------------------------------------------

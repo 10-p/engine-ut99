@@ -1069,7 +1069,7 @@ void FLightManager::spatial_SlowWave( FTextureInfo& Map, FLightInfo* Info, BYTE*
 {
 	guardSlow(FLightManager::spatial_SlowWave);
 	SPATIAL_BEGIN1
-		// v436-compat port: the wave phase is rounded as a whole (436 moved the int conversion outwards).
+		// As v436 does, the wave phase is rounded as a whole.
 		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab(appRound(SqrtApprox(Vertex.SizeSquared()) - LevelInfo->TimeSeconds*35.0) * 1024.0);
 		*Dest		= appFloor(*Src * Scale * Diffuse * LightSqrt[SqrtOfs]);
 	SPATIAL_END
@@ -1081,7 +1081,7 @@ void FLightManager::spatial_FastWave( FTextureInfo& Map, FLightInfo* Info, BYTE*
 {
 	guardSlow(FLightManager::spatial_FastWave);
 	SPATIAL_BEGIN1
-		// v436-compat port: the distance and the table index are rounded, not truncated.
+		// As v436 does, the distance and the table index are rounded, not truncated.
 		FLOAT Scale	= 0.7 + 0.3 * GMath.SinTab(appRound(((appRound(SqrtApprox(Vertex.SizeSquared()))>>2) - LevelInfo->TimeSeconds*35.0) * 2048.0));
 		*Dest		= appFloor(*Src * Scale * Diffuse * LightSqrt[SqrtOfs]);
 	SPATIAL_END
@@ -1149,7 +1149,7 @@ void FLightManager::spatial_Shock( FTextureInfo& Map, FLightInfo* Info, BYTE* Sr
 	guardSlow(FLightManager::spatial_Shock);
 	SPATIAL_BEGIN1
 		int Dist = INT (8.0 * SqrtApprox(Vertex.SizeSquared()));
-		// v436-compat port: the three table indices are rounded, not truncated (Dist still is).
+		// As v436 does, the three table indices are rounded, not truncated; Dist is truncated.
 		FLOAT Brightness  = 0.9 + 0.1 * GMath.SinTab(appRound(((Dist<<1) - (LevelInfo->TimeSeconds * 4000.0))*16.0));
 		Brightness       *= 0.9 + 0.1 * GMath.CosTab(appRound(((Dist   ) + (LevelInfo->TimeSeconds * 4000.0))*16.0));
 		Brightness       *= 0.9 + 0.1 * GMath.SinTab(appRound(((Dist>>1) - (LevelInfo->TimeSeconds * 4000.0))*16.0));
@@ -1282,7 +1282,7 @@ static void global_Steady( AActor* Owner, FLOAT& Brightness, FVector& Color )
 static void global_Pulse( AActor* Owner, FLOAT& Brightness, FVector& Color )
 {
 	guardSlow(global_Pulse);
-	// v436-compat port: the table index is rounded, not truncated (SubtlePulse still truncates).
+	// As v436 does, the table index is rounded, not truncated (SubtlePulse truncates).
 	Brightness *= 0.6 + 0.39 * GMath.SinTab
 	(
 		appRound( (Owner->Level->TimeSeconds * 35.0 * 65536.0) / Max((int)Owner->LightPeriod,1) + (Owner->LightPhase << 8) )
@@ -1294,7 +1294,7 @@ static void global_Pulse( AActor* Owner, FLOAT& Brightness, FVector& Color )
 static void global_Blink( AActor* Owner, FLOAT& Brightness, FVector& Color )
 {
 	guardSlow(global_Blink);
-	// v436-compat port: the phase is rounded, not truncated.
+	// As v436 does, the phase is rounded, not truncated.
 	if( appRound((Owner->Level->TimeSeconds * 35.0 * 65536.0)/(Owner->LightPeriod+1) + (Owner->LightPhase << 8)) & 1 )
 		Brightness = 0.0;
 	unguardSlow;
@@ -1363,7 +1363,7 @@ static void global_TexturePaletteLoop( AActor* Owner, FLOAT& Brightness, FVector
 	if( Owner->Skin && Owner->Skin->Palette )
 	{
 		FLOAT Time        = Owner->Level->TimeSeconds * 35 / Max((int)Owner->LightPeriod,1) + Owner->LightPhase;
-		FColor C          = Owner->Skin->Palette->Colors((appRound(Time*256) & 255) % 255); // v436-compat port: rounded.
+		FColor C          = Owner->Skin->Palette->Colors((appRound(Time*256) & 255) % 255); // v436: rounded.
 		Color             = FVector( C.R, C.G, C.B ).UnsafeNormal();
 		Brightness       *= C.FBrightness() * 2.8;
 	}
@@ -2118,7 +2118,7 @@ DWORD FLightManager::SetupForActor( FSceneNode* InFrame, AActor* InActor, FVolAc
 	&&	!Frame->Viewport->GetOuterUClient()->NoLighting )
 	{
 		// Get actor light cache.
-		INT Delta      = Clamp<INT>( appRound((Frame->Viewport->CurrentTime-Frame->Viewport->LastUpdateTime)*768), 0, 255 ); // v436-compat port: rounded.
+		INT Delta      = Clamp<INT>( appRound((Frame->Viewport->CurrentTime-Frame->Viewport->LastUpdateTime)*768), 0, 255 ); // v436: rounded.
 		INT FrameCount = Frame->Viewport->FrameCount;
 		INT* Num       = NULL;
 		struct FInfo

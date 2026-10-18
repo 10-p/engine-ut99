@@ -112,7 +112,7 @@ class ENGINE_API UActorChannel : public UChannel
 	DOUBLE	RelevantTime;	// Last time this actor was relevant to client.
 	DOUBLE	LastUpdateTime;	// Last time this actor was replicated.
 	UBOOL   SpawnAcked;	    // Whether spawn has been acknowledged.
-	INT		NumReps;		// v436-compat port: number of times actor has been replicated (GetOptimizedRepList's NumReps).
+	INT		NumReps;		// Number of times the actor has been replicated (passed to GetOptimizedRepList).
 	TArray<BYTE> Recent;	// Most recently sent values.
 	TArray<BYTE> RepEval;	// Evaluated replication conditions.
 	TArray<INT>  Dirty;     // Properties that are dirty and need resending.
@@ -155,9 +155,8 @@ class ENGINE_API UFileChannel : public UChannel
 {
 	DECLARE_CLASS(UFileChannel,UChannel,CLASS_Transient);
 
-	// v436-compat port: the v432/436 shape. Receiving is now the download manager's job, so the
-	// receive-side state (temp filename, error, bytes) lives on UDownload and the channel only keeps
-	// what it needs to SEND a file.
+	// v436: the download manager (UDownload) holds the receive-side state; the channel keeps only
+	// what it needs to send a file.
 
 	// Receive Variables.
 	UChannelDownload*	Download;		 // UDownload when receiving.

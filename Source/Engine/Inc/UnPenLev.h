@@ -24,8 +24,8 @@ class UPendingLevel : public ULevelBase
 	UBOOL		LonePlayer;
 	INT			FilesNeeded;
 	FString		Error;
-	FString		FailCode;		// v436-compat port: server's FAILCODE, handed to the console by UGameEngine::Tick.
-	FString		FailURL;		// v436-compat port: the URL that failed (PASSWORD= options removed).
+	FString		FailCode;		// Server's FAILCODE, handed to the console by UGameEngine::Tick.
+	FString		FailURL;		// The URL that failed (PASSWORD= options removed).
 
 	// Constructors.
 	UPendingLevel( UEngine* InEngine, const FURL& InURL );
@@ -34,8 +34,7 @@ class UPendingLevel : public ULevelBase
 	virtual void Tick( FLOAT DeltaTime )=0;
 	virtual UNetDriver* GetDriver()=0;
 	virtual void SendJoin()=0;
-	// v436-compat port: F10 during a download asks the pending level to skip the current file
-	// (UGameEngine::Exec CANCEL). 436's vtable puts it right after SendJoin.
+	// Skips the file being downloaded if it can be (UGameEngine::Exec CANCEL: F10 during a download).
 	virtual UBOOL TrySkipFile()=0;
 };
 
@@ -68,7 +67,7 @@ class UNetPendingLevel : public UPendingLevel
 	UBOOL TrySkipFile();
 
 	// UNetPendingLevel interface.
-	// v436-compat port: request the next package still flagged PKG_Need, or finish the download.
+	// Request the next package still flagged PKG_Need, or finish the download.
 	void ReceiveNextFile( UNetConnection* Connection );
 };
 

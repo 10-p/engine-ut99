@@ -368,7 +368,7 @@ class ENGINE_API UClient : public UObject
 	BITFIELD	NoLighting;
 	BITFIELD	Decals;
 	BITFIELD	NoDynamicLights;
-	BITFIELD	NoFractalAnim;		// v436-compat port: freeze fractal (Fire.dll) textures after priming.
+	BITFIELD	NoFractalAnim;		// v436: freeze fractal (Fire) textures after priming.
 	INT			WindowedViewportX;
 	INT			WindowedViewportY;
 	INT			WindowedColorBits;
@@ -379,7 +379,7 @@ class ENGINE_API UClient : public UObject
 	FLOAT		MipFactor;
 	INT			TextureLODSet[LODSET_MAX];
 	FLOAT		MinDesiredFrameRate;
-	INT			ParticleDensity;	// v436-compat port: config property added to UClient in 436.
+	INT			ParticleDensity;	// v436: UClient config property.
 
 	// Constructors.
 	UClient();

@@ -271,8 +271,8 @@ void URender::DrawLodMesh
 		return;
 	}
 
-	// v436-compat port: a skeletal mesh with a weapon bone attaches the weapon to it. GetFrame left
-	// the bone's frame in ClassicWeaponCoords, in the same form as the special-face coords above.
+	// v436: a skeletal mesh with a weapon bone carries the weapon on it. GetFrame leaves the bone's
+	// frame in ClassicWeaponCoords, in the same form as the special-face coords above.
 	UBOOL IsSkeletal = Mesh->IsA(USkeletalMesh::StaticClass());
 	if( IsSkeletal && ((USkeletalMesh*)Mesh)->WeaponBoneIndex > -1 )
 	{

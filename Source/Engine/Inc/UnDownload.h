@@ -7,10 +7,8 @@
 =============================================================================*/
 
 //
-// v436-compat port: the v436 download system. v400 had none: UFileChannel both drove the transfer and
-// wrote the cache file. In 436 a UDownload owns the transfer and the cache write, and the channel is
-// just the wire for the one manager that uses a channel (UChannelDownload). Declarations are Epic's
-// v432 public UnDownload.h; the bodies come from the retail v436 Engine.dll.
+// v436's download managers: a UDownload owns a file transfer and the cache write; UChannelDownload
+// receives the file over a UFileChannel.
 //
 class ENGINE_API UDownload : public UObject
 {

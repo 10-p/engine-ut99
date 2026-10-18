@@ -123,7 +123,7 @@ void UConsole::PreRender( FSceneNode* Frame )
 	if( ConsolePos > 0.0 )
 	{
 		// Show console.
-		// v436-compat port: console/border sizes are rounded, not truncated (436 UConsole::PreRender).
+		// v436: console/border sizes are rounded, not truncated.
 		ConsoleLines = appRound(Min(ConsolePos * (FLOAT)Frame->Y, (FLOAT)Frame->Y));
 	}
 

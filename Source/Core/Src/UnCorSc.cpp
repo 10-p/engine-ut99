@@ -2161,9 +2161,7 @@ void UObject::execFRand( FFrame& Stack, RESULT_DECL )
 }	
 IMPLEMENT_FUNCTION( UObject, 195, execFRand );
 
-// v436-compat port: Object.RandRange(float Min, float Max) — native(1033), added to UT after
-// v400 (Object.uc: "Fix added by Legend on 4/12/2000"). Returns a uniform float in [Min,Max].
-// Called pervasively (weapon spread, effects, timers, AI); its absence = execUndefined crash.
+// v436: Object.RandRange(float Min, float Max), native 1033: a uniform float in [Min,Max].
 void UObject::execRandRange( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(UObject::execRandRange);
@@ -3171,11 +3169,8 @@ void UObject::execCaps( FFrame& Stack, RESULT_DECL )
 IMPLEMENT_FUNCTION( UObject, 235, execCaps );
 
 //
-// ufront 2.79p -- the string natives OldUnreal 469 backported from UT2004, at 469's numbers (read from 469e's own
-// Core.u). A 469-compiled mod calls them by NUMBER (a final native is a bytecode token), and 436 had no handler:
-// measured on a live anti-cheat server, LinuxUTF8Fixv3's replicated ClientHelperActor ran `S $= ...` on the client
-// and the engine died with "Unknown code token 42" (the second byte of extended native 322). Pure string functions
-// with fixed semantics -- ported from UT2004's UnCorSc.cpp, so the result is the one a 469 client computes.
+// The five pure string natives OldUnreal 469 backported, at 469's numbers (Locs 238, Repl 239, $= 322,
+// @= 323, -= 324). A 469-compiled mod calls them by number: a final native is a bytecode token.
 //
 void UObject::execLocs( FFrame& Stack, RESULT_DECL )
 {

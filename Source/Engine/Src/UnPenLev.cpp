@@ -94,8 +94,8 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		INT RemoteMinVer=0, RemoteVer=0;
 		Parse( Text, TEXT("MINVER="), RemoteMinVer );
 		Parse( Text, TEXT("VER="),    RemoteVer    );
-		// v436-compat port: 436 fails the pending level with a localized reason (UGameEngine::Tick
-		// shows it and cancels) instead of only setting a progress message.
+		// As v436 does, fail the pending level with a localized reason (UGameEngine::Tick shows it
+		// and cancels).
 		if( ENGINE_VERSION < RemoteMinVer )
 		{
 			// Upgrade message.
@@ -110,13 +110,13 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 	else if( ParseCommand(&Text,TEXT("FAILURE")) )
 	{
 		// Report problem to user.
-		// v436-compat port: fail the pending level (v400: SetProgress("Rejected By Server",Text,10)).
+		// As v436 does, fail the pending level.
 		Error = LocalizeError("RejectedByServer");
 	}
 	else if( ParseCommand(&Text,TEXT("FAILCODE")) )
 	{
-		// v436-compat port: remember the code and URL; UGameEngine::Tick notifies the console when the
-		// pending level fails (v400 called Console->eventConnectFailure from here).
+		// Remember the code and URL; UGameEngine::Tick passes them to the console when the pending
+		// level fails.
 		FURL NewURL(URL);
 
 		for( INT i=NewURL.Op.Num()-1; i>=0; i-- )
@@ -136,14 +136,14 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		Parse( Text, TEXT("SIZE="),  Info.FileSize );
 		Parse( Text, TEXT("FLAGS="), Info.PackageFlags );
 		Parse( Text, TEXT("PKG="), PackageName, ARRAY_COUNT(PackageName) );
-		// v436-compat port: the server also sends the package's bare file name.
+		// A v436 server also sends the package's bare file name.
 		Parse( Text, TEXT("FNAME="), Info.URL );
 		Info.Parent = CreatePackage(NULL,PackageName);
 	}
 	else if( ParseCommand( &Text, TEXT("DLMGR") ) )
 	{
-		// v436-compat port: a download manager the server offers. One whose class will not load is
-		// dropped here, so the next offer (or the built-in channel download) is used instead.
+		// A download manager the server offers. One whose class will not load is dropped here, so the
+		// next offer (or the built-in channel download) is used instead.
 		INT i = Connection->DownloadInfo.AddZeroed();
 		Parse( Text, TEXT("CLASS="), Connection->DownloadInfo(i).ClassName );
 		Parse( Text, TEXT("PARAMS="), Connection->DownloadInfo(i).Params );
@@ -207,23 +207,17 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		ParseUBOOL( Text, TEXT("LONE="), LonePlayer );
 		Parse( Text, TEXT("CHALLENGE="), Connection->Challenge );
 
-		// ufront 2.79o -- FIRST, and before a single file is touched: a package the game has ALREADY LOADED in
-		// another version than the server's cannot be swapped for this session (a loaded '.u' is never unloaded --
-		// measured), and the version-aware lookup below would otherwise download the server's copy only for the
-		// linker to refuse it. This pass is pure memory, so the answer comes at once; the lookups that follow cost
-		// a file system walk per package, and on the web (a level ticking underneath) they cost a frame each --
-		// measured: the refusal arrived minutes late when it waited its turn in that loop.
-		// ONE message for every build (the owner): the engine says it itself, so a native player reads it in the
-		// connection-failed box exactly as a web player does -- no host page needed.
+		// Before any file lookup: a package already loaded in another version than the server's cannot
+		// be replaced this session (a loaded package is never unloaded), so refuse the join at once
+		// instead of downloading a copy the linker would reject. The connection-failed box shows why.
 		for( INT i=0; i<Connection->PackageMap->List.Num(); i++ )
 		{
 			FPackageInfo& Info = Connection->PackageMap->List(i);
 			FGuid LoadedGuid;
 			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid!=Info.Guid )
 			{
-				// ★ Not "join straight away" (the owner, 2026-09-23): OPENING THE SERVER BROWSER LOADS EVERYTHING, so the
-				// only route that still works after a restart is one that does not go through it -- an address or the
-				// command line. On the web that is the launcher's own address field, which is the same thing.
+				// The server browser loads every package, so after a restart only a join that bypasses it
+				// (by address or from the command line) can work.
 				Error = FString::Printf( TEXT("Package '%s' is already loaded. Please restart the game and join by IP or from the command line"), Info.Parent->GetName() );
 				if( Connection->Channels[0] )
 					Connection->Channels[0]->Close();
@@ -239,14 +233,12 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 		{
 			TCHAR Filename[256];
 			FPackageInfo& Info = Connection->PackageMap->List(i);
-			// ufront 2.79p -- a package ALREADY LOADED with the server's own GUID needs no file at all: the loaded
-			// one is what the level will use (a package is never loaded twice). 469 rebuilt the stock packages
-			// keeping their GUIDs, so only their size differs from 436's -- measured on a live 469 server, Botpack,
-			// Core, Engine, Fire, UnrealShare, UnrealI and SoldierSkins were each downloaded again for nothing.
+			// A package already loaded with the server's GUID needs no file: the loaded one is what the
+			// level uses (a package is never loaded twice).
 			FGuid LoadedGuid;
 			if( UObject::GetLoadedPackageGuid( Info.Parent, LoadedGuid ) && LoadedGuid==Info.Guid )
 				continue;
-			// Info.FileSize is what the server announced: the lookup then needs no file of its own (see UnMisc.cpp).
+			// Given the size the server announced, a file of that size matches without being opened.
 			if( !appFindPackageFile( Info.Parent->GetName(), &Info.Guid, Filename, Info.FileSize ) )
 			{
 				appSprintf( Filename, TEXT("%s%s"), Info.Parent->GetName(), DLLEXT );
@@ -258,8 +250,8 @@ void UNetPendingLevel::NotifyReceivedText( UNetConnection* Connection, const TCH
 					if( !NetDriver->AllowDownloads || !(Info.PackageFlags & PKG_AllowDownload) )
 					{
 						Error = FString::Printf( TEXT("Downloading '%s' not allowed"), Info.Parent->GetName() );
-						// v436-compat port: close the control channel first, as 436 does (a client never
-						// learns the server's RemoteVersion, so it still hard-closes).
+						// As v436 does, close the control channel first (a client's RemoteVersion stays 0,
+						// so it also hard-closes).
 						if( Connection->Channels[0] )
 							Connection->Channels[0]->Close();
 						Connection->FlushNet();
@@ -292,8 +284,8 @@ void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT Packa
 	FPackageInfo& Info = Connection->PackageMap->List(PackageIndex);
 	if( *InError )
 	{
-		// v436-compat port: if another download manager was offered, drop the one that failed and
-		// retry the file with the next one; only the last failure becomes the connection's error.
+		// If another download manager was offered, drop the one that failed and retry the file with
+		// the next one; only the last failure becomes the connection's error.
 		if( Connection->DownloadInfo.Num() > 1 )
 		{
 			Connection->DownloadInfo.Remove( 0 );
@@ -313,8 +305,8 @@ void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT Packa
 		Info.PackageFlags &= ~PKG_Need;
 		FilesNeeded--;
 
-		// v436-compat port: a file the user skipped is dropped from the package map entirely, so the
-		// package is not expected on either side.
+		// A file the user skipped is dropped from the package map entirely, so the package is not
+		// expected on either side.
 		if( Skipped )
 			Connection->PackageMap->List.Remove( PackageIndex );
 
@@ -324,8 +316,8 @@ void UNetPendingLevel::NotifyReceivedFile( UNetConnection* Connection, INT Packa
 	unguard;
 }
 //
-// v436-compat port: request the next package the client still needs. When there is none, the
-// download manager has finished its work and is destroyed.
+// Request the next package the client still needs. When there is none, the download manager has
+// finished its work and is destroyed.
 //
 void UNetPendingLevel::ReceiveNextFile( UNetConnection* Connection )
 {
@@ -341,7 +333,7 @@ void UNetPendingLevel::ReceiveNextFile( UNetConnection* Connection )
 	unguard;
 }
 //
-// v436-compat port: ask the running download to skip its file (only an optional package can be).
+// Ask the running download to skip its file (only an optional package can be).
 //
 UBOOL UNetPendingLevel::TrySkipFile()
 {

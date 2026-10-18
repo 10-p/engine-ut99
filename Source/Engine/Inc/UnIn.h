@@ -66,7 +66,7 @@ class ENGINE_API UInput : public USubsystem
 	virtual void ResetInput();
 	virtual const TCHAR* GetKeyName( EInputKey Key ) const;
 	virtual int FindKeyName( const TCHAR* KeyName, EInputKey& iKey ) const;
-	virtual void DirectAxis( EInputKey iKey, FLOAT Length, FLOAT Delta ); // v436-compat port
+	virtual void DirectAxis( EInputKey iKey, FLOAT Length, FLOAT Delta ); // v436: drive a binding with an analog value.
 
 	// Accessors.
 	void SetInputAction( EInputAction NewAction, FLOAT NewDelta=0.0 )

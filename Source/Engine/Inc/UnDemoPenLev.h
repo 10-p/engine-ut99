@@ -35,7 +35,7 @@ class UDemoPlayPendingLevel : public UPendingLevel
 	void Tick( FLOAT DeltaTime );
 	UNetDriver* GetDriver() { return DemoRecDriver; }
 	void SendJoin() { SentJoin = 1; }
-	// v436-compat port: nothing is downloaded during demo playback.
+	// v436: nothing is downloaded during demo playback.
 	UBOOL TrySkipFile() { return 0; }
 };
 

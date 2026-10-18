@@ -301,8 +301,7 @@ void AActor::execGetMapName( FFrame& Stack, RESULT_DECL )
 			}
 		}
 	}
-	// v436-compat port: reduce each found map to its bare file name before matching (436
-	// execGetMapName strips everything up to the last path separator).
+	// As v436 does, reduce each found map to its bare file name before matching.
 	FString Separator = PATH_SEPARATOR;
 	for( INT i=0; i<MapNames.Num(); )
 	{
@@ -340,7 +339,7 @@ void APlayerPawn::execConsoleCommand( FFrame& Stack, RESULT_DECL )
 	P_FINISH;
 
 	*(FString*)Result = TEXT("");
-	// v436-compat port: without a Player the command goes to the engine (436 execConsoleCommand).
+	// v436: without a Player the command goes to the engine.
 	FStringOutputDevice StrOut;
 	if( Player )
 		Player->Exec( *Command, StrOut );
@@ -362,12 +361,10 @@ void APawn::execStopWaiting( FFrame& Stack, RESULT_DECL )
 	unguardSlow;
 }
 
-// v436-compat port: CheckValidSkinPackage(string SkinPack, string MeshName) -- added to v436
-// Pawn (static native). Pawn.SetSkinElement calls it on a listen or dedicated server and falls
-// back to the default skin when it returns false. This follows 436 (Engine.dll 0xb7f70) step for
-// step, including its quirks: the ServerPackages text it exports is never upper-cased (the Caps()
-// result is discarded) and is searched for INSIDE the skin package name, so that test only fails
-// a skin when the exported text is empty.
+// Pawn.CheckValidSkinPackage, a v436 static native: Pawn.SetSkinElement calls it on a listen or
+// dedicated server and falls back to the default skin when it returns false. As v436 does, the
+// exported ServerPackages text is not upper-cased and fails a skin only when it starts the skin
+// package name, which in effect means only when the text is empty.
 void APawn::execCheckValidSkinPackage( FFrame& Stack, RESULT_DECL )
 {
 	guardSlow(APawn::execCheckValidSkinPackage);
@@ -386,8 +383,8 @@ void APawn::execCheckValidSkinPackage( FFrame& Stack, RESULT_DECL )
 	}
 	else
 	{
-		// 436 exports into a 2048-character buffer with no bound; a larger one here only avoids an
-		// overrun on a very long ServerPackages list.
+		// v436 exports into an unbounded 2048-character buffer; a larger one avoids an overrun on a
+		// very long ServerPackages list.
 		TCHAR PackagesText[4096];
 		appMemzero( PackagesText, sizeof(PackagesText) );
 		if( EngineClass->Defaults.Num() )
@@ -751,7 +748,7 @@ void APawn::execFindStairRotation( FFrame& Stack, RESULT_DECL )
 			RotRate = 8000/Diff; 
 
 		RotRate = ::Min(1.f, RotRate * deltaTime);
-		// v436-compat port: the blended pitch is rounded, not truncated (436 execFindStairRotation).
+		// v436: the blended pitch is rounded, not truncated.
 		stairRot = appRound(FLOAT(ViewRotation.Pitch) * ( 1 - RotRate) + FLOAT(stairRot) * RotRate);
 	}
 	*(DWORD*)Result = stairRot; 
