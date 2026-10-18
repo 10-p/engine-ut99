@@ -1,15 +1,15 @@
-// pkgguid-shim.js — the thin --js-library for the OPTIONAL "pkgguid" ABI module (ufront 2.79p).
+// pkgguid-shim.js — the thin --js-library for the optional "pkgguid" ABI module.
 // ============================================================================
-// VENDORED from @ufront/glue at PKGGUID_ABI_VERSION 1, by the engines whose join path asks a package's GUID
-// (the v436 version-aware package lookup). A SEPARATE file: net-shim.js stays byte-identical in every engine
-// repo and the main ABI does not move when this module does.
+// Vendored from @ufront/glue at PKGGUID_ABI_VERSION 1, by the engines whose join path asks a package's GUID (the
+// v436 version-aware package lookup). A separate file: net-shim.js stays byte-identical in every engine repo and
+// the main ABI does not move when this module does.
 //
-// ONE import, FORWARDED to the runtime-injected `Module.UE.pkgguid` (installed on the engine thread by
-// @ufront/glue, src/fetchfs/package-guid.js). No logic. NOT proxied: it runs on the calling (engine) thread,
-// which is where `Module.UE.pkgguid` lives.
+// One import, forwarded to the runtime-injected `Module.UE.pkgguid` (installed on the engine thread by
+// @ufront/glue, src/fetchfs/package-guid.js). No logic. Not proxied: it runs on the calling (engine) thread, which
+// is where `Module.UE.pkgguid` lives.
 //
-// ★ ABSENT MODULE = THE OLD BEHAVIOUR, never a failure: no `Module.UE.pkgguid` -> 0 ("unknown"), and the engine
-// downloads as it did before. A module present at the wrong version is a real mismatch, and that one throws.
+// Absent module = unknown, never a failure: no `Module.UE.pkgguid` -> 0, and the engine downloads the package. A
+// module present at the wrong version is a real mismatch, and that one throws.
 mergeInto(LibraryManager.library, {
     $uePkgGuid: function () {
         var ue = Module['UE'];
