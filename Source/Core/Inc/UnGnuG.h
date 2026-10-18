@@ -18,7 +18,7 @@
 #endif
 
 #include <stdarg.h>
-#include <math.h>   // floorf/ceilf for the rounding primitives below
+#include <math.h>   // rintf/floorf for the rounding primitives below
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -245,13 +245,14 @@ extern CORE_API DOUBLE GSecondsPerCycle;
 CORE_API DOUBLE appSecondsSlow();
 //
 // Round a floating point number to an integer.
-// Note that (int+.5) is rounded to (int+1).
+// Ties go to even (2.5 -> 2, 3.5 -> 4, -2.5 -> -2), as fistp does in the FPU's default mode.
 //
 #define DEFINED_appRound 1
 inline INT appRound( FLOAT F )
 {
-	// A rounding, as the MSVC original's `fld [F]; fistp [I]` is; a plain (INT)F would truncate toward zero.
-	return (INT)floorf( F + 0.5f );
+	// A rounding in the current mode, as the MSVC original's `fld [F]; fistp [I]` is (a plain (INT)F would
+	// truncate toward zero). Nothing in the engine changes the rounding mode; rintf inlines (no libcall).
+	return (INT)rintf( F );
 }
 
 //
