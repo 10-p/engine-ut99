@@ -8,6 +8,11 @@
 
 #include "SoftDrvPrivate.h"
 
+// Line1.h names each inclusion's labels LABEL1(X) followed by Normal or Dotted; pasting through a second
+// macro level expands LABEL1 first, as standard C++ requires.
+#define LINE_PASTE2(A,B) A##B
+#define LINE_PASTE(A,B) LINE_PASTE2(A,B)
+
 /*-----------------------------------------------------------------------------
 	Line drawing.
 -----------------------------------------------------------------------------*/
@@ -60,9 +65,6 @@ void USoftwareRenderDevice::Draw2DLine
 			}
 		}
 
-		// Line.h/Line1.h use VC++-only macro expansion (token pasting), so GCC/Clang builds draw no 2D lines;
-		// the palette table above is still built.
-#ifdef PLATFORM_MSVC
 		// Depth cued line drawer.
 		#define DEPTHSETUP(Arclen) FixDG = (FixG2-FixG1)/Arclen;
 		INT FixG1 = ::Clamp( appRound(P1.Z * 65536.0 * 10000.0), 100*65536, 255*65536 );
@@ -140,7 +142,6 @@ void USoftwareRenderDevice::Draw2DLine
 			#undef  SHIFT
 			#undef  DRAWPIXEL
 		}
-#endif // PLATFORM_MSVC (no 2D lines on GCC/Clang, see above)
 	}
 	unguard;
 }

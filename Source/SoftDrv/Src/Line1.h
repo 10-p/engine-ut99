@@ -8,7 +8,7 @@ if( !(LineFlags & LINE_Transparent) )
 	// Regular line.
 	#define L_DRAWPIXEL(Dest)	DRAWPIXEL(Dest)
 	#define ISDOTTED 0
-	#define LABEL2(X) LABEL1(X)##Normal
+	#define LABEL2(X) LINE_PASTE(LABEL1(X),Normal)
 	#include "Line.h"
 	#undef  LABEL2
 	#undef  ISDOTTED
@@ -20,7 +20,7 @@ else
 	int LineToggle=0;
 	#define L_DRAWPIXEL(Dest)  if( (LineToggle^=1) != 0 ) DRAWPIXEL(Dest)
 	#define ISDOTTED 1
-	#define LABEL2(X) LABEL1(X)##Dotted
+	#define LABEL2(X) LINE_PASTE(LABEL1(X),Dotted)
 	#include "Line.h"
 	#undef LABEL2
 	#undef ISDOTTED
