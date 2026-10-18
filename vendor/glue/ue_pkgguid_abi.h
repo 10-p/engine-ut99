@@ -1,8 +1,8 @@
 /*
  * ue_pkgguid_abi.h — the OPTIONAL "pkgguid" ABI module (C face).  PKGGUID_ABI_VERSION 1.
  * ============================================================================
- * An OPTIONAL MODULE, versioned on its own (as ../proxynet/ is): NOT part of the v1 thin-shim ABI (../ue_abi.h),
- * UE_ABI_VERSION stays 1, and an engine that does not vendor this header never asks (ufront 2.79p).
+ * An OPTIONAL MODULE, versioned on its own (as ../proxynet/ is): NOT part of the main thin-shim ABI (../ue_abi.h),
+ * a change here does not move UE_ABI_VERSION, and an engine that does not vendor this header never asks.
  *
  * What it is for: a network JOIN asks for each package by name AND GUID; the size the server announces is only a
  * shortcut. When a local file's size differs, the engine needs that file's GUID — and a web build must not READ
@@ -15,7 +15,7 @@
  * NOT proxied: answered on the calling (engine) thread, over the control channel main already serves.
  *
  * Same conventions as ../ue_abi.h: UE_IMPORT = the engine calls, JS provides; ONE line per boundary function
- * (the parity test, test/abi-pkgguid-parity.test.cjs, keys off the marker).
+ * (the parity test, test/package-guid.test.cjs, keys off the marker).
  */
 #ifndef UE_PKGGUID_ABI_H
 #define UE_PKGGUID_ABI_H
