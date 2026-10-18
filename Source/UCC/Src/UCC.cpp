@@ -106,9 +106,20 @@ int main( int argc, char* argv[] )
 				Ch++;
 			while( *Ch==' ' )
 				Ch++;
-			while( *Ch )
+			while( *Ch && CmdLinePtr < CmdLine + ARRAY_COUNT(CmdLine) - 1 )
 				*CmdLinePtr++ = *Ch++;
-			*CmdLinePtr++ = 0;
+			*CmdLinePtr = 0;
+			if( *Ch )
+			{
+				// Too long: drop the token that did not fit whole.
+				CmdLineCut = 1;
+				if( *Ch != ' ' )
+					while( CmdLinePtr > CmdLine && CmdLinePtr[-1] != ' ' )
+						CmdLinePtr--;
+				while( CmdLinePtr > CmdLine && CmdLinePtr[-1] == ' ' )
+					CmdLinePtr--;
+				*CmdLinePtr = 0;
+			}
 		#else
 			for( INT i=2; i<argc; i++ )
 			{
