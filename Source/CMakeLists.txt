@@ -14,10 +14,10 @@ endif()
 
 # Options
 
-# Web build mode (Emscripten only; the three modes are listed further down). UT_WEB_PERF is read by
-# UnrealTournament/CMakeLists.txt for the link flags; UT_WEB_DEBUG selects -O0 over the -O2 dev default.
-option(UT_WEB_PERF "Emscripten: shipping build — link at -O3 -g0, assertions off" OFF)
-option(UT_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
+# Web build mode (Emscripten only; the three modes are listed further down). UE_WEB_PERF is read by
+# UnrealTournament/CMakeLists.txt for the link flags; UE_WEB_DEBUG selects -O0 over the -O2 dev default.
+option(UE_WEB_PERF "Emscripten: shipping build — link at -O3 -g0, assertions off" OFF)
+option(UE_WEB_DEBUG "Emscripten: -O0 instead of the -O2 dev default (nothing inlined, every local live)" OFF)
 option(USE_SDL "Use the SDL2 client (NSDLDrv); off only for the Dreamcast client (KOSDrv)" ON)
 option(LOW_MEMORY "Conserve memory as much as possible" OFF)
 option(BUILD_UNREALTOURNAMENT "Build the launcher" ON)
@@ -25,17 +25,17 @@ option(BUILD_UNREALTOURNAMENT "Build the launcher" ON)
 # package (without its natives a map fails with "Can't find Class Editor.TransBuffer" and falls back to the
 # default map). This is the stripped, no-GUI Editor (NullEdHook) that links only Engine and Core.
 option(BUILD_EDITOR "Build the Editor package (a RUNTIME dependency — see above)" ON)
-option(BUILD_NOPENGLDRV "Build NOpenGLDrv" OFF)
+option(BUILD_UTGLR "Build OpenGLDrv (UTGLR, fetched)" OFF)
 option(BUILD_PVRDRV "Build PVRDrv (Dreamcast only)" OFF)
 option(BUILD_NULLSOUNDDRV "Build SoundDrv (Null driver)" ON)
-option(BUILD_NOPENALDRV "Build NOpenALDrv (OpenAL SFX + libxmp .umx music; web + native Linux)" OFF)
-option(UT_BUNDLED_OPENAL "Native Linux: build openal-soft (the ufront fork) and ship libopenal.so.1 beside the binary, instead of linking whatever libopenal the system has (ufront 2.70)" ON)
+option(BUILD_NOPENALDRV "Build NOpenALDrv (OpenAL Soft sound + libxmp .umx music)" OFF)
+option(UE_BUNDLED_OPENAL "Native Linux: build the openal-soft fork and ship libopenal.so.1 beside the binary instead of linking the system libopenal" ON)
 option(BUILD_AICADRV "Build AICADrv (Dreamcast AICA sound driver)" OFF)
 option(BUILD_DCUTIL "Build DCUtil" ON)
 option(BUILD_STATIC "Link everything into a single binary" OFF)
 # A 64-bit (LP64) build. OFF demotes an x86_64 compiler to -m32; ON builds x86_64 as x86_64. An arm64 compiler
 # always builds 64-bit. The C++ side does not read this option: PLATFORM_64BITS comes from the compiler (Core.h).
-option(UT_ALLOW_64BIT "Build x86_64 as a 64-bit (LP64) engine instead of demoting to -m32" OFF)
+option(UE_ALLOW_64BIT "Build x86_64 as a 64-bit (LP64) engine instead of demoting to -m32" OFF)
 
 # Hardware render devices, one toggle each. The web build has all three (XOpenGLDrv, OpenGLDrv/UTGLR through
 # gl4es, NOpenGLESDrv); natively the option defaults are NOpenGLESDrv only, and the presets turn on the rest.
@@ -53,9 +53,9 @@ option(BUILD_XOPENGLDRV "Build XOpenGLDrv (OldUnreal GL -> WebGL2/GLES3)" ${_UFR
 option(BUILD_SOFTDRV "Build SoftDrv (CPU software renderer; -SOFTWARERENDERER). Pure software, no glad -> coexists with XOpenGL." ON)
 option(BUILD_NULLDRV "Build NullDrv (GPU-free no-op render device; -NULLRENDERER). No GL context -> headless / dedicated-server run." ON)
 option(USE_GL4ES "Build OpenGLDrv (UTGLR) against gl4es (desktop GL -> GLES2) for the WebGL path" ${_UFRONT_DEF_GL4ES})
-# BUILD_NOPENGLDRV builds OpenGLDrv/UTGLR; USE_GL4ES (its WebGL backend) implies it.
+# BUILD_UTGLR builds OpenGLDrv/UTGLR; USE_GL4ES (its WebGL backend) implies it.
 if(USE_GL4ES)
-  set(BUILD_NOPENGLDRV ON)
+  set(BUILD_UTGLR ON)
 endif()
 # The XOpenGLDrv and OpenGLDrv/UTGLR sources are fetched (the fetch block above "# Subprojects" sets
 # XOPENGL_SOURCE_DIR / UTGLR_SOURCE_DIR); only their build glue lives in-tree.
@@ -180,8 +180,8 @@ if(TARGET_IS_64BIT)
   if(MSVC)
     # LLP64 (Windows x64) has never been built or run; refuse it.
     message(FATAL_ERROR "64-bit MSVC builds are not supported. Use -A Win32.")
-  elseif(TARGET_IS_X86 AND NOT UT_ALLOW_64BIT)
-    message(STATUS "Building x86 binary with x86_64 compiler (pass -DUT_ALLOW_64BIT=ON for x86_64)")
+  elseif(TARGET_IS_X86 AND NOT UE_ALLOW_64BIT)
+    message(STATUS "Building x86 binary with x86_64 compiler (pass -DUE_ALLOW_64BIT=ON for x86_64)")
     set(TARGET_IS_64BIT FALSE)
     set(TARGET_ARCH "x86")
     add_compile_options(-m32)
@@ -308,7 +308,7 @@ else()
   if(EMSCRIPTEN)
     # The three web build modes:
     #
-    #   preset        UT_WEB_PERF  UT_WEB_DEBUG  compile   what it is for
+    #   preset        UE_WEB_PERF  UE_WEB_DEBUG  compile   what it is for
     #   wasm-perf     ON           -             -O2 (*)   shipping: link-time -O3 -g0, no assertions
     #   wasm          OFF          OFF           -O2 -g    the dev default: named stacks, DWARF, assertions
     #   wasm-debug    OFF          ON            -O0 -g    last resort: every local live, nothing inlined
@@ -317,9 +317,9 @@ else()
     #
     # -O0 is for when the optimiser is the suspect: a bug that shows at one -O level and not another is almost
     # always undefined behaviour.
-    if(UT_WEB_DEBUG)
+    if(UE_WEB_DEBUG)
       add_compile_options(-O0 -g)
-    elseif(UT_WEB_PERF)
+    elseif(UE_WEB_PERF)
       # The shipping build carries no compile-side DWARF: -O2 at compile, -O3 -g0 at link.
       add_compile_options(-O2)
     else()
@@ -396,7 +396,7 @@ if(NOT PLATFORM_DREAMCAST AND BUILD_XOPENGLDRV)
   message(STATUS "XOpenGLDrv: source = ${XOPENGL_SOURCE_DIR}")
 endif()
 
-if(NOT PLATFORM_DREAMCAST AND BUILD_NOPENGLDRV)
+if(NOT PLATFORM_DREAMCAST AND BUILD_UTGLR)
   set(UTGLR_GIT_REPOSITORY "https://github.com/10-p/utglr-copy.git" CACHE STRING "OpenGLDrv/UTGLR git repo (Dohnal drop + our port)")
   set(UTGLR_GIT_TAG "main" CACHE STRING "OpenGLDrv/UTGLR git tag/branch/commit")
   include(FetchContent)
@@ -447,7 +447,7 @@ endif()
 # the web NOpenGLESDrv compiles none (Emscripten links the GLES2 entry points), and natively Thirdparty/glad_es
 # gives its externals a private prefix (glad_symbol_prefix.h), so the two co-link.
 
-if(BUILD_NOPENGLDRV)
+if(BUILD_UTGLR)
   # gl4es (desktop GL -> GLES2) for the OpenGLDrv/UTGLR WebGL path, fetched when USE_GL4ES or on Emscripten;
   # GL4ES_SOURCE_DIR names a local checkout. See Source/OpenGLDrv/PORTING.md.
   if(USE_GL4ES OR EMSCRIPTEN)
@@ -530,7 +530,7 @@ if(BUILD_NOPENALDRV)
     # AL_EFFECT_EAXREVERB and it never calls the EAX API.
     include(OpenALSoft)
     ufront_openal_soft(PLATFORM WEB EAX OFF)
-  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UT_BUNDLED_OPENAL)
+  elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UE_BUNDLED_OPENAL)
     # Native Linux builds the same fork as a shared library shipped beside the binary (cmake/OpenALSoft.cmake).
     include(OpenALSoft)
     ufront_openal_soft(PLATFORM NATIVE EAX OFF)

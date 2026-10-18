@@ -434,25 +434,25 @@ CORE_API void appMemcpy( void* Dest, const void* Src, INT Count );
 //
 // The first parameter of a replacement global operator new is size_t (unsigned long on wasm32).
 //
-// UT_REPLACEMENT_ALLOC: the four no-extra-argument forms below are the replaceable global ones. An inline
+// UE_REPLACEMENT_ALLOC: the four no-extra-argument forms below are the replaceable global ones. An inline
 // one the compiler does not inline is emitted out of line as a weak symbol, and wasm-ld would then resolve
 // the program-wide operator new to it, so Emscripten's WasmFS static initializer would allocate through
 // GMalloc before appInit (NULL). Forced inline, engine allocations go to appMalloc and system allocations
 // to libc++ at every optimisation level. The Tag-taking placement forms are not replacement functions.
-#define UT_REPLACEMENT_ALLOC __attribute__((always_inline))
+#define UE_REPLACEMENT_ALLOC __attribute__((always_inline))
 inline void* operator new( size_t Size, const TCHAR* Tag )
 {
 	guardSlow(new);
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void* operator new( size_t Size )
+UE_REPLACEMENT_ALLOC inline void* operator new( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete( void* Ptr )
+UE_REPLACEMENT_ALLOC inline void operator delete( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );
@@ -466,13 +466,13 @@ inline void* operator new[]( size_t Size, const TCHAR* Tag )
 	return appMalloc( Size, Tag );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void* operator new[]( size_t Size )
+UE_REPLACEMENT_ALLOC inline void* operator new[]( size_t Size )
 {
 	guardSlow(new);
 	return appMalloc( Size, TEXT("new") );
 	unguardSlow;
 }
-UT_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr )
+UE_REPLACEMENT_ALLOC inline void operator delete[]( void* Ptr )
 {
 	guardSlow(delete);
 	appFree( Ptr );

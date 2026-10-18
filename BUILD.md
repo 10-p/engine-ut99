@@ -46,7 +46,7 @@ module, generalised — `ufront_openal_soft(PLATFORM WEB|NATIVE …)`) FetchCont
 **a run tree that takes the binary must take `libopenal.so.1` with it** (the loader stops before `main`
 otherwise). Backends are whatever this host's headers allowed at configure time — e.g. PulseAudio, ALSA,
 OSS, each dlopen'd at run time — and the configure log says which
-(`Building OpenAL with support for the following backends`). `-DUT_BUNDLED_OPENAL=OFF` restores the system
+(`Building OpenAL with support for the following backends`). `-DUE_BUNDLED_OPENAL=OFF` restores the system
 library. Why: the system library is whatever the distro built, so the native binary carries the fork to play
 what the web plays.
 
@@ -73,7 +73,7 @@ UT99 runs as a 64-bit engine on Linux x86_64 and Android arm64 (and still on eve
 
 | Preset | Output | Notes |
 |--------|--------|-------|
-| `native64` | `build-native64/` — `UnrealTournament`, `UCC/ucc-bin` (ELF 64-bit) | `UT_ALLOW_64BIT=ON`; needs the amd64 `libsdl2-dev` (see below) |
+| `native64` | `build-native64/` — `UnrealTournament`, `UCC/ucc-bin` (ELF 64-bit) | `UE_ALLOW_64BIT=ON`; needs the amd64 `libsdl2-dev` (see below) |
 | `native64-asan` | `build-native64-asan/` | AddressSanitizer; run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0:verify_asan_link_order=0` (the second because `stdbuf` preloads a library) |
 | `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` (aarch64, bionic) | headless server + commandlets only; `ANDROID_NDK_HOME=<android-sdk>/ndk/30.0.14904198` |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the 32-bit control on the same ARM device |

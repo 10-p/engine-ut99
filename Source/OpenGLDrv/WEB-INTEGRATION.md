@@ -15,7 +15,7 @@ one `target.json` entry + doc text** — **no engine-source changes, no ABI chan
 The entire engine-side change set is:
 - new package `Source/OpenGLDrv/` (UTGLR ported to UE1 v400), and
 - additive, gated edits to `Source/CMakeLists.txt` only (a `USE_GL4ES` option, the gl4es `FetchContent`
-  block, and — inside the existing `EMSCRIPTEN` branch — enabling `BUILD_NOPENGLDRV` iff `USE_GL4ES`).
+  block, and — inside the existing `EMSCRIPTEN` branch — enabling `BUILD_UTGLR` iff `USE_GL4ES`).
 
 **Untouched:** `Core/Engine/Render/NSDLDrv/IpDrv/Fire/SoundDrv/UnrealTournament/Launch`, the frozen ABI
 (`vendor/glue/ue_abi.h`, v1), the vendored `webrtc-shim.js`, and all injected glue (FetchFS/IDB/WebRTC).

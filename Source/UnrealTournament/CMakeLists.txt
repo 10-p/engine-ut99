@@ -52,11 +52,6 @@ endif()
 
 target_compile_definitions(${PROJECT_NAME} PRIVATE UNREAL_EXPORTS UPACKAGE_NAME=${PROJECT_NAME})
 
-# Defined when the build contains NOpenALDrv.
-if(BUILD_NOPENALDRV)
-  target_compile_definitions(${PROJECT_NAME} PRIVATE UT_HAS_NOPENALDRV=1)
-endif()
-
 # Windows: OpenAL32.dll (cmake/OpenALMingw.cmake) goes beside the .exe, so the output directory is the
 # runnable set.
 if(OPENAL_MINGW_RUNTIME_DLL)
@@ -86,8 +81,6 @@ endif()
 # page and injects the heavy glue at runtime; only the thin shims in vendor/glue are linked. Every render
 # device is in the --whole-archive static set; SDL2 is the Emscripten port.
 if(EMSCRIPTEN)
-  set(UT99_ASSETS_DIR "/home/ion/ut99-assets" CACHE PATH
-      "Retail UT99 v400 assets (System/Default.ini preloaded into MEMFS; the rest streams via FetchFS)")
   target_link_options(${PROJECT_NAME} PRIVATE
     -sASYNCIFY
     -sASYNCIFY_STACK_SIZE=262144
@@ -142,7 +135,7 @@ if(EMSCRIPTEN)
     # framebuffer 0 (NOpenGLESDrv, OpenGLDrv/UTGLR).
     "SHELL:--js-library ${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js"
   )
-  if(UT_WEB_PERF)
+  if(UE_WEB_PERF)
     # --emit-symbol-map writes a side file (SDLLaunch.js.symbols) and leaves the wasm unchanged; it resolves a
     # shipped crash address to a function name offline. The map names every private symbol, so it is never
     # published.
@@ -204,7 +197,7 @@ if(EMSCRIPTEN)
   if(BUILD_XOPENGLDRV)
     ufront_artifact_dep(META_DEPS xopengl XOpenGLDrv "${XOPENGL_GIT_REPOSITORY}" "${XOPENGL_GIT_TAG}")
   endif()
-  if(BUILD_NOPENGLDRV)
+  if(BUILD_UTGLR)
     ufront_artifact_dep(META_DEPS utglr utglr "${UTGLR_GIT_REPOSITORY}" "${UTGLR_GIT_TAG}")
     ufront_artifact_dep(META_DEPS gl4es GL4ES "${GL4ES_GIT_REPOSITORY}" "${GL4ES_GIT_TAG}" "${GL4ES_SOURCE_DIR}")
   endif()

@@ -23,13 +23,13 @@ translator, mirroring `engine-ut2004/GL4ESDrv`.
 Nothing under `Core/ Engine/ Render/ NSDLDrv/ IpDrv/ Fire/ SoundDrv/ UnrealTournament/` was modified. The
 complete change set outside the new package is **additive, gated edits to `Source/CMakeLists.txt`** (the
 `USE_GL4ES` option, the gl4es `FetchContent` block, and — inside the existing `EMSCRIPTEN` branch —
-enabling `BUILD_NOPENGLDRV` iff `USE_GL4ES`). Everything else is the new `Source/OpenGLDrv/` package.
+enabling `BUILD_UTGLR` iff `USE_GL4ES`). Everything else is the new `Source/OpenGLDrv/` package.
 
 Two design choices made this possible:
 
 1. **Reused the reserved build slot.** `Source/CMakeLists.txt` already had
-   `if(BUILD_NOPENGLDRV) → add_subdirectory(OpenGLDrv)` + the `--whole-archive`/INSTALL_TARGETS plumbing.
-   Creating `Source/OpenGLDrv/` + `-DBUILD_NOPENGLDRV=ON` needs no other shared-file edit for native.
+   `if(BUILD_UTGLR) → add_subdirectory(OpenGLDrv)` + the `--whole-archive`/INSTALL_TARGETS plumbing.
+   Creating `Source/OpenGLDrv/` + `-DBUILD_UTGLR=ON` needs no other shared-file edit for native.
 
 2. **Named the package to satisfy NSDLDrv's context logic — LOAD-BEARING.**
    `Source/NSDLDrv/Src/NSDLViewport.cpp:297` opens a GL window **iff the render-device name contains the
@@ -119,9 +119,9 @@ Per-backend (all verified except the last):
 ```bash
 cd Source
 # M2 — native desktop-GL oracle:
-cmake --preset native -DBUILD_NOPENGLDRV=ON               && cmake --build --preset native -j"$(nproc)"
+cmake --preset native -DBUILD_UTGLR=ON               && cmake --build --preset native -j"$(nproc)"
 # M3 — native through gl4es (desktop GL -> GLES2):
-cmake --preset native -DBUILD_NOPENGLDRV=ON -DUSE_GL4ES=ON && cmake --build --preset native -j"$(nproc)"
+cmake --preset native -DBUILD_UTGLR=ON -DUSE_GL4ES=ON && cmake --build --preset native -j"$(nproc)"
 #   (add -DGL4ES_SOURCE_DIR=/path/to/gl4es to use a local checkout instead of fetching vanilla)
 # M4 — wasm/WebGL (product = wasm-perf, what ufront consumes; dev = wasm). USE_GL4ES auto-enables OpenGLDrv:
 source ~/emsdk/emsdk_env.sh
@@ -152,7 +152,7 @@ an ini selecting `OpenGLDrv.OpenGLRenderDevice`:
 - **ARB assembly shaders / paletted textures**: `UseFragmentProgram` and `UsePalette` should stay off for
   the WebGL/gl4es path (unsupported by GLES2/gl4es); UTGLR's fixed-function + RGBA fallbacks are complete.
   **S3TC now works** natively and through gl4es — see the S3TC section above.
-- **M4 (wasm/WebGL): done at the build level.** Inside the `EMSCRIPTEN` branch, `BUILD_NOPENGLDRV` is now
+- **M4 (wasm/WebGL): done at the build level.** Inside the `EMSCRIPTEN` branch, `BUILD_UTGLR` is now
   enabled iff `USE_GL4ES`, so `cmake --preset wasm[-perf] -DUSE_GL4ES=ON` links UTGLR+gl4es into
   `SDLLaunch.{js,wasm,data}` + `meta.json` (verified 0 errors; product wasm ≈4.4 MB, dev ≈17 MB with
   gl4es). The one Emscripten-specific source fix was the `<map>`→`<time.h>` front-load above (libc++

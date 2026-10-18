@@ -15,7 +15,7 @@
         "BUILD_EDITOR": "ON",
         "BUILD_DCUTIL": "OFF",
         "BUILD_XOPENGLDRV": "ON",
-        "BUILD_NOPENGLDRV": "ON",
+        "BUILD_UTGLR": "ON",
         "BUILD_NOPENALDRV": "ON",
         "BUILD_STATIC": "ON"
       }
@@ -28,11 +28,11 @@
       "binaryDir": "${sourceDir}/../build-native64",
       "cacheVariables": {
         "CMAKE_BUILD_TYPE": "RelWithDebInfo",
-        "UT_ALLOW_64BIT": "ON",
+        "UE_ALLOW_64BIT": "ON",
         "BUILD_EDITOR": "ON",
         "BUILD_DCUTIL": "OFF",
         "BUILD_XOPENGLDRV": "ON",
-        "BUILD_NOPENGLDRV": "ON",
+        "BUILD_UTGLR": "ON",
         "BUILD_NOPENALDRV": "ON",
         "BUILD_STATIC": "ON"
       }
@@ -68,7 +68,7 @@
         "BUILD_DCUTIL": "OFF",
         "BUILD_NOPENGLESDRV": "OFF",
         "BUILD_XOPENGLDRV": "OFF",
-        "BUILD_NOPENGLDRV": "OFF",
+        "BUILD_UTGLR": "OFF",
         "BUILD_SOFTDRV": "OFF",
         "BUILD_NULLDRV": "OFF",
         "BUILD_NULLSOUNDDRV": "OFF",
@@ -90,7 +90,7 @@
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-wasm",
       "toolchainFile": "$env{EMSDK}/upstream/emscripten/cmake/Modules/Platform/Emscripten.cmake",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UT_WEB_PERF": "OFF", "UT_WEB_DEBUG": "OFF", "SOFTDRV_MAX_SCREEN": "8192" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "RelWithDebInfo", "UE_WEB_PERF": "OFF", "UE_WEB_DEBUG": "OFF", "SOFTDRV_MAX_SCREEN": "8192" }
     },
     {
       "name": "wasm-debug",
@@ -98,7 +98,7 @@
       "description": "Emscripten web build: -O0, nothing inlined, every local live. For when the optimiser is the suspect: a bug that shows at one -O level and not another is almost always undefined behaviour. Builds in build-wasm-debug/.",
       "inherits": "wasm",
       "binaryDir": "${sourceDir}/../build-wasm-debug",
-      "cacheVariables": { "UT_WEB_DEBUG": "ON" }
+      "cacheVariables": { "UE_WEB_DEBUG": "ON" }
     },
     {
       "name": "wasm-perf",
@@ -106,7 +106,7 @@
       "displayName": "Web (Emscripten/WASM) -- shipping build",
       "description": "Emscripten shipping build: compiled at -O2, linked at -O3 -g0 without assertions, a symbol map beside the loader. Builds in build-wasm-perf/.",
       "binaryDir": "${sourceDir}/../build-wasm-perf",
-      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "UT_WEB_PERF": "ON" }
+      "cacheVariables": { "CMAKE_BUILD_TYPE": "Release", "UE_WEB_PERF": "ON" }
     },
     {
       "name": "windows",
@@ -124,7 +124,7 @@
         "BUILD_NULLDRV": "ON",
         "BUILD_NOPENGLESDRV": "OFF",
         "BUILD_XOPENGLDRV": "ON",
-        "BUILD_NOPENGLDRV": "ON",
+        "BUILD_UTGLR": "ON",
         "USE_GL4ES": "OFF",
         "BUILD_NULLSOUNDDRV": "ON",
         "BUILD_NOPENALDRV": "ON"
