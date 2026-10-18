@@ -198,7 +198,6 @@ set(TARGET_IS_DREAMCAST FALSE)
 if(WIN32)
   set(TARGET_IS_WINDOWS TRUE)
 else()
-  # TODO
   set(TARGET_IS_UNIX TRUE)
 endif()
 
@@ -275,7 +274,6 @@ if(TARGET_IS_WINDOWS)
     link_libraries(ws2_32 ole32)
   endif()
 else()
-  # TODO
   add_definitions(-DPLATFORM_POSIX)
   if(NOT TARGET_IS_DREAMCAST)
     add_definitions(-DPLATFORM_CASE_SENSITIVE_FS)
