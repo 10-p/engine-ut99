@@ -2,16 +2,24 @@
 
 Unreal Tournament (1999) Unreal Engine 1 v400 source with modifications to make it run on modern systems and in the browser.
 Requires assets from a retail UT99 install (v400 packages). For v436 assets, build the `feat/v436-compat` branch the same way.
-Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Design notes and web-port details: [BUILD.md](BUILD.md).
+Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details, options and test tools: [BUILD.md](BUILD.md).
 
-## Changes from original source
+## Changes from the original source
 
-* SDL2 windowing/client driver (NSDLDrv) and a static single-binary build (no `.so`/`.dll` packages).
-* GLES2 (NOpenGLESDrv), OldUnreal XOpenGLDrv and UTGLR OpenGLDrv renderers, plus SoftDrv and NullDrv.
-* OpenAL + libxmp audio driver (NOpenALDrv).
-* GCC/MinGW support, including the Win32 struct-layout fixes.
-* 64-bit (x86_64) Linux build that still runs the retail 32-bit packages.
-* A WebAssembly build and a WebRTC net driver (WebRTCDrv) for the browser.
+* **WebAssembly build:** every package in one static wasm that runs on a browser worker thread, with WebGL 2, a file system served by the host page, a frame loop that returns to the browser every frame, and load errors that fail soft.
+* **SDL2 client driver (NSDLDrv):** the window and input client on every target: a resizable window at the real drawable size, pointer capture in play and an absolute cursor in menus, game pads with hot-plug.
+* **OpenGL ES renderer (NOpenGLESDrv):** a GLES2 device on WebGL 2 and native GL, with antialiasing on the web, anisotropic filtering and the Brightness setting.
+* **OpenGL renderers (XOpenGLDrv, UTGLR):** OldUnreal's XOpenGLDrv (the default) and Chris Dohnal's UTGLR, fetched from their forks and built on every target (UTGLR through gl4es on the web).
+* **Software renderer (SoftDrv):** Epic's v400 rasterizer through its portable C paths, with volumetric fog on surfaces and meshes, optional bilinear filtering and 2D lines on every compiler.
+* **Null renderer (NullDrv):** a render device that draws nothing, for headless runs.
+* **WebRTC net driver (WebRTCDrv):** browser multiplayer over the frontend's WebRTC transport, with a synthetic LAN that makes the stock server browser work.
+* **OpenAL Soft audio (NOpenALDrv):** one openal-soft build on the web, Linux and Windows, with EFX reverb, optional HRTF and libxmp tracker music.
+* **64-bit and ARM support:** x86_64 and arm64 builds (a headless `ucc-bin` on Android) that run the retail 32-bit packages unchanged.
+* **Windows build:** one static MinGW-w64 executable, cross-compiled from Linux or built under MSYS2.
+* **Dreamcast build** (from maximqaxd/ut99dc): kept compiling, built by no preset here.
+* **GCC and Clang support:** the engine compiles with GCC, Clang, Emscripten and MinGW-w64, with the native class layouts matching the script packages.
+* **Save games:** saving and loading work on case-sensitive file systems and in nested save folders.
+* **Languages:** the language is `[Engine.Engine] Language`, and localization files are found case-insensitively.
 * Editor UI is not supported.
 
 ## Building
@@ -53,6 +61,7 @@ Copy `<prefix>/lib/libSDL2-2.0.so.0` next to the binary (or add `<prefix>/lib` t
    cmake --preset windows && cmake --build --preset windows -j$(nproc)
    ```
 3. The result is `build-windows/UnrealTournament/UnrealTournament.exe` plus `OpenAL32.dll`, which must stay next to it.
+   A dedicated server, `build-windows/UCC/ucc-bin.exe`, is built too.
 
 ### Windows x86 (MSYS2 on Windows)
 1. Install MSYS2 and open the `MINGW32` prompt. **Do not** use the `MINGW64` or `MSYS` prompts.
@@ -75,6 +84,18 @@ Copy `<prefix>/lib/libSDL2-2.0.so.0` next to the binary (or add `<prefix>/lib` t
 
 Use real copies of the game files, not symlinks (under wine every package otherwise becomes a silent `FileNotFound`).
 Headless check: `-NULLRENDERER` (Linux) or `-SOFTWARERENDERER` (Windows, also under wine); the log should reach `Init: Game engine initialized`.
+On Linux, SIGTERM, SIGINT (Ctrl-C) or SIGHUP ends the game or a dedicated server cleanly; a second one is ignored.
+
+## Credits
+
+* Epic Games wrote Unreal Tournament and its v400 source, including its Linux port (the POSIX layer, the socket header and the launcher skeleton are Epic's own).
+* maximqaxd ([maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc)) made the UT99 port this engine descends from: the GCC build, the SDL2 client and the Dreamcast drivers AICADrv, KOSDrv, PVRDrv and DCUtil. In it: the Dreamcast audio engine by Josh Pearson (with thanks to SKMP), Tri Stripper by Tanguy Fautré, stb_image_write by Sean Barrett, and KallistiOS.
+* fgsfds ([fgsfdsfgs/UE1](https://github.com/fgsfdsfgs/UE1)) wrote the SDL2, OpenGL ES and OpenAL drivers ut99dc built on.
+* OldUnreal wrote XOpenGLDrv (Smirftsch, Sebastian "Han" Kaufel, Stijn Volckaert, Marco888, Buggie, Higor, rX; the repository was started by Ryan C. Gordon), used here through the fork 10-p/XOpenGLDrv (BSD-3); the DXT decoder in it is by Benjamin Dobell and Matthäus "Anteru" Chajdas (MIT, via gl4es).
+* Chris Dohnal wrote the UTGLR OpenGLDrv (fork 10-p/utglr-copy), on Daniel Vogel's (Loki) OpenGLDrv.
+* ptitSeb wrote gl4es, on Ryan Hileman's glshim.
+* The libraries: OpenAL Soft (Chris Robinson, kcat; LGPL), libxmp, SDL2, glad (David Herberth), glm (G-Truc Creation) and Emscripten.
+* [alexstrout/foxWSFix-UT99](https://github.com/alexstrout/foxWSFix-UT99) is the reference for the weapon field-of-view behaviour; [Andiweli/UT99-Android](https://github.com/Andiweli/UT99-Android) gave SDL2 glue ideas.
 
 ## Note
 

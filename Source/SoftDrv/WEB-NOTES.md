@@ -1,81 +1,48 @@
-# SoftDrv on the web — what the native build does not tell you
+# SoftDrv on the web
 
-Read this before changing anything under `Source/SoftDrv/`. A change can be correct, and validated
-natively, and still be broken on the web, because the two builds do not share the code paths that
-matter most to this renderer. That is not hypothetical: it is how the 2.13.2 framebuffer overrun
-survived from 2026-07-30 to 2026-08-05, and how it came to be blamed on an innocent branch.
+`SoftDrv.SoftwareRenderDevice` is Epic's v400 software renderer (`-SOFTWARERENDERER`). Native and web run the same
+rasteriser code but draw into different memory, so a change validated natively can still be broken on the web.
 
-## 1. Native and web take different rasteriser code
+## One rasteriser path
 
-This is the v400 UT99 SoftDrv, whose inner loops exist twice: hand-written x86 `__asm`, and portable
-C under `#if !ASM`. **The web build is `ASM=0`** (`Source/SoftDrv/CMakeLists.txt`) and on x86 native
-`GIsMMX` is force-disabled when `!ASM`, but a native build can still select MMX/Pentium variants at
-runtime via `ColorMode`.
+Every build compiles SoftDrv with `ASM=0` (`Source/SoftDrv/CMakeLists.txt`), so the inner loops are the portable C
+under `#if !ASM`, not Epic's x86 `__asm`. Without ASM, MMX is off on x86 (`SoftDrvPrivate.h`) and `GIsMMX` is set only
+by the MSVC platform layer, so `Lock` picks the Pentium colour modes (`Pentium15/16/32`) everywhere.
 
-So "I validated it natively" does not establish that the portable path is right, and vice versa.
-Anything touching `DrawSurf` / `DrawPoly` / `DrawTile` inner loops needs both.
-
-## 2. Native and web draw into different memory
+## Two framebuffers
 
 | | native | web (worker) |
 |---|---|---|
-| target | SDL streaming texture | `UNSDLViewport::SoftFB`, a plain heap buffer |
-| obtained in `Lock` via | `SDL_LockTexture` | direct pointer |
-| presented in `Unlock` by | SDL | `putImageData` to a transferred `OffscreenCanvas` |
-| resized by | SDL, on texture re-create | **us, explicitly** |
+| target | an SDL streaming texture | `UNSDLViewport::SoftFB`, a heap buffer |
+| obtained in `Lock` by | `SDL_LockTexture` | a direct pointer |
+| presented in `Unlock` by | SDL | `putImageData` to the transferred canvas through a 2D context |
+| resized by | SDL, when the texture is re-created | `Lock`, when the size changed |
 
-The web has its own buffer because SDL's Emscripten renderer is GLES-backed: `SDL_CreateRenderer`
-goes through `eglCreateContext`, which Emscripten proxies to the browser main thread — where the
-canvas has been transferred to the worker and `getContext()` throws. The proxied call never returns
-and the engine thread blocks forever. See the 2.13.2 comment in `NSDLViewport.cpp`.
+The web has its own buffer because SDL's Emscripten renderer would create a context through EGL, which Emscripten
+proxies to the main thread, where the canvas has been transferred to the worker and the call never returns.
 
-**The consequence:** on the web, viewport size and buffer size are two facts that can disagree.
-Natively they cannot — SDL owns both. Every bug of this shape is therefore web-only *and invisible to
-a native run*, no matter how careful.
+So on the web the viewport size and the buffer size are two values that can disagree; natively SDL owns both.
 
-## 3. The web viewport size is the browser window, and it changes
+## The viewport is the browser window
 
-`ResizeViewport` adopts the real drawable size over the ini one, because SDL2's Emscripten backend
-maps the window to the CSS-sized (`100vw`/`100vh`) canvas. Two things follow that repeatedly catch
-people out:
+The viewport adopts the canvas's drawable size over the ini resolution, and the size changes after startup through
+the `SDL_WINDOWEVENT_SIZE_CHANGED`/`RESIZED` handler in `TickInput` (the window-creation block does not run again).
+`SoftFB` is sized in `Lock`, the one point where the buffer is about to be written and `SizeX`/`SizeY` are final;
+keep it there.
 
-- **the ini resolution is not the rendered resolution.** A test that passes at the ini size proves
-  nothing about the size the user actually gets;
-- **it changes after startup**, via `WINDOWEVENT_RESIZED` in `TickInput`. The window-creation block
-  is inside `if( !hWnd )` and does **not** re-run.
+## Static tables
 
-`SoftFB` is therefore sized in `Lock` — the single point where the buffer is about to be written and
-`SizeX`/`SizeY` are final. Please keep it there. Sizing it at either the allocation site or the
-adopt-drawable-size block leaves one of the two paths stale, which is exactly the bug that shipped.
+The screen-indexed scratch tables (`Setup`, `MMXSetup`, `Photon`, `FogPhoton`, `UCoordTable`, the two `SpanIndex`) are
+static arrays bounded by `MaximumXScreenSize`/`MaximumYScreenSize` (`SOFTDRV_MAX_SCREEN`: 4096, 8192 on the web
+presets). They cost their full size at every resolution. A viewport above the bound degrades: `SetRes` clamps the
+size, `DrawPoly` skips the frame above the height bound, `DrawTile` clamps its span fill.
 
-## 4. Memory is not free — the static tables cost the same at every resolution
+## Testing a change
 
-The `SizeX`/`SizeY`-indexed scratch tables (`Setup`, `MMXSetup`, `Photon`, `UCoordTable`, two
-`SpanIndex`) are **static arrays bounded by `MaximumX/YScreenSize`**. They cost their full size in
-`.bss` whether the viewport is 4K or 240×240 — 368 KB at the 4096 default, measured. Adding another
-screen-indexed static is not free, and it is not proportional to what is being drawn.
-
-Use `-DSOFTDRV_MAX_SCREEN=n` to lower the ceiling on constrained targets (256 → 23 KB). Viewports
-above the ceiling degrade fail-soft: `SetRes` clamps X, `DrawPoly` skips the frame above the Y
-ceiling, `DrawTile` clamps its span-fill.
-
-## 5. A clean `-O2` run does not clear a memory bug
-
-The 2.13.2 overrun did **not** reproduce under `-O2 -g`; only `-O3` (`wasm-perf`, what ships) faulted,
-and it faulted three different ways — `memory access out of bounds`, `table index is out of bounds`,
-`null function` — depending on what the write happened to land on. A heap layout that absorbs an
-overrun is not a heap layout that lacks one. If a rasteriser bug appears and disappears across
-optimisation levels, assume corruption and go looking for the write, not the read.
-
-## 6. How to actually test a SoftDrv change on the web
-
-`packages/e2e/tools/softdrv-matrix.cjs` in the monorepo drives the launcher's renderer dropdown,
-boots a map and waits **past level load** — a rasteriser can come up and die on the first real draw:
+A memory bug in the rasteriser may show only at one optimisation level: test `wasm-perf`, the shipping build, not only
+`wasm`. Vary the resolution as well as the map. The frontend's `packages/e2e/tools/softdrv-matrix.cjs` picks the
+software renderer in the launcher, boots each case and waits past level load:
 
 ```bash
-SOFT_URL=https://localhost:8092 SOFT_CASES="1920x1080:DM-Codex,640x480:DM-Codex" \
-  node tools/softdrv-matrix.cjs
+SOFT_URL=https://localhost:8092 SOFT_CASES="1920x1080:DM-Codex,640x480:DM-Codex" node tools/softdrv-matrix.cjs
 ```
-
-Vary the **resolution**, not just the map. A single default-size smoke test is what let this through:
-1024×768 passed while every size the owner actually plays at crashed.

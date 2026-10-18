@@ -1,14 +1,15 @@
-# Config/System/web — web platform config (build-consumed)
+# Config/System/web
 
-`Default.ini` + `DefUser.ini` here are the **web** boot config: the Emscripten link `--preload-file`s them
-(`Source/UnrealTournament/CMakeLists.txt`), and UT99 v400's `appInit` derives `UnrealTournament.ini` /
-`User.ini` from them at boot. They carry the web-only settings — the `[WebRTCDrv.WebRTCNetDriver]` section
-and the GL/ES render device — that a native game install's inis do not have.
+The web build's boot config. The Emscripten link preloads `Default.ini` and `DefUser.ini` into `/System`
+(`Source/UnrealTournament/CMakeLists.txt`), and the engine derives `UnrealTournament.ini` and `User.ini` from them on
+a player's first boot. The frontend leaves the asset install's copies of all four files out of what it serves
+(`manifestExclude` in its `targets/ut99/target.json`), so these are the only ones the web reads. Edit this folder
+when the web config changes, never an asset tree.
 
-`../*.ini` (the parent folder) is the **platform-agnostic / Dreamcast-heritage** reference set; it is NOT
-what the web ships.
+`Default.ini` keeps the retail subsystem names (`WinDrv.WindowsClient`, `Galaxy.GalaxyAudioSubsystem`,
+`IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). On top of the
+retail file it carries `[WebRTCDrv.WebRTCNetDriver]`, `[XOpenGLDrv.XOpenGLRenderDevice]`,
+`[NOpenGLESDrv.NOpenGLESRenderDevice]`, `[NOpenALDrv.NOpenALAudioSubsystem]`, `[NullDrv.NullRenderDevice]`,
+`[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`. `DefUser.ini` adds the game-pad bindings (Unreal 1's layout).
 
-Previously the web build preloaded these from the out-of-tree asset dir, so the web config lived only in an
-untracked game install and was silently reverted whenever that image was rebuilt. The ufront manifest now
-also excludes `System/UnrealTournament.ini` + `System/User.ini`, so a stale install copy cannot shadow what
-`appInit` derives here. **Edit this folder when the web config changes — never the asset tree.**
+`../*.ini` is ut99dc's Dreamcast config; no build preloads or installs it.
