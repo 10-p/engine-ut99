@@ -1,11 +1,12 @@
 # Building engine-ut99
 
 The engine source of Unreal Tournament (1999), Unreal Engine 1 v400, for the browser and for native Linux, Windows
-and Android. The web build produces a WebAssembly artifact that the frontend repository
-([10-p/unreal-frontend-arch-private](https://github.com/10-p/unreal-frontend-arch-private)) serves; game assets (a
-retail UT99 v400 install) live outside this repository and no build reads them. The base is
-[maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) at `820b25c`; `feat/v436-compat` is the same engine for v436
-content, rebased on `main`.
+and Android. This branch, `feat/v436-compat`, is the same engine for retail v436 content: it carries all of `main`
+plus the v436-specific changes only, and is rebased on `main` (a general change goes to `main` first). The web build
+produces a WebAssembly artifact that the frontend repository
+([10-p/unreal-frontend-arch-private](https://github.com/10-p/unreal-frontend-arch-private)) serves as its
+`ut99-436-compat` target; game assets (a retail UT99 v436 install) live outside this repository and no build reads
+them. The base is [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) at `820b25c`.
 
 ## Presets
 
@@ -46,6 +47,7 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 | `UE_WEB_PERF` | OFF | web: the shipping link (-O3 -g0, no assertions, `--emit-symbol-map`) |
 | `UE_WEB_DEBUG` | OFF | web: compile at -O0 instead of -O2 |
 | `UE_BUNDLED_OPENAL` | ON | native Linux: build openal-soft and ship `libopenal.so.1` beside the binary instead of linking the system libopenal |
+| `UE_WITH_PROXYNET` | ON (web only) | ProxyNetDrv and its shim `vendor/glue/proxynet-shim.js`; OFF leaves both out of the wasm |
 | `UE_ALLOW_64BIT` | OFF | build x86_64 as a 64-bit engine; OFF demotes an x86_64 compiler to -m32 (an arm64 compiler always builds 64-bit; 64-bit MSVC is refused) |
 | `BUILD_STATIC` | OFF (ON in every preset) | one binary |
 | `BUILD_EDITOR` | ON | the Editor package |
@@ -61,10 +63,14 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 
 The web (`if(EMSCRIPTEN)` in `Source/CMakeLists.txt`) forces its own set: static, SDL, Editor, XOpenGLDrv, UTGLR
 through gl4es, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv, the silent audio subsystem, `ASM=0`, `-pthread` and
-`-sUSE_SDL=2` at compile time, `-fpack-struct=4`. The Android client (`if(ANDROID AND USE_SDL)`) forces static,
-Editor, XOpenGLDrv, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv and the silent audio subsystem, no UTGLR (desktop
-GL) and no `ucc-bin`, defines `UE_ANDROID_APP` for the app's own platform paths, and adds
-`-fno-delete-null-pointer-checks` and clang's non-POD-varargs leniency.
+`-sUSE_SDL=2` at compile time, `-fpack-struct=4`. The web also builds WebRTCDrv and, with `UE_WITH_PROXYNET`,
+ProxyNetDrv. The Android client (`if(ANDROID AND USE_SDL)`) forces static, Editor, XOpenGLDrv, NOpenGLESDrv,
+SoftDrv, NullDrv, NOpenALDrv and the silent audio subsystem, no UTGLR (desktop GL) and no `ucc-bin`, defines
+`UE_ANDROID_APP` for the app's own platform paths, and adds `-fno-delete-null-pointer-checks` and clang's
+non-POD-varargs leniency.
+
+The fetched XOpenGLDrv compiles with `ENGINE_VERSION=400` (`Source/XOpenGLDrv/CMakeLists.txt`): the fork selects
+its render headers on 400, and the render structs it uses do not depend on the version.
 
 ## Fetched libraries
 
@@ -113,7 +119,10 @@ system and the network transport at run time.
   `appThrowf` writes `[appThrowf] <reason>` to stdout on every build.
 - **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`) is vendored from the frontend at ABI
   version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*` imports; the engine
-  exports `ue_exec_command`, which runs a console command and returns its output.
+  exports `ue_exec_command`, which runs a console command and returns its output. Two optional modules are
+  versioned on their own: pkgguid (`ue_pkgguid_abi.h`, `pkgguid-shim.js`: a package's GUID from the page's manifest;
+  linked into every web build, it answers "unknown" when the host has no such module) and proxynet
+  (`ue_proxynet_abi.h`, `proxynet-shim.js`: ProxyNetDrv's transport, linked with `UE_WITH_PROXYNET`).
 - **`meta.json`** records the ABI version, the target, the git commit and build time, the Emscripten version, the
   link flags and every fetched library as `<repo>@<branch|tag>` (a local checkout as `local:<path>`), with checksums
   of the loader files (`Source/UnrealTournament/cmake/emit-artifact-meta.mjs`, `Source/cmake/ArtifactDeps.cmake`).
@@ -122,7 +131,25 @@ system and the network transport at run time.
 
 - **Subsystems.** Before `Engine->Init()` the launcher replaces a viewport client, audio subsystem or net driver
   the ini names but the build lacks (the retail `WinDrv.WindowsClient`, `Galaxy.GalaxyAudioSubsystem`) with the first
-  present one of its list, and logs it; on the web a stock `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`.
+  present one of its list, and logs it; on the web a stock `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`,
+  and `ProxyNetDrv.ProxyNetDriver` is kept in a build that has it.
+- **Version.** The engine reports 436 (`ENGINE_MIN_NET_VERSION` 400) and writes package file version 69
+  (`Core/Inc/UnObjVer.h`). A server turns away a client older than 432 (`UPGRADE MINVER=400 VER=436`).
+- **Downloads.** A server offers its net driver's `DownloadManagers` to a joining client (the native inis list
+  `IpDrv.HTTPDownload`, then `Engine.ChannelDownload`) and refuses a file above `MaxDownloadSize`; the client uses the
+  first manager whose class loads and falls back to the next when one fails. `IpDrv.HTTPDownload` fetches
+  `RedirectToURL` plus the file name (and `.uz`), natively over its own socket and on the web through ProxyNetDrv.
+  `CANCEL` (F10) during a download first skips the file if the package is optional. A finished file goes to
+  `Cache/<GUID>.uxx` with a `cache.ini` entry and logs `Received '<package>'`.
+- **Joining.** Each package the server lists is looked up by its GUID: a local file of the announced size counts as
+  found, one of another size is checked by its GUID (on the web from the page's manifest), and a package already
+  loaded in another version refuses the join ("Package '<name>' is already loaded. Please restart the game and join
+  by IP or from the command line").
+- **Proxy networking** (web, experimental). `NetworkDevice=ProxyNetDrv.ProxyNetDriver` joins a native server through
+  the frontend's game proxy; `[ProxyNetDrv.ProxyNetDriver]` holds its net settings, and a missing value falls back
+  to a built-in one (logged). In that mode the in-game server browser lists the proxy's servers.
+- **Master servers.** `IpServer.UdpServerUplink` and `[UBrowserAll]` list the community master servers
+  (333networks, errorist, oldunreal, gonespy, noccer, openspy, hypercoop).
 - **Render device.** `-XOPENGLRENDERER`, `-UTGLRRENDERER`, `-NOPENGLESRENDERER`, `-SOFTWARERENDERER`,
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
   user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
@@ -345,6 +372,7 @@ the menus' dedicated-server relaunch starts it, and a SIGINT to the wine process
 | `tools/dev/census/` | a coverage census of which engine functions ever ran (`census.py`, `gcovdump.c`, the scripted player session `play.sh`) and a cross-width layout oracle (`exports.sh`) |
 | `tools/test/U64Test/` | an UnrealScript fixture for the 64-bit port: VM checks (`U64Mutator`), compile-only declarations (`U64Decl`), a benchmark (`U64Bench`) |
 | `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` | runs the native build under Xvfb with the input test channel (`-INPUTTEST=<file>`, `Source/NSDLDrv/Src/NSDLInputTest.h`: a virtual SDL pad that takes the pad's place, mouse motion, console commands, state probes, per-tick view watches) and feeds it a scenario (`turn.scen`; `move.scen`: the move stick's speed against tilt and its directions); `rate.py` fits the turn rate and the speed, and gives the move direction and the walking share, from the log |
+| `tools/oracle-469-natives/run.sh <469-install> <436-run-tree>` | compiles `NativesTest` with OldUnreal 469's `ucc`, runs it under stock 469 and under this engine's `ucc-bin`, and diffs the `NT` lines (the five 469 string natives) |
 | `tools/web-smoke.mjs` | serves a web artifact to headless Chromium; it sends no COOP/COEP headers and sets no `Module.UE`, so it reports the abort of the threaded build (the frontend's E2E is the web gate) |
 
 ```bash
