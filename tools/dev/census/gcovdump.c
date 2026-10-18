@@ -1,6 +1,7 @@
 /* gcovdump.c -- census only (see BUILD.md "Coverage census"). Linked into a --coverage build so a
-   game stopped by a signal still writes its counters: UT99 installs no signal handlers, the test tools stop
-   games with SIGTERM, and GCC only dumps from an exit handler. A crash dumps too, then re-raises.
+   game that dies still writes its counters: GCC only dumps from an exit handler. Once appInit has run, the
+   engine's own SIGTERM/SIGHUP/SIGINT handlers replace on_stop and exit cleanly (which dumps); on_stop covers
+   a signal before that. A crash dumps too, then re-raises.
      cc -c -O2 -fPIC tools/dev/census/gcovdump.c -o <dir>/gcovdump.o
      cmake --preset native64 -B ../build-native64-cov ... "-DCMAKE_EXE_LINKER_FLAGS=--coverage <dir>/gcovdump.o" */
 #include <signal.h>

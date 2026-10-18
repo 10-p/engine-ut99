@@ -40,6 +40,7 @@
 #include <sys/stat.h>
 #ifndef PLATFORM_WIN32
 #include <sys/wait.h>	// waitpid (appCreateProc)
+#include <signal.h>
 #endif
 #ifndef UNREAL_STATIC
 #include <dlfcn.h>
@@ -797,6 +798,58 @@ CORE_API const TCHAR* appPackage()
 	App init/exit.
 -----------------------------------------------------------------------------*/
 
+/*-----------------------------------------------------------------------------
+	Exit signals.
+-----------------------------------------------------------------------------*/
+
+#if !defined(PLATFORM_WIN32) && !defined(PLATFORM_DREAMCAST)
+//
+// SIGTERM, SIGHUP and SIGINT request a clean exit: the main loop leaves at its next check of
+// GIsRequestingExit and the engine shuts down normally. A further exit signal is reported and ignored
+// (SIGKILL still ends the process at once). Only async-signal-safe calls: the signal may interrupt any
+// thread, inside malloc or the log.
+//
+static volatile sig_atomic_t GExitSignals = 0;
+
+static void WriteSignalText( const char* Text, size_t Len )
+{
+	ssize_t Written = write( 1, Text, Len );
+	(void)Written;
+}
+
+static void HandleExitSignal( int Signal )
+{
+	static const char Term[]       = "Signal: SIGTERM [terminate]";
+	static const char Hup[]        = "Signal: SIGHUP [hangup]";
+	static const char Int[]        = "Signal: SIGINT [interrupt]";
+	static const char Requesting[] = ": requesting exit.\n";
+	static const char Ignored[]    = ": exit already requested; this one is ignored (SIGKILL ends the process now).\n";
+	if( Signal == SIGTERM )
+		WriteSignalText( Term, sizeof(Term)-1 );
+	else if( Signal == SIGHUP )
+		WriteSignalText( Hup, sizeof(Hup)-1 );
+	else
+		WriteSignalText( Int, sizeof(Int)-1 );
+	if( GExitSignals++ == 0 )
+	{
+		WriteSignalText( Requesting, sizeof(Requesting)-1 );
+		GIsRequestingExit = 1;
+	}
+	else WriteSignalText( Ignored, sizeof(Ignored)-1 );
+}
+
+static void InstallExitSignalHandlers()
+{
+	struct sigaction Action;
+	appMemzero( &Action, sizeof(Action) );
+	Action.sa_handler = HandleExitSignal;
+	sigemptyset( &Action.sa_mask );
+	sigaction( SIGTERM, &Action, NULL );
+	sigaction( SIGHUP,  &Action, NULL );
+	sigaction( SIGINT,  &Action, NULL );
+}
+#endif
+
 //
 // Platform specific initialization.
 //
@@ -854,6 +907,10 @@ void appPlatformInit()
 	GPageSize = sysconf( _SC_PAGESIZE );
 	GProcessorCount = sysconf( _SC_NPROCESSORS_ONLN );
 #endif // PLATFORM_
+
+#if !defined(PLATFORM_WIN32) && !defined(PLATFORM_DREAMCAST)
+	InstallExitSignalHandlers();
+#endif
 	unguard;
 }
 
