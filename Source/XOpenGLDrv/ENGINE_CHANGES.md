@@ -20,8 +20,9 @@ it. The web path: `WEB_INTEGRATION.md`.
 
 ## What the fork changes for this engine
 
-The fork's version matrix keys on `ENGINE_VERSION` (`Core/Inc/UnObjVer.h` defines 400); most of its changes for
-this engine are under `#if ENGINE_VERSION==400`:
+The fork's version matrix keys on `ENGINE_VERSION`. `Core/Inc/UnObjVer.h` defines 436 on this branch, and the build
+glue compiles the driver with `ENGINE_VERSION=400` (v400's render headers); most of the fork's changes for this engine
+are under `#if ENGINE_VERSION==400`:
 
 - The device creates no GL context: it adopts the one NSDLViewport made current (on the threaded web build through
   `emscripten_webgl_get_current_context`, since SDL does not own it), `Unlock` does not swap and `Exit` does not

@@ -1,10 +1,22 @@
 ## What?
 
 Unreal Tournament (1999) Unreal Engine 1 v400 source with modifications to make it run on modern systems and in the browser.
-Requires assets from a retail UT99 install (v400 packages). For v436 assets, build the `feat/v436-compat` branch the same way.
+This branch, `feat/v436-compat`, runs the retail v436 packages and v436-era mods: it requires assets from a retail UT99 v436 install (for v400 assets, build `main`).
 Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details, options and test tools: [BUILD.md](BUILD.md).
 
 ## Changes from the original source
+
+This branch (v436):
+
+* **v436 compatibility:** the engine reports version 436, reads and writes package version 69 and declares the v436 native class layouts and natives; it replicates, logs in, rounds and records demos as the retail v436 engine does, so v436 servers, clients, demos and mods work with it.
+* **Skeletal meshes:** the skeletal meshes and animations of v436-era mods load and animate.
+* **Package downloads:** v436's download managers: the in-band channel download and HTTP redirect downloads (compressed `.uz` files included), optional packages a player can skip, and the download cache.
+* **Version-aware package lookup:** a join takes the server's version of a package the player has in another version (matched by GUID), and refuses one that is already loaded in another version.
+* **OldUnreal 469 string natives:** `Locs`, `Repl`, `$=`, `@=` and `-=` at 469's numbers, so 469-compiled mods that call them run.
+* **Proxy networking (ProxyNetDrv, experimental):** a web client joins an ordinary native server through a WebSocket-to-UDP game proxy, with redirect downloads and the in-game server browser.
+* **Master servers:** the server browser and the server uplink use the community master servers.
+
+Both branches:
 
 * **WebAssembly build:** every package in one static wasm that runs on a browser worker thread, with WebGL 2, a file system served by the host page, a frame loop that returns to the browser every frame, and load errors that fail soft.
 * **SDL2 client driver (NSDLDrv):** the window and input client on every target: a resizable window at the real drawable size, pointer capture in play and an absolute cursor in menus, game pads with hot-plug (in play the bindings of Unreal 1's layout; in the menus, once the pad has the cursor, Back and B as Escape, Start and A as Enter, the D-pad as the arrows and the focus, the left stick and the fire buttons as the mouse, the cursor drawn by UWindow itself).
@@ -86,7 +98,7 @@ Copy `<prefix>/lib/libSDL2-2.0.so.0` next to the binary (or add `<prefix>/lib` t
 
 ## Running
 
-1. Install the retail UT99 game files.
+1. Install the retail UT99 v436 game files.
 2. Copy the files you built (see each platform above) to `UnrealTournament/System`. Overwrite everything.
 3. Run `System/UnrealTournament` (Linux) or `System/UnrealTournament.exe` (Windows). The engine picks the SDL client and a working renderer itself.
 
