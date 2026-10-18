@@ -28,7 +28,6 @@ class NSDLDRV_API UNSDLViewport : public UViewport
 
 	// Constructors.
 	UNSDLViewport( ULevel* InLevel, class UNSDLClient* InClient );
-	static void InternalClassInitializer( UClass* Class );
 
 	// UObject interface.
 	virtual void Destroy() override;

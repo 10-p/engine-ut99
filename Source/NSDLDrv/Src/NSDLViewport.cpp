@@ -179,17 +179,6 @@ void UNSDLViewport::InitKeyMap()
 }
 
 //
-// Static init.
-//
-void UNSDLViewport::InternalClassInitializer( UClass* Class )
-{
-	guard(UNSDLViewport::InternalClassInitializer);
-	// Fill in keymap.
-	InitKeyMap();
-	unguard;
-}
-
-//
 // Constructor.
 //
 UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
@@ -203,8 +192,7 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 	SoftFBBytes = 0;
 #endif
 
-	// Fill the scancode -> EInputKey map (a static array; idempotent) before any TickInput. v400 never calls
-	// the v200-era InternalClassInitializer hook above, so the constructor does it.
+	// Fill the scancode -> EInputKey map (a static array; idempotent) before any TickInput.
 	InitKeyMap();
 
 	// Set color bytes based on screen resolution.

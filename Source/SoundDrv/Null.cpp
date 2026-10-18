@@ -20,9 +20,6 @@ class DLL_EXPORT UNullAudioSubsystem : public UAudioSubsystem
 {
 	DECLARE_CLASS(UNullAudioSubsystem, UAudioSubsystem, CLASS_Config)
 
-	// v200-era class hook; v400 never calls it. No config properties.
-	static void InternalClassInitializer( UClass* Class ) {}
-
 	// UAudioSubsystem interface (UT99 v400, Engine/Inc/UnAudio.h).
 	virtual UBOOL Init() { return 1; }
 	virtual void SetViewport( UViewport* Viewport ) { AudioViewport = Viewport; }
