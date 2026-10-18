@@ -690,12 +690,10 @@ CORE_API void VARARGS appThrowf( const TCHAR* Fmt, ... )
 {
 	static TCHAR TempStr[4096];
 	GET_VARARGS(TempStr,ARRAY_COUNT(TempStr),Fmt);
-#ifdef __EMSCRIPTEN__
-	// The web build catches no exceptions, so a throw that escapes aborts the module with a bare message:
-	// echo the reason to stdout first, as "[appThrowf] <reason>".
+	// Echo the reason to stdout first, as "[appThrowf] <reason>", so a throw that nothing catches still names
+	// its cause.
 	printf("[appThrowf] %s\n", TempStr);
 	fflush(stdout);
-#endif
 	throw( TempStr );
 }
 
