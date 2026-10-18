@@ -261,7 +261,6 @@ static UBOOL IsPackageClassAvailable( const TCHAR* Device )
 #endif
 }
 
-#ifndef __EMSCRIPTEN__
 // Replace a subsystem the ini names but this build lacks with the first present driver of Preference, and log
 // the substitution. The retail ini names WinDrv.WindowsClient and Galaxy.GalaxyAudioSubsystem, which the engine
 // loads with LOAD_NoFail: a fatal error before the first frame. A present choice is left alone.
@@ -284,7 +283,6 @@ static void NormalizeSubsystem( const TCHAR* Section, const TCHAR* Key, const TC
 	debugf( NAME_Warning, TEXT("ufront: [%s] %s=%s is not in this build and no replacement is either"),
 		Section, Key, Configured.Len() ? *Configured : TEXT("(unset)") );
 }
-#endif
 
 static void SetRenderDeviceConfig( const TCHAR* Device )
 {
@@ -388,12 +386,15 @@ static UEngine* InitEngine()
 	GExec = NULL;
 
 #ifdef __EMSCRIPTEN__
-	// The web build's subsystems, set before Engine->Init() loads them: the SDL client, OpenAL audio and the
-	// WebRTC net driver.
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("ViewportManager"),      TEXT("NSDLDrv.NSDLClient") );
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("AudioDevice"),          TEXT("NOpenALDrv.NOpenALAudioSubsystem") );
-	// A browser has no BSD sockets: the net driver is WebRTCDrv over the glue ABI.
-	GConfig->SetString( TEXT("Engine.Engine"), TEXT("NetworkDevice"),        TEXT("WebRTCDrv.WebRTCNetDriver") );
+	// A browser has no BSD sockets: the stock TcpNetDriver becomes WebRTCDrv, over the glue ABI.
+	{
+		FString Net;
+		if( GConfig->GetString( TEXT("Engine.Engine"), TEXT("NetworkDevice"), Net ) && appStricmp( *Net, TEXT("IpDrv.TcpNetDriver") )==0 )
+		{
+			debugf( TEXT("ufront: [Engine.Engine] NetworkDevice=IpDrv.TcpNetDriver -> WebRTCDrv.WebRTCNetDriver (no BSD sockets in a browser)") );
+			GConfig->SetString( TEXT("Engine.Engine"), TEXT("NetworkDevice"), TEXT("WebRTCDrv.WebRTCNetDriver") );
+		}
+	}
 	// The pointer is locked while a level is up and released while a menu shows (UGameEngine::Tick drives
 	// SetMouseCapture; SDL's Emscripten port takes the lock on the next click).
 	GConfig->SetString( TEXT("NSDLDrv.NSDLClient"),  TEXT("CaptureMouse"),    TEXT("True") );
@@ -405,19 +406,21 @@ static UEngine* InitEngine()
 	GConfig->SetString( TEXT("IpServer.UdpServerUplink"),  TEXT("DoUplink"),  TEXT("False") );
 #endif
 
-#ifndef __EMSCRIPTEN__
 	// Replace the subsystems the ini names but this build lacks (the retail WinDrv.WindowsClient and
-	// Galaxy.GalaxyAudioSubsystem). Each list is best real driver first.
+	// Galaxy.GalaxyAudioSubsystem), before Engine->Init() loads them. Each list is best real driver first.
 	{
 		static const TCHAR* const ViewportPreference[] = { TEXT("NSDLDrv.NSDLClient") };
 		static const TCHAR* const AudioPreference[]    = { TEXT("NOpenALDrv.NOpenALAudioSubsystem"),
 		                                                   TEXT("SoundDrv.NullAudioSubsystem") };
+#ifdef __EMSCRIPTEN__
+		static const TCHAR* const NetPreference[]      = { TEXT("WebRTCDrv.WebRTCNetDriver") };
+#else
 		static const TCHAR* const NetPreference[]      = { TEXT("IpDrv.TcpNetDriver") };
+#endif
 		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("ViewportManager"), ViewportPreference, ARRAY_COUNT(ViewportPreference) );
 		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("AudioDevice"),     AudioPreference,    ARRAY_COUNT(AudioPreference) );
 		NormalizeSubsystem( TEXT("Engine.Engine"), TEXT("NetworkDevice"),   NetPreference,      ARRAY_COUNT(NetPreference) );
 	}
-#endif
 
 	// A -*RENDERER switch, else the persisted choice, else the preference order.
 	SelectRenderDevice();
