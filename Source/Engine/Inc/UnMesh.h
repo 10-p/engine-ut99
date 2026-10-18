@@ -589,7 +589,7 @@ class ENGINE_API UAnimation : public UObject
 	// The motion chunk of a sequence: Moves is indexed in step with AnimSeqs.
 	virtual const FSkelMotionChunk* GetMovement( FName SeqName ) const
 	{
-		guardSlow(UAnimation::GetAnimSeq);
+		guardSlow(UAnimation::GetMovement);
 		for( INT i=0; i<AnimSeqs.Num(); i++ )
 			if( SeqName == AnimSeqs(i).Name )
 				return &Moves(i);
@@ -598,7 +598,7 @@ class ENGINE_API UAnimation : public UObject
 	}
 	virtual FSkelMotionChunk* GetMovement( FName SeqName )
 	{
-		guardSlow(UAnimation::GetAnimSeq);
+		guardSlow(UAnimation::GetMovement);
 		for( INT i=0; i<AnimSeqs.Num(); i++ )
 			if( SeqName == AnimSeqs(i).Name )
 				return &Moves(i);

@@ -44,7 +44,7 @@ class UHTTPDownload : public UDownload
 	FURL			DownloadURL;
 	TArray<BYTE>	ReceivedData;
 	TArray<FString>	Headers;
-	DOUBLE			ConnectStartTime;	// appSeconds() at connect; on the web, at the fetch's start or its last data.
+	DOUBLE			ConnectStartTime;	// appSeconds() at connect.
 
 	// Constructors.
 	UHTTPDownload();
@@ -66,6 +66,7 @@ class UHTTPDownload : public UDownload
 	// The web fetch through GWebHttp. These follow the v436 members; the class is C++-only, so
 	// nothing depends on its size.
 	INT WebHandle;			// from GWebHttp->Open(); -1 = none
+	DOUBLE WebActivityTime;	// appSeconds() at the fetch's start or its last data (the stall timeout's base)
 	void WebReceiveFile();
 	void WebTick();
 	void WebClose();

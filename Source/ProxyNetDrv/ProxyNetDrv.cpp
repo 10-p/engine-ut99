@@ -44,9 +44,9 @@ IMPLEMENT_PACKAGE(ProxyNetDrv);
 
 // TcpNetDriver.cpp's figures, since the far end is a TcpNetDriver: its packet size, and the per-packet
 // overhead the rate limiter charges, so NETSPEED means what it means to a native client.
-#define PROXYNET_IP_HEADER_SIZE     (20)
-#define PROXYNET_UDP_HEADER_SIZE    (PROXYNET_IP_HEADER_SIZE+8)
-#define PROXYNET_SLIP_HEADER_SIZE   (PROXYNET_UDP_HEADER_SIZE+4)
+#define IP_HEADER_SIZE              (20)
+#define UDP_HEADER_SIZE             (IP_HEADER_SIZE+8)
+#define SLIP_HEADER_SIZE            (UDP_HEADER_SIZE+4)
 #define PROXYNET_MAX_PACKET         (512)
 #define PROXYNET_RECV_BUFFER        (576)
 
@@ -75,7 +75,7 @@ class DLL_EXPORT_CLASS UProxyNetConnection : public UNetConnection
 		// the host as typed (and refuses private address space).
 		State          = InState;
 		MaxPacket      = PROXYNET_MAX_PACKET;
-		PacketOverhead = PROXYNET_SLIP_HEADER_SIZE;
+		PacketOverhead = SLIP_HEADER_SIZE;
 		InitOut();
 		unguard;
 	}
@@ -586,7 +586,7 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		PROXYNET_CFG( LanServerMaxTickRate,        35 )
 		#undef PROXYNET_CFG
 		if( Patched.Len() )
-			debugf( NAME_Log, TEXT("ProxyNetDrv: no ini value for:%s - using the stock defaults (add a [ProxyNetDrv.ProxyNetDriver] section to set them)"), *Patched );
+			debugf( NAME_Log, TEXT("ProxyNet: no ini value for:%s - using the stock defaults (add a [ProxyNetDrv.ProxyNetDriver] section to set them)"), *Patched );
 		unguard;
 	}
 
@@ -615,13 +615,13 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 			// The module is absent, or this build has no game proxy configured. Fail here, in words, rather
 			// than sit in "Connecting..." until InitialConnectTimeout.
 			Error = TEXT("Proxy networking is not available in this build.");
-			debugf( NAME_Log, TEXT("ProxyNetDrv: %s"), *Error );
+			debugf( NAME_Log, TEXT("ProxyNet: %s"), *Error );
 			return 0;
 		}
 
 		// Create new connection.
 		ServerConnection = new UProxyNetConnection( NewConnId, this, USOCK_Pending, ConnectURL );
-		debugf( NAME_DevNet, TEXT("ProxyNetDrv: game client -> %s:%i (proxy conn %i), rate %i"),
+		debugf( NAME_DevNet, TEXT("ProxyNet: game client -> %s:%i (proxy conn %i), rate %i"),
 			*ConnectURL.Host, ConnectURL.Port, NewConnId, ServerConnection->CurrentNetSpeed );
 
 		// Create channel zero.
@@ -636,7 +636,7 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		// A browser cannot accept UDP, and the game proxy carries a client to one server; it is not a
 		// rendezvous. Hosting is what P2P networking is for: refuse in words.
 		Error = TEXT("Proxy networking cannot host a game. Switch to P2P networking to host.");
-		debugf( NAME_Log, TEXT("ProxyNetDrv: %s"), *Error );
+		debugf( NAME_Log, TEXT("ProxyNet: %s"), *Error );
 		return 0;
 		unguard;
 	}
@@ -656,7 +656,7 @@ class DLL_EXPORT_CLASS UProxyNetDriver : public UNetDriver
 		INT TransportState = ue_proxynet_state( Conn->ConnId );
 		if( (TransportState==PROXYNET_STATE_CLOSED || TransportState==PROXYNET_STATE_INVALID) && Conn->State!=USOCK_Closed )
 		{
-			debugf( NAME_DevNet, TEXT("ProxyNetDrv: transport closed (proxy conn %i) - disconnecting"), Conn->ConnId );
+			debugf( NAME_DevNet, TEXT("ProxyNet: transport closed (proxy conn %i) - disconnecting"), Conn->ConnId );
 			Conn->State = USOCK_Closed;
 			return;
 		}
