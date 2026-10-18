@@ -202,9 +202,9 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 
 | Tool | What it does |
 |---|---|
-| `tools/dev/mkrun-ut99.sh <build-dir> <run-dir>` | assembles a run tree from an asset install (`$UT99_ASSETS_DIR`) and a native build |
+| `tools/dev/mkrun-ut99.sh <build-dir> <run-dir> [<extra-maps-dir>]` | assembles a run tree from a native build and an asset install (default `<work folder>/assets/ut99-assets`, `$UT99_ASSETS_DIR`; native inis from `<work folder>/native-runtrees/ut99`, `$UT99_REF_RUNTREE`) |
 | `tools/dev/run-template.sh` | the run tree's `run.sh`: starts the game on a chosen renderer (`./run.sh soft DM-Barricade`) |
-| `tools/dev/shot.sh <Map.unr> <out.png>` | runs the native build under Xvfb and grabs a frame |
+| `UT99_RUN=<run-tree> tools/dev/shot.sh <Map.unr> <out.png>` | runs the native build under Xvfb and grabs a frame (`UT99_DEV`, `UT99_RES`, `UT99_DISP`) |
 | `tools/dev/botmatch.sh <server-tree> <seconds> [<client-tree>] [<map>]` | a headless bot match with a joined client; counts kills and sanitizer reports |
 | `tools/dev/layout-sweep.gdb` | every script property of every native class (and script struct) against the same-named C++ member; run under `ucc-bin make` and the client |
 | `tools/dev/census/` | a coverage census of which engine functions ever ran (`census.py`, `gcovdump.c`, the scripted player session `play.sh`) and a cross-width layout oracle (`exports.sh`) |
@@ -212,7 +212,7 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 | `tools/web-smoke.mjs` | serves a web artifact to headless Chromium; it sends no COOP/COEP headers and sets no `Module.UE`, so it reports the abort of the threaded build (the frontend's E2E is the web gate) |
 
 ```bash
-tools/dev/mkrun-ut99.sh build-native64 <run-tree>      # then copy UCC/ucc-bin and libopenal.so.1 in
+tools/dev/mkrun-ut99.sh build-native64 <run-tree>      # then copy UCC/ucc-bin in
 cd <run-tree>/System
 gdb -batch -x <repo>/tools/dev/layout-sweep.gdb --args ./ucc-bin make          # healthy: only EditorEngine.Pad shifted
 ./ucc-bin server "DM-Deck16][?game=Botpack.DeathMatchPlus?mutator=U64Test.U64Mutator"   # U64 DONE … failed=0

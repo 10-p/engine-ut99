@@ -1,8 +1,13 @@
 #!/usr/bin/env bash
 # shot.sh -- run the native UT99 build headlessly under Xvfb and grab a frame.
 #
-#   tools/dev/shot.sh <Map.unr> <out.png> [seconds] [extra engine args...]
-#   U1RUN=<run-tree> U1DEV=soft|gl U1RES=WxH U1DISP=:N tools/dev/shot.sh ...
+#   UT99_RUN=<run-tree> tools/dev/shot.sh <Map.unr> <out.png> [seconds] [extra engine args...]
+#
+#   UT99_RUN   the run tree (mkrun-ut99.sh makes one); required: the script deletes its log and, with a
+#              device name in UT99_DEV, rewrites its render device
+#   UT99_DEV   soft (default), gl (the ini's device), or a render device class name
+#   UT99_RES   the Xvfb screen as WxH (default: the ini's windowed viewport size)
+#   UT99_DISP  the Xvfb display (default :99)
 #
 # Xvfb's -fbdir dump is used instead of the engine's SHOT command, which needs a keypress.
 #
@@ -15,14 +20,14 @@ OUT="${2:?}"
 SECS="${3:-20}"
 shift 3 || true
 
-RUN=${U1RUN:-/home/ion/native-runtrees/ut99-softenh}
-DISP=${U1DISP:-:99}
+RUN="${UT99_RUN:?set UT99_RUN to the run tree (tools/dev/mkrun-ut99.sh makes one)}"
+DISP=${UT99_DISP:-:99}
 # Match Xvfb to the engine's own viewport size: otherwise the engine ticks two viewports and the
 # captured frame is whichever was presented last.
 _VPX=$(sed -nE 's/^WindowedViewportX=([0-9]+).*/\1/p' "$RUN/System/UnrealTournament.ini" 2>/dev/null | head -1)
 _VPY=$(sed -nE 's/^WindowedViewportY=([0-9]+).*/\1/p' "$RUN/System/UnrealTournament.ini" 2>/dev/null | head -1)
-RES=${U1RES:-${_VPX:-800}x${_VPY:-600}}
-DEV=${U1DEV:-soft}
+RES=${UT99_RES:-${_VPX:-800}x${_VPY:-600}}
+DEV=${UT99_DEV:-soft}
 FBDIR=$(mktemp -d)
 XWD=$(mktemp -u)/fb.xwd
 mkdir -p "$(dirname "$XWD")"
