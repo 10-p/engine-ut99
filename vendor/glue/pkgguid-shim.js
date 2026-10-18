@@ -1,8 +1,8 @@
 // pkgguid-shim.js — the thin --js-library for the OPTIONAL "pkgguid" ABI module (ufront 2.79p).
 // ============================================================================
 // VENDORED from @ufront/glue at PKGGUID_ABI_VERSION 1, by the engines whose join path asks a package's GUID
-// (the v436 version-aware package lookup). A SEPARATE file: webrtc-shim.js stays byte-identical in every engine
-// repo and the v1 ABI is untouched (ABI_VERSION stays 1).
+// (the v436 version-aware package lookup). A SEPARATE file: net-shim.js stays byte-identical in every engine
+// repo and the main ABI does not move when this module does.
 //
 // ONE import, FORWARDED to the runtime-injected `Module.UE.pkgguid` (installed on the engine thread by
 // @ufront/glue, src/fetchfs/package-guid.js). No logic. NOT proxied: it runs on the calling (engine) thread,
