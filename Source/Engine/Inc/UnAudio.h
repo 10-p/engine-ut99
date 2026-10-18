@@ -39,7 +39,7 @@ class ENGINE_API UAudioSubsystem : public USubsystem
 	virtual UViewport* GetViewport()=0;
 	virtual void RenderAudioGeometry( FSceneNode* Frame )=0;
 	virtual void PostRender( FSceneNode* Frame )=0;
-	virtual void CleanUp(); // v436-compat port: called by LoadMap after the level purge.
+	virtual void CleanUp(); // v436: called by LoadMap after the level purge.
 };
 
 /*-----------------------------------------------------------------------------

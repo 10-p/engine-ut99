@@ -39,7 +39,7 @@ enum ECacheIDBase
 	CID_DynamicMap          = 0x31,
 	CID_GlidePal            = 0x32,
 	CID_BumpNormals         = 0x33,
-	CID_SkeletalData        = 0x34,	// v436-compat port: per-actor skeletal pose (USkeletalMesh::GetFrame).
+	CID_SkeletalData        = 0x34,	// Per-actor skeletal pose (USkeletalMesh::GetFrame).
 	CID_RenderTexture		= 0xE0,
 	CID_MAX					= 0xff,
 };

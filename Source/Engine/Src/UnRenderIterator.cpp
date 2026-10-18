@@ -26,7 +26,7 @@ void URenderIterator::Init( FSceneNode* Camera ) //override to initialize subcla
 {
 	guard(URenderIterator::Init);
 
-	// v436-compat port: keep the frame; the observer is its viewport's actor.
+	// Keep the frame; the observer is its viewport's actor.
 	Frame = Camera;
 	if( Frame )
 		Observer = Frame->Viewport->Actor;

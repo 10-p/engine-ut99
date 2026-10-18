@@ -10,11 +10,11 @@
 	// UObject interface.
 	virtual INT* GetOptimizedRepList( BYTE* InDefault, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps );
 	virtual UBOOL ShouldDoScriptReplication() {return 1;}
-	// v436-compat port: ULevel::ServerTickClient skips an always-relevant actor whose channel has
-	// nothing new to send (CheckRecentChanges opts a class in, NoVariablesToReplicate decides).
+	// v436: ULevel::ServerTickClient skips an always-relevant actor whose channel has nothing new
+	// to send (CheckRecentChanges opts a class in, NoVariablesToReplicate decides).
 	virtual UBOOL NoVariablesToReplicate( AActor* OldVer ) {return 0;}
 	virtual UBOOL CheckRecentChanges() {return 0;}
-	// v436-compat port: how often ServerTickClient considers this actor for this viewer.
+	// v436: how often ServerTickClient considers this actor for this viewer.
 	virtual FLOAT UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos );
 	void ProcessEvent( UFunction* Function, void* Parms, void* Result=NULL );
 	void ProcessState( FLOAT DeltaSeconds );
@@ -45,8 +45,8 @@
 	virtual void PreNetReceive();
 	virtual void PostNetReceive();
 	virtual UTexture* GetSkin( INT Index );
-	virtual struct FMeshAnimSeq* GetAnim( FName SequenceName ); // v436-compat port: see UnScript.cpp.
-	AActor* GetHitActor() { return HitActor ? HitActor : this; } // v436-compat port: the actor a hit on this one selects.
+	virtual struct FMeshAnimSeq* GetAnim( FName SequenceName ); // v436: the actor's view of an animation sequence.
+	AActor* GetHitActor() { return HitActor ? HitActor : this; } // v436: the actor a hit on this one selects.
 	virtual FCoords ToLocal() const
 	{
 		return GMath.UnitCoords / Rotation / Location;
@@ -60,7 +60,7 @@
 		return Clamp( 1.0 - LifeSpan / GetClass()->GetDefaultActor()->LifeSpan, 0.0, 1.0 );
 	}
 	FVector GetCylinderExtent() const {return FVector(CollisionRadius,CollisionRadius,CollisionHeight);}
-	FBox GetVisibilityBox(); // v436-compat port
+	FBox GetVisibilityBox(); // v436: the collision cylinder as a box (v436's AActor interface; nothing here calls it).
 	AActor* GetTopOwner();
 	UBOOL IsPendingKill() {return bDeleteMe;}
 

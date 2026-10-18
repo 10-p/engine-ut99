@@ -1953,7 +1953,7 @@ void URender::OccludeBsp( FSceneNode* Frame )
 	AllPolyDrawLists    = new(GMem,MEM_Zeroed,Model->Surfs.Num())FBspDrawList*;
 	Origin				= Frame->Coords.Origin;
 	// initialize the PlayerPawn Render Control Interface (RCI)
-	// v436-compat port: v436 enables the RCI here (it was Legend's, compiled out under LEGEND).
+	// As v436 does, the RCI is always on here.
 	APlayerPawn* Player = Viewport->Actor->IsA( APlayerPawn::StaticClass() ) ? Viewport->Actor : NULL;
 	iViewZone			= Player ? Player->GetViewZone( Frame->ZoneNumber, Model ) : Frame->ZoneNumber;
 	ViewZoneMask		= iViewZone ? ~0 : 0;
@@ -2048,7 +2048,7 @@ void URender::OccludeBsp( FSceneNode* Frame )
 						for( i=0; i<NumActiveZones; i++ )
 						{
 							BYTE iZone = ActiveZones[i];
-							// v436-compat port: 436 rounds the screen bounds (fistp), not truncates.
+							// As v436 does, the screen bounds are rounded, not truncated.
 							if
 							(	(Node->ZoneMask & ((QWORD)1<<iZone))
 							&&	(ZoneSpanBuffer[iZone].BoxIsVisible(appRound(Results.MinX),appRound(Results.MinY),appRound(Results.MaxX),appRound(Results.MaxY))) )
@@ -2138,7 +2138,7 @@ void URender::OccludeBsp( FSceneNode* Frame )
 					goto NextCoplanar;
 
 				// check with PlayerPawn rendering-control interface (RCI) regarding visisble polys
-				// v436-compat port: enabled in v436 (Legend's, compiled out under LEGEND).
+				// As v436 does, always on.
 				if( Player && !Player->IsSurfVisible( Node, Node->iZone[IsFront], Poly ) )
 				{
 					goto NextCoplanar;
@@ -2748,7 +2748,7 @@ void URender::DrawFrame( FSceneNode* Frame )
 			INT TextureLOD=-1;
 
 			// Setup panning.
-			// v436-compat port: 436 rounds the auto-pan offset (fistp), not truncates.
+			// As v436 does, the auto-pan offset is rounded, not truncated.
 			FLOAT PanU = Surf->PanU;
 			if( Surf->PolyFlags & PF_AutoUPan )
 			{
@@ -2846,7 +2846,7 @@ void URender::DrawFrame( FSceneNode* Frame )
 				}
 				else if( Viewport->Actor->RendMap==REN_PolyCuts )
 				{
-					// v436-compat port: v436 colours each run of 32 Bsp nodes by hue.
+					// v436: each run of 32 Bsp nodes gets its own hue.
 					Color = FGetHSV( Draw->iNode/32, 0, 255 );
 				}
 				else
@@ -2939,8 +2939,8 @@ void URender::DrawFrame( FSceneNode* Frame )
 			(	(Pass==2 && bTranslucent)
 			||	(Viewport->RenDev->SpanBased ? Pass==2 : (Pass==1 && !bTranslucent) ) )
 			{
-				// v436-compat port: an actor filtered by volume stands in for its render iterator's
-				// items (see SetupDynamics): draw those instead of the actor itself.
+				// A bFilterByVolume actor stands in for its render iterator's items: draw its
+				// sub-sprites instead of the actor itself.
 				if( Sprite->Actor->bFilterByVolume )
 				{
 					for( FDynamicSprite* Sub=Sprite->FirstSub; Sub; Sub=Sub->RenderNext )

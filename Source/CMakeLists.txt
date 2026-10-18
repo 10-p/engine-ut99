@@ -481,9 +481,9 @@ if(EMSCRIPTEN)
   list(APPEND INSTALL_TARGETS WebRTCDrv)
 endif()
 
-# ufront step 2.79 — "Proxy networking" (EXPERIMENTAL, 436-ONLY): a client-only net driver that joins an
-# ordinary NATIVE server through a WSS<->UDP game proxy. A package of its own — it shares nothing with WebRTCDrv.
-# -DUT_WITH_PROXYNET=OFF removes the package, its JS shim and its link inputs; P2P is unaffected.
+# ProxyNetDrv, "Proxy networking" (experimental): a client-only net driver that joins an ordinary native server
+# through a WSS<->UDP game proxy. It shares nothing with WebRTCDrv: -DUT_WITH_PROXYNET=OFF removes the package,
+# its JS shim and its link inputs, and P2P is unaffected.
 if(EMSCRIPTEN)
   option(UT_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
   if(UT_WITH_PROXYNET)

@@ -16,11 +16,9 @@ Revision history:
 -----------------------------------------------------------------------------*/
 
 //
-// v436-compat port: 436 keeps time as fixed-point FTime and writes each demo frame's time
-// through operator<<(FArchive&,FTime&), which stores the time as a FLOAT repacked into 8 bytes:
-// sign at bit 63, the float's raw 8-bit exponent at bits 52..59 and its 23-bit mantissa at bits
-// 0..22 (not an IEEE double). We keep DOUBLE time and convert at the file boundary, so demos
-// recorded here play in 436 and 436's demos play here.
+// As v436 writes it, a demo frame's time is a FLOAT repacked into 8 bytes (not an IEEE double):
+// sign at bit 63, the raw 8-bit exponent at bits 52..59, the 23-bit mantissa at bits 0..22.
+// Time stays DOUBLE in memory and is converted here, so demos are interchangeable with v436.
 //
 static void SerializeDemoTime( FArchive& Ar, DOUBLE& Time )
 {
@@ -184,7 +182,7 @@ UBOOL UDemoRecDriver::InitBase( UBOOL Connect, FNetworkNotify* InNotify, FURL& C
 	DemoFilename   = ConnectURL.Map;
 	Time           = 0;
 	FrameNum       = 0;
-	DemoEnded      = 0; // v436-compat port
+	DemoEnded      = 0;
 
 	return 1;
 	unguard;
@@ -207,11 +205,11 @@ UBOOL UDemoRecDriver::InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, F
 		Error = FString::Printf( TEXT("Couldn't open demo file %s for reading"), *DemoFilename );//!!localize!!
 		return 0;
 	}
-	LoopURL				= ConnectURL; // v436-compat port
+	LoopURL				= ConnectURL;
 	ClientThirdPerson	= ConnectURL.HasOption(TEXT("3rdperson"));
 	TimeBased			= ConnectURL.HasOption(TEXT("timebased"));
 	NoFrameCap          = ConnectURL.HasOption(TEXT("noframecap"));
-	Loop				= ConnectURL.HasOption(TEXT("loop")); // v436-compat port
+	Loop				= ConnectURL.HasOption(TEXT("loop"));
 
 	return 1;
 	unguard;
@@ -301,7 +299,7 @@ void UDemoRecDriver::TickDispatch( FLOAT DeltaTime )
 			{
 			AtEnd:
 				ServerConnection->State = USOCK_Closed;
-				// v436-compat port: note the end, and replay the demo if it was opened with ?loop.
+				// v436: note the end, and replay the demo if it was opened with ?loop.
 				DemoEnded = 1;
 				if( Loop )
 					GetLevel()->Exec( *(FString(TEXT("DEMOPLAY ")) + *LoopURL.String()), *GLog );
@@ -360,7 +358,7 @@ FString UDemoRecDriver::LowLevelGetNetworkNumber()
 INT UDemoRecDriver::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	guard(UDemoRecDriver::Exec);
-	// v436-compat port: a demo that has played to its end handles no commands.
+	// v436: a demo that has played to its end handles no commands.
 	if( DemoEnded )
 		return 0;
 	if( ParseCommand(&Cmd,TEXT("DEMOREC")) || ParseCommand(&Cmd,TEXT("DEMOPLAY")) )

@@ -7,15 +7,11 @@
 =============================================================================*/
 
 //
-// v436-compat port: v400's IpDrv has no download manager at all -- UHTTPDownload is new in 436, and it
-// is the manager a server advertises with `DLMGR CLASS=IpDrv.HTTPDownload PARAMS=<RedirectToURL>`.
-// The class is C++-only: 436's IpDrv.u carries no `HTTPDownload` name, so there is no script layout to
-// match. Shape and bodies come from the retail v436 IpDrv.dll (class registrant 10703c50: sizeof 0x4f4,
-// CLASS_Transient|CLASS_Config, Super=UDownload).
-//
-// It drives its own non-blocking TCP socket, so it lives on the IpDrv side and uses this package's
-// existing socket machinery (FResolveInfo, getlocalbindaddr, bindnextport) exactly as ATcpLink and
-// UTcpNetDriver do.
+// v436: the download manager a server names with `DLMGR CLASS=IpDrv.HTTPDownload PARAMS=<RedirectToURL>`.
+// It is C++-only (v436's IpDrv.u has no script class for it), so there is no script layout to match.
+// Natively it drives its own non-blocking TCP socket with this package's socket helpers (FResolveInfo,
+// getlocalbindaddr, bindnextport). A web build fetches through the GWebHttp hook table (WebHttp.h)
+// instead; with no hook to take the download it fails at once, and the next download manager takes over.
 //
 
 enum EHTTPState
@@ -34,21 +30,21 @@ class UHTTPDownload : public UDownload
 	DECLARE_CLASS(UHTTPDownload,UDownload,CLASS_Transient|CLASS_Config)
 
 	// Config.
-	FStringNoInit	ProxyServerHost;	// 436 @0x454; left uninitialized by the constructor.
-	INT				ProxyServerPort;	// 436 @0x460.
-	// `RedirectToURL` and `UseCompression` are registered here too, but they alias UDownload's
-	// DownloadParams (@0x34) and UseCompression (@0x40) -- see StaticConstructor.
+	FStringNoInit	ProxyServerHost;
+	INT				ProxyServerPort;
+	// Also config: `RedirectToURL` and `UseCompression`, registered on UDownload's DownloadParams and
+	// UseCompression.
 
 	// Variables.
-	BYTE			HTTPState;			// 436 @0x464.
-	SOCKADDR_IN		LocalAddr;			// 436 @0x468.
-	SOCKADDR_IN		ServerAddr;			// 436 @0x478.
-	SOCKET			ServerSocket;		// 436 @0x488.
-	FResolveInfo*	ResolveInfo;		// 436 @0x48c.
-	FURL			DownloadURL;		// 436 @0x490.
-	TArray<BYTE>	ReceivedData;		// 436 @0x4d4.
-	TArray<FString>	Headers;			// 436 @0x4e0.
-	DOUBLE			ConnectStartTime;	// 436 @0x4ec, an FTime there; DOUBLE is our appSeconds.
+	BYTE			HTTPState;
+	SOCKADDR_IN		LocalAddr;
+	SOCKADDR_IN		ServerAddr;
+	SOCKET			ServerSocket;
+	FResolveInfo*	ResolveInfo;
+	FURL			DownloadURL;
+	TArray<BYTE>	ReceivedData;
+	TArray<FString>	Headers;
+	DOUBLE			ConnectStartTime;	// appSeconds() at connect; on the web, at the fetch's start or its last data.
 
 	// Constructors.
 	UHTTPDownload();
@@ -67,8 +63,8 @@ class UHTTPDownload : public UDownload
 	UBOOL FetchData();
 
 #ifdef __EMSCRIPTEN__
-	// A browser has no sockets: the fetch goes through the registered web-HTTP hook (Inc/WebHttp.h).
-	// Appended after the 436 layout above; the class is C++-only, so nothing mirrors its size.
+	// The web fetch through GWebHttp. These follow the v436 members; the class is C++-only, so
+	// nothing depends on its size.
 	INT WebHandle;			// from GWebHttp->Open(); -1 = none
 	void WebReceiveFile();
 	void WebTick();

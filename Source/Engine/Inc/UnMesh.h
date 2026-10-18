@@ -349,17 +349,11 @@ class ENGINE_API ULodMesh : public UMesh
 };
 
 /*-----------------------------------------------------------------------------
-	Skeletal mesh / animation structs (v436-compat port).
+	Skeletal mesh / animation structs.
 
-	v400 predates UE1 skeletal meshes, so the engine has no FQuat and none of the
-	skeletal structs. v436-era mods (Infiltration, NeoCairo, TacticalOps, Onslaught,
-	OldSkool/ONP, ...) ship real USkeletalMesh/UAnimation exports, which we deserialize
-	byte for byte and animate as the retail v436 engine does.
-
-	Byte format ported from the v432 public headers (Ut99PubSrc/Engine/Inc/UnSkeletalMesh.h)
-	and cross-checked against SurrealEngine's USkeletalMesh::Load / UAnimation::Load. v436's
-	FQuat lives in Core; here it is FSkelQuat, carrying exactly the quaternion math that
-	USkeletalMesh::GetFrame uses, ported from the retail v436 Core.dll/Engine.dll.
+	The data of the USkeletalMesh/UAnimation exports v436-era mods ship, in the v432 public header
+	layout and read byte for byte. v436's FQuat lives in Core; here it is FSkelQuat, with the
+	quaternion math USkeletalMesh::GetFrame uses, as the retail v436 DLL has it.
 -----------------------------------------------------------------------------*/
 
 // A quaternion: 4 floats, as on disk.
@@ -402,8 +396,7 @@ struct FSkelQuat
 	}
 };
 
-// v436 SlerpQuat (v432 UnMath.h): spherical interpolation, output not normalized. The v432 source
-// tests cos < 0.99999999f, which is 1.0f in float; the v436 DLL compares against 1.0.
+// v436 SlerpQuat: spherical interpolation, output not normalized; Q1 itself once cos reaches 1.
 inline FSkelQuat SkelSlerpQuat( const FSkelQuat& Q1, const FSkelQuat& Q2, FLOAT Alpha )
 {
 	FLOAT CosOm = Q1.X*Q2.X + Q1.Y*Q2.Y + Q1.Z*Q2.Z + Q1.W*Q2.W;
@@ -458,8 +451,8 @@ struct FMeshExtWedge
 	}
 };
 
-// Reference-skeleton joint position. NOTE: the original Epic serializer writes XSize
-// twice and never YSize; replicate that exactly so byte offsets line up (44 bytes).
+// Reference-skeleton joint position (44 bytes). Epic's serializer writes XSize twice and
+// never YSize; this one does the same, so the byte offsets line up.
 struct FSkelJointPos
 {
 	FSkelQuat	Orientation;
@@ -472,8 +465,8 @@ struct FSkelJointPos
 	}
 };
 
-// Reference-skeleton bone (package form). Serializes NumChildren before ParentIndex and
-// omits Depth, matching the original Epic operator<<.
+// Reference-skeleton bone (package form): NumChildren is serialized before ParentIndex, as
+// Epic's operator<< does.
 struct FSkelMeshBone
 {
 	FName			Name;
@@ -557,17 +550,14 @@ struct FSkelMotionChunk
 -----------------------------------------------------------------------------*/
 
 //
-// v436-compat port: native Animation class.
-//
-// v436 engine.u references the native class 'Engine.Animation' (added to UT after v400 for
-// skeletal-mesh animation). Serialize consumes the reference-skeleton + motion data byte for byte;
-// USkeletalMesh::GetFrame plays it back and AActor::GetAnim resolves its sequences.
+// Native Animation class, which v436 engine.u references. Serialize reads the reference bones and
+// motion data byte for byte; USkeletalMesh::GetFrame plays it and AActor::GetAnim resolves its sequences.
 //
 class ENGINE_API UAnimation : public UObject
 {
 	DECLARE_CLASS(UAnimation,UObject,0)
 
-	// Serialized skeletal animation data (not played back).
+	// Serialized skeletal animation data, played by USkeletalMesh::GetFrame.
 	TArray<FSkelNamedBone>		RefBones;	// Reference bone names.
 	TArray<FSkelMotionChunk>	Moves;		// One motion chunk per animation.
 	TArray<FMeshAnimSeq>		AnimSeqs;	// Classic per-animation name/frame info.
@@ -576,9 +566,8 @@ class ENGINE_API UAnimation : public UObject
 	UAnimation(){}
 	void Serialize( FArchive& Ar );
 
-	// v436-compat port: UAnimation's virtuals, as the retail v436 Engine.dll exports them (the
-	// bodies match Epic's v432 UnSkeletalMesh.h inlines). A skeletal mesh's sequences live HERE,
-	// not in the mesh: AActor::GetAnim and USkeletalMesh::GetFrame look them up through these.
+	// UAnimation's virtuals, as the retail v436 DLL exports them. A skeletal mesh's sequences live
+	// here, not in the mesh: AActor::GetAnim and USkeletalMesh::GetFrame look them up through these.
 	virtual const FMeshAnimSeq* GetAnimSeq( FName SeqName ) const
 	{
 		guardSlow(UAnimation::GetAnimSeq);
@@ -640,12 +629,9 @@ class ENGINE_API UAnimation : public UObject
 };
 
 //
-// v436-compat port: native SkeletalMesh class (a ULodMesh subclass), as in the retail v436 DLL.
-//
-// OldSkool/ONP, Infiltration, NeoCairo, TacticalOps and other v436-era mods ship real
-// USkeletalMesh exports that stock v400 lacks. Serialize decodes the skeletal blob byte for byte;
-// GetFrame skins it into the pose of the owner's current animation, and the inherited ULodMesh
-// Faces/Wedges draw it (URender::DrawLodMesh).
+// Native SkeletalMesh class (a ULodMesh subclass), as in the retail v436 DLL; OldSkool/ONP,
+// Infiltration and other v436-era mods ship its exports. Serialize reads the skeletal blob byte for
+// byte; GetFrame skins it into the owner's animation pose, and DrawLodMesh draws its ULodMesh faces.
 //
 class ENGINE_API USkeletalMesh : public ULodMesh
 {
@@ -681,7 +667,7 @@ class ENGINE_API USkeletalMesh : public ULodMesh
 	// UPrimitive interface.
 	FBox GetRenderBoundingBox( const AActor* Owner, UBOOL Exact );
 
-	// UMesh interface (v436-compat port: USkeletalMesh's overrides in the retail v436 DLL).
+	// UMesh interface (USkeletalMesh's overrides in the retail v436 DLL).
 	void SetScale( FVector NewScale );
 	virtual void FlipFaces();
 

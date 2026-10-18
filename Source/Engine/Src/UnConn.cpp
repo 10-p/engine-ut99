@@ -65,7 +65,7 @@ void UNetConnection::Serialize( FArchive& Ar )
 	Ar << PackageMap;
 	for( INT i=0; i<MAX_CHANNELS; i++ )
 		Ar << Channels[i];
-	// v436-compat port: the download is a UObject owned by the connection.
+	// The download is a UObject owned by the connection.
 	Ar << Download;
 
 	unguard;
@@ -106,7 +106,7 @@ void UNetConnection::Destroy()
 	// Kill package map.
 	delete PackageMap;
 
-	// v436-compat port: kill the download.
+	// Kill the download.
 	delete Download;
 
 	Super::Destroy();
@@ -117,7 +117,7 @@ UBOOL UNetConnection::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	guard(UNetConnection::Exec);
 	if( ParseCommand(&Cmd,TEXT("GETPING")) )
 	{
-		// v436-compat port: 436 rounds the ping and the loss it reports (fistp), not truncates.
+		// As v436 does, the ping and the loss are rounded, not truncated.
 		Ar.Logf( TEXT(" %i"), appRound(BestLag*1000.f) );
 		return 1;
 	}
@@ -151,10 +151,8 @@ void UNetConnection::SendPackageMap()
 	// Send package map to the remote.
 	for( TArray<FPackageInfo>::TIterator It(PackageMap->List); It; ++It )
 	{
-		// v436-compat port: 436 also sends the package's bare file name, which the client stores in its
-		// own FPackageInfo::URL and uses for the cache.ini entry once the file has been downloaded.
-		// The DLL strips separators in four passes -- "\\", ":", "/", "\\" -- the last of which cannot
-		// match anything Mid() has left behind; it is kept so this reads exactly as the DLL does.
+		// As v436 does, also send the package's bare file name (FNAME), which the client keeps in its
+		// FPackageInfo::URL for the cache.ini entry. The fourth pass never matches; v436 has it too.
 		FString Fname = It->URL;
 		INT Pos;
 		while( (Pos=Fname.InStr(TEXT("\\")))!=-1 )
@@ -177,8 +175,8 @@ void UNetConnection::SendPackageMap()
 		);
 	}
 
-	// v436-compat port: offer our download managers, in order. A class that will not load is simply
-	// skipped, and a manager whose DownloadParams default is empty is not offered at all.
+	// Offer our download managers, in order. A class that will not load, or whose DownloadParams
+	// default is empty, is not offered.
 	for( INT i=0; i<Driver->DownloadManagers.Num(); i++ )
 	{
 		UClass* DownloadClass = StaticLoadClass( UDownload::StaticClass(), NULL, *Driver->DownloadManagers(i), NULL, LOAD_NoWarn, NULL );
@@ -214,7 +212,7 @@ void UNetConnection::ReceivedRawPacket( void* InData, INT Count )
 	BYTE* Data = (BYTE*)InData;
 
 	// Handle an incoming raw packet from the driver.
-	// v436-compat port: 436 rounds the millisecond stamp (fistp), not truncates.
+	// As v436 does, the millisecond stamp is rounded, not truncated.
 	debugfSlow( NAME_DevNetTraffic, TEXT("%03i: Received %i"), appRound(appSeconds()*1000.f)%1000, Count );
 	InByteAcc += Count + PacketOverhead;
 	InPktAcc++;
@@ -834,8 +832,7 @@ void UNetConnection::Tick()
 
 		if( Actor )
 		{
-			// v436-compat port: 436 raises the alert on lag above 1 s; v400 used lag + 1.2*loss
-			// above 0.8 s.
+			// As v436 does, the lag test is BestLag above 1 s.
 			FLOAT PktLoss = ::Max(InLoss, OutLoss) * 0.01;
 			Actor->bBadConnectionAlert = !InternalAck && ((BestLag>1.0 || CurrentNetSpeed * (1 - PktLoss)<2000) && ActorChannels.FindRef(Actor)) || InPackets < 2;
 		}
@@ -863,7 +860,7 @@ void UNetConnection::Tick()
 	LastTickTime        = Driver->Time;
 
 	// Update queued byte count.
-	// v436-compat port: 436 rounds both byte counts (fistp; the clamp is -round(AllowedLag)).
+	// As v436 does, both byte counts are rounded (the clamp is -round(AllowedLag)).
 	FLOAT DeltaBytes = CurrentNetSpeed * DeltaTime;
 	QueuedBytes     -= appRound(DeltaBytes);
 	FLOAT AllowedLag = 2.0 * DeltaBytes;
@@ -895,7 +892,7 @@ void UNetConnection::Tick()
 	if( TimeSensitive || Driver->Time-LastSendTime>Driver->KeepAliveTime )
 		FlushNet();
 
-	// v436-compat port: tick the download (436 UNetConnection::Tick, guard "TickDownload").
+	// Tick the download.
 	guard(TickDownload);
 	if( Download )
 		Download->Tick();
@@ -950,9 +947,8 @@ void UNetConnection::ReceiveFile( INT PackageIndex )
 	guard(UNetConnection::ReceiveFile);
 	check(PackageMap->List.IsValidIndex(PackageIndex));
 
-	// v436-compat port: 436 no longer opens the file channel here. It picks the first download manager
-	// the other side offered (its DLMGR lines, parsed by UNetPendingLevel::NotifyReceivedText) and lets
-	// that manager do the transfer; with no offer it defaults to the channel download.
+	// The first download manager the other side offered (its DLMGR lines, parsed by
+	// UNetPendingLevel::NotifyReceivedText) does the transfer; with no offer, the channel download.
 	if( DownloadInfo.Num() == 0 )
 	{
 		DownloadInfo.AddZeroed();

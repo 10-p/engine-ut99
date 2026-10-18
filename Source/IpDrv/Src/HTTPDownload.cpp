@@ -15,8 +15,7 @@
 -----------------------------------------------------------------------------*/
 
 //
-// Put a socket in non-blocking mode. Same body as ATcpLink's, which is where this package keeps it;
-// WinSock has no fcntl, so the switch is the socket API, not the compiler.
+// Put a socket in non-blocking mode: fcntl on BSD sockets, ioctlsocket on WinSock.
 //
 static UBOOL HTTPSetNonBlocking( SOCKET Socket )
 {
@@ -46,9 +45,8 @@ UHTTPDownload::UHTTPDownload()
 void UHTTPDownload::StaticConstructor()
 {
 	guard(UHTTPDownload::StaticConstructor);
-	// The last two alias UDownload's members: 436 registers `RedirectToURL` on DownloadParams and
-	// `UseCompression` on UseCompression, so the wire's `DLMGR PARAMS=`/`COMPRESSION=` and the ini's
-	// `[IpDrv.HTTPDownload]` block are the same two values.
+	// As v436 does, the last two register UDownload's DownloadParams and UseCompression, so the ini's
+	// `[IpDrv.HTTPDownload]` values are what the server sends as `DLMGR PARAMS=` and `COMPRESSION=`.
 	new(GetClass(),TEXT("ProxyServerHost"),RF_Public)UStrProperty ( CPP_PROPERTY(ProxyServerHost), TEXT("Settings"), CPF_Config );
 	new(GetClass(),TEXT("ProxyServerPort"),RF_Public)UIntProperty ( CPP_PROPERTY(ProxyServerPort), TEXT("Settings"), CPF_Config );
 	new(GetClass(),TEXT("RedirectToURL"),  RF_Public)UStrProperty ( CPP_PROPERTY(DownloadParams),  TEXT("Settings"), CPF_Config );
@@ -92,8 +90,8 @@ void UHTTPDownload::ReceiveFile( UNetConnection* InConnection, INT InPackageInde
 	FURL Base( NULL, TEXT(""), TRAVEL_Absolute );
 	Base.Port = 80;
 
-	// 436 simply appends the server's FNAME= to RedirectToURL. The %guid%/%ext%/%file% substitutions
-	// and the URL escaping are later (UT200x) additions and are deliberately absent here.
+	// As v436 does, the server's FNAME= is appended to RedirectToURL as is: no %guid%/%ext%/%file%
+	// substitution and no URL escaping.
 	FString File   = *PkgInfo.URL;
 	FString StrURL = Params;
 	if( IsCompressed )
@@ -102,7 +100,7 @@ void UHTTPDownload::ReceiveFile( UNetConnection* InConnection, INT InPackageInde
 		DownloadURL = FURL( &Base, *(StrURL + File), TRAVEL_Relative );
 
 #ifdef __EMSCRIPTEN__
-	// No sockets and no resolver in a browser: the registered web-HTTP hook, or an immediate error.
+	// No sockets and no resolver in a browser: fetch through GWebHttp, or fail at once.
 	WebReceiveFile();
 	return;
 #endif
@@ -195,9 +193,7 @@ void UHTTPDownload::Tick()
 		HTTPSetNonBlocking( ServerSocket );
 		if( connect( ServerSocket, (SOCKADDR*)&ServerAddr, sizeof(ServerAddr) ) == SOCKET_ERROR )
 		{
-			// 436 tests WSAEWOULDBLOCK alone, which is what a non-blocking WinSock connect() reports.
-			// A BSD socket reports EINPROGRESS instead, so the shim adds it -- the same platform
-			// difference the rest of this package routes through UnSocket.h.
+			// A pending non-blocking connect() reports WSAEWOULDBLOCK on WinSock, EINPROGRESS on BSD sockets.
 			INT Error = WSAGetLastError();
 			#if __BSD_SOCKETS__
 			UBOOL Pending = ( Error==WSAEWOULDBLOCK || Error==EINPROGRESS );
@@ -275,8 +271,8 @@ void UHTTPDownload::Tick()
 						HTTPState = HTTP_Closed;
 						return;
 					}
-					// A compressed file is not the size the package map knows, so 436 only checks
-					// Content-Length against FileSize for the uncompressed case.
+					// As v436 does, check Content-Length against FileSize only when uncompressed: a
+					// compressed file is not the size the package map knows.
 					if( !IsCompressed )
 					{
 						for( i=0; i<Headers.Num(); i++ )
@@ -367,9 +363,9 @@ UBOOL UHTTPDownload::TrySkipFile()
 
 #ifdef __EMSCRIPTEN__
 /*-----------------------------------------------------------------------------
-	The browser build: no sockets, so the fetch goes through whoever registered
-	the web-HTTP hook table (Inc/WebHttp.h). Nobody registered = fail at once, and
-	the engine moves on to the next download manager the server named.
+	The web build: no sockets, so the fetch goes through the GWebHttp hook table.
+	With no hook the download fails at once, and the engine moves on to the next
+	download manager the server named.
 -----------------------------------------------------------------------------*/
 
 FWebHttpHooks* GWebHttp = NULL;
@@ -382,8 +378,8 @@ void UHTTPDownload::WebReceiveFile()
 {
 	guard(UHTTPDownload::WebReceiveFile);
 
-	// The URL the native path requests, put back together — unescaped, as 436 sends it. The scheme is
-	// kept, so an https redirect works here although it never could over the native plain socket.
+	// The URL the native path requests, unescaped as v436 sends it. The scheme is kept, so an https
+	// redirect works here, unlike over the native plain socket.
 	const UBOOL bSecure = DownloadURL.Protocol.Caps()==TEXT("HTTPS");
 	FString Url = FString::Printf( TEXT("%s://%s"), bSecure ? TEXT("https") : TEXT("http"), *DownloadURL.Host );
 	if( DownloadURL.Port!=80 && !(bSecure && DownloadURL.Port==443) )

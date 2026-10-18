@@ -362,8 +362,8 @@ class ENGINE_API UTexture : public UBitmap
 	virtual void MousePosition( DWORD Buttons, FLOAT X, FLOAT Y ) {}
 	virtual void Click( DWORD Buttons, FLOAT X, FLOAT Y ) {}
 	virtual void Update( DOUBLE Time );
-	// v436-compat port: priming moved out of Tick into this virtual so UFractalTexture can
-	// override it (Engine.dll 436 vtable slot after Update).
+	// v436: primes the texture, first thing in Tick. Declared right after Update, as in v436's
+	// vtable; UFractalTexture overrides it.
 	virtual void Prime();
 
 	// UTexture functions.
@@ -477,11 +477,8 @@ class ENGINE_API UFont : public UObject
 	// Variables.
 	INT CharactersPerPage;
 	TArray<FFontPage> Pages;
-	// v436-compat port: char-remapping table added to UFont after v400 (present in the v432
-	// reference). Serialized only for package version >= 69 (the patched-package version); the
-	// v68 retail fonts predate it. C++-only (not script properties), like Pages above.
-	// Keys and values are 16-bit: 436 is a Unicode build and stores them as UNICHAR, whereas
-	// TCHAR is 8-bit here, which would read a non-empty table at the wrong width.
+	// v436: the char-remapping table, serialized from package version 69 on. C++-only, like Pages.
+	// Keys and values are 16-bit, as v436 stores them as UNICHAR and TCHAR is 8-bit in this build.
 	TMap<_WORD,_WORD> CharRemap;
 	UBOOL IsRemapped;
 
@@ -492,9 +489,9 @@ class ENGINE_API UFont : public UObject
 	void Serialize( FArchive& Ar );
 
 	// UFont interface.
-	// v436-compat port: the glyph a character is drawn and measured with (436 Engine.dll
-	// UFont::RemapChar): the character itself, or for a remapped font its CharRemap entry, and a
-	// space when it has none. 16-bit result, as a remapped glyph index can exceed an 8-bit TCHAR.
+	// The glyph a character is drawn and measured with, as v436's UFont::RemapChar: the character
+	// itself, or for a remapped font its CharRemap entry (a space if none). 16-bit, as a remapped
+	// glyph can exceed an 8-bit TCHAR.
 	_WORD RemapChar( TCHAR Ch )
 	{
 		if( !IsRemapped )

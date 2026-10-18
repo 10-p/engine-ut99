@@ -1,11 +1,11 @@
 #!/usr/bin/env bash
-# The 469-natives ORACLE (ufront 2.79p): one test commandlet, compiled by OldUnreal 469's own ucc, run under stock
-# 469 and under THIS engine's native ucc — every "NT" line must be identical. It proves the string natives 469
-# backported (Locs 238, Repl 239, $= 322, @= 323, -= 324) compute what a 469 client computes.
+# Compiles the NativesTest commandlet with OldUnreal 469's ucc, runs it under stock 469 and under this engine's
+# native ucc, and diffs the "NT" lines: the five string natives 469 backported (Locs 238, Repl 239, $= 322,
+# @= 323, -= 324) must give the same results. Prints IDENTICAL, or the diff and exits 1.
 #
 #   tools/oracle-469-natives/run.sh <469-install> <436-run-tree>
-#     <469-install>   a stock OldUnreal 469 install (System64/ucc-bin). A SCRATCH COPY is made of its System dirs;
-#                     the install itself is never written.
+#     <469-install>   a stock OldUnreal 469 install (System64/ucc-bin). Its System dirs are copied to a scratch
+#                     folder; the install itself is never written.
 #     <436-run-tree>  a run-tree of this engine: System/ holds this build's ucc-bin (build-native/UCC/ucc-bin) and
 #                     the stock packages. NativesTest.u is copied into it.
 set -euo pipefail

@@ -143,9 +143,8 @@ INT* AActor::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 			{
 				DOREP(Actor,Rotation);
 			}
-			// v436-compat port: 436 sends the mesh display properties (AmbientGlow, ScaleGlow, bUnlit,
-			// Fatness, PrePivot) only for DT_Mesh and PrePivot again for DT_Brush; v400 sent them for
-			// every DrawType.
+			// As v436 does, the mesh display properties (AmbientGlow, ScaleGlow, bUnlit, Fatness,
+			// PrePivot) go only with DT_Mesh, and PrePivot also with DT_Brush.
 			if( DrawType==DT_Mesh )
 			{
 				DOREP(Actor,AmbientGlow);
@@ -232,8 +231,8 @@ INT* APawn::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT*
 	if( !(StaticClass()->ClassFlags & CLASS_NativeReplication) )
 		return Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 
-	// v436-compat port: except on the initial update, to the owner, or every 5th update, 436 sends
-	// a pawn a hand-picked subset of the Actor properties (and skips the Actor list entirely).
+	// As v436 does: except on the initial update, to the owner, or every 5th update, a pawn sends a
+	// hand-picked subset of the Actor properties instead of the Actor list.
 	if( !bNetInitial && !bNetOwner && (NumReps%5)!=0 )
 	{
 		if( Role==ROLE_Authority )
@@ -384,8 +383,8 @@ INT* AMover::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT
 INT* AZoneInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AZoneInfo::GetOptimizedRepList);
-	// v436-compat port: 436 sends a zone the Actor list only on the initial update and lists the
-	// few Actor properties a zone changes (roles, ambient sound) itself.
+	// As v436 does, a zone sends the Actor list only on the initial update and lists the few Actor
+	// properties a zone changes (roles, ambient sound) itself.
 	if( bNetInitial )
 		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
@@ -457,8 +456,8 @@ INT* APlayerReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirem
 INT* AGameReplicationInfo::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AGameReplicationInfo::GetOptimizedRepList);
-	// v436-compat port: 436 sends the Actor list and the static game/server strings only on the
-	// initial update, and no longer replicates Region.
+	// As v436 does, the Actor list and the static game/server strings go only on the initial
+	// update, and Region is not replicated.
 	if ( bNetInitial )
 		Ptr = Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 	if( StaticClass()->ClassFlags & CLASS_NativeReplication )
@@ -502,8 +501,8 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 	if( !(StaticClass()->ClassFlags & CLASS_NativeReplication) )
 		return Super::GetOptimizedRepList(Recent,Retire,Ptr,Map,NumReps);
 
-	// v436-compat port: except on the initial update or every 5th update, 436 sends inventory a
-	// hand-picked subset of the Actor properties instead of the whole Actor list.
+	// As v436 does: except on the initial update or every 5th update, an inventory item sends a
+	// hand-picked subset of the Actor properties instead of the Actor list.
 	if( !bNetInitial && (NumReps%5)!=0 )
 	{
 		if( Role==ROLE_Authority )
@@ -596,12 +595,10 @@ INT* AInventory::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire,
 	return Ptr;
 	unguard;
 }
-// Native-replication guard, compile-time half: for every class that declares CLASS_NativeReplication
-// in DECLARE_CLASS, the flag must mean "this class declares its own GetOptimizedRepList" and vice
-// versa. UClass::Serialize compares the loaded (script) flags with the DECLARE_CLASS ones and warns
-// when a `nativereplication` class has no C++ list -- which is how Weapon/Pickup/Ammo/LevelInfo went
-// unnoticed on this branch. `&T::GetOptimizedRepList` has type `INT* (T::*)(...)` only when T itself
-// declares it; an inherited one has the base class's member-pointer type.
+// Native-replication guard, compile-time half: each class below declares CLASS_NativeReplication in
+// DECLARE_CLASS exactly when it declares its own GetOptimizedRepList (UClass::Serialize warns when a
+// `nativereplication` script class has no C++ list). `&T::GetOptimizedRepList` has type
+// `INT* (T::*)(...)` only when T itself declares it; an inherited one has the base class's type.
 template<class A,class B> struct TNetRepSameType		{ enum{ Value=0 }; };
 template<class A>         struct TNetRepSameType<A,A>	{ enum{ Value=1 }; };
 #define CHECK_NATIVE_REPLICATION(cls) \
@@ -631,21 +628,18 @@ CHECK_NATIVE_REPLICATION(AReplicationInfo)
 
 UBOOL AInventory::ShouldDoScriptReplication()
 {
-	// v436-compat port: 436 evaluates an inventory item's script replication conditions only for
-	// its owner or on the initial update (v400: `!bAlwaysRelevant || bNetInitial`).
+	// As v436 does, an inventory item's script replication conditions are evaluated only for its
+	// owner or on the initial update.
 	return bNetInitial || bNetOwner;
 }
 UBOOL AInventory::NoVariablesToReplicate( AActor* OldVer )
 {
-	// v436-compat port: an always-relevant (pickup) inventory item only ever changes bHidden.
+	// An always-relevant (pickup) inventory item only ever changes bHidden.
 	return bHidden == OldVer->bHidden;
 }
 
-// v436-compat port: AWeapon, APickup, AAmmo and ALevelInfo are `nativereplication` in the v436
-// Engine.u, which tells the engine to skip their script replication conditions and send only what
-// C++ lists. Without these overrides they inherited their parent's list, so AmmoType, AmmoAmount,
-// NumCopies, Pauser, TimeDilation, ... never reached a client. Property sets and conditions are
-// the retail v436 Engine.dll's.
+// AWeapon, APickup, AAmmo and ALevelInfo are `nativereplication` in v436's Engine.u: their
+// properties replicate only through these C++ lists (property sets and conditions as v436 has them).
 INT* AWeapon::GetOptimizedRepList( BYTE* Recent, FPropertyRetirement* Retire, INT* Ptr, UPackageMap* Map, INT NumReps )
 {
 	guard(AWeapon::GetOptimizedRepList);
@@ -755,9 +749,8 @@ UTexture* AActor::GetSkin( INT Index )
 FLOAT AActor::GetNetPriority( AActor* Sent, FLOAT Time, FLOAT Lag )
 {
 	guardSlow(AActor::GetNetPriority);
-	// v436-compat port: an always-relevant actor that updates rarely is not starved, and one that
-	// updates often does not crowd out the rest: its priority scales with NetUpdateFrequency/10,
-	// capped at 1.
+	// As v436 does, an always-relevant actor's priority scales with NetUpdateFrequency/10, capped
+	// at 1.
 	if( bAlwaysRelevant )
 		return NetPriority * Time * Min( NetUpdateFrequency * 0.1f, 1.f );
 	return NetPriority * Time;
@@ -766,8 +759,8 @@ FLOAT AActor::GetNetPriority( AActor* Sent, FLOAT Time, FLOAT Lag )
 
 //
 // Net update frequency for a viewer.
-// v436-compat port: a short-lived (bNetTemporary, non-optional) actor older than 0.2 s that is
-// far from the viewer or behind it drops to at most 8 Hz.
+// A short-lived (bNetTemporary, non-optional) actor older than 0.2 s that is far from the viewer
+// (over 1000 units) or behind it drops to at most 8 Hz.
 //
 FLOAT AActor::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
 {
@@ -783,15 +776,15 @@ FLOAT AActor::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPo
 }
 FLOAT ACarcass::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
 {
-	// v436-compat port: a carcass that has stopped moving and animating replicates at <= 4 Hz.
+	// A carcass that has stopped moving and animating replicates at <= 4 Hz.
 	if( Physics==PHYS_None && !IsAnimating() )
 		return Min( NetUpdateFrequency, 4.f );
 	return NetUpdateFrequency;
 }
 FLOAT AInventory::UpdateFrequency( AActor* Viewer, FVector& ViewDir, FVector& ViewPos )
 {
-	// v436-compat port: a carried (hidden) item replicates at <= 4 Hz unless it is its pawn's
-	// weapon, and at <= 10 Hz when that pawn is not the viewer.
+	// A carried (hidden) item that is not its pawn's weapon replicates at <= 4 Hz; the weapon at
+	// <= 10 Hz unless its pawn is the viewer.
 	if( bHidden && Owner && Owner->IsA(APawn::StaticClass()) )
 	{
 		if( ((APawn*)Owner)->Weapon!=this )
@@ -1020,8 +1013,8 @@ void AZoneInfo::PostEditChange()
 -----------------------------------------------------------------------------*/
 
 //
-// v436-compat port: the actor's collision cylinder as a box, grown by one unit on every side
-// (436 AActor::GetVisibilityBox; its only caller is the renderer).
+// The actor's collision cylinder as a box, grown by one unit on every side. Nothing in this tree
+// calls it: it is part of v436's AActor interface (v436's renderer uses it for visibility bounds).
 //
 FBox AActor::GetVisibilityBox()
 {
@@ -1036,7 +1029,7 @@ void AActor::Destroy()
 	{
 		RenderInterface->RemoveFromRoot();
 		RenderInterface->ConditionalDestroy();
-		delete RenderInterface;		// v436-compat port: v436 also frees it here.
+		delete RenderInterface;		// As v436 does.
 		RenderInterface = NULL;
 	}
 	UObject::Destroy();

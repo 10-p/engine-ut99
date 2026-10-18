@@ -55,8 +55,8 @@ class ENGINE_API UDemoRecDriver : public UNetDriver
 	UBOOL			ClientThirdPerson;
 	UBOOL			TimeBased;
 	UBOOL			NoFrameCap;
-	UBOOL			DemoEnded;	// v436-compat port: DemoEnded, Loop, LoopURL as in 436 (playback
-	UBOOL			Loop;		// restarts when the demo was opened with ?loop).
+	UBOOL			DemoEnded;	// v436: DemoEnded, Loop, LoopURL (playback restarts when
+	UBOOL			Loop;		// the demo was opened with ?loop).
 	INT				FrameNum;
 	FURL			LoopURL;
 

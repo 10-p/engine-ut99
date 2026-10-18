@@ -1,5 +1,5 @@
 /*=============================================================================
-	WebLinks.h: the TcpLink / UdpLink conversations a BROWSER build plays itself.
+	WebLinks.h: the TcpLink / UdpLink conversations a web build plays itself.
 
 	A web build has no sockets (under -sWASMFS every socket syscall is -ENOSYS), so the stock server
 	browser (UnrealScript, unchanged) cannot reach a GameSpy master or ping a server. In Proxy
@@ -9,9 +9,10 @@
 	    (the challenge, then "\ip\a.b.c.d:queryport\...\final\"), and
 	  * a UdpLink query to a server from that list gets the server's "\info\" answer.
 
-	Same shape as WebHttp.h: IpDrv imports NOTHING from JavaScript for this; the package that owns the
-	transport (ProxyNetDrv) registers the table. NO HOOK, or Active() false (P2P mode) = EXACTLY
-	TODAY'S BEHAVIOUR, and every connection or query the table turns down behaves as today too.
+	IpDrv imports nothing from JavaScript for this; the package that owns the transport (ProxyNetDrv)
+	registers the table. With no hook, or Active() false (P2P mode), the links keep their usual web
+	paths. A connection the table turns down fails to open; a query it turns down goes to the
+	synthetic LAN.
 =============================================================================*/
 
 #ifndef _INC_WEBLINKS
@@ -19,10 +20,10 @@
 
 struct FWebLinkHooks
 {
-	// Is Proxy networking this launch's mode? Native, instant, no JavaScript.
+	// Is Proxy networking this launch's mode? Answered without calling JavaScript.
 	UBOOL (*Active)();
 
-	// A TCP connection played here: a handle >= 0, or -1 = not one of ours (the link fails as before).
+	// A TCP connection played here: a handle >= 0, or -1 = not one of ours (the link's Open fails).
 	INT   (*TcpOpen )( DWORD Addr, INT Port );
 	// What the script sent.
 	void  (*TcpSend )( INT Handle, const ANSICHAR* Text );

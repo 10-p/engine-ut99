@@ -1,22 +1,21 @@
 /*=============================================================================
-	UnAnim.cpp: Unreal animation object (v436-compat port).
+	UnAnim.cpp: Unreal animation object.
 	Copyright 1997-1999 Epic Games, Inc. All Rights Reserved.
 
-	v436-compat port: the native Animation and SkeletalMesh classes that v436 engine.u
-	references but the stock v400 engine lacks (see UnMesh.h). Serialization is byte-accurate;
-	USkeletalMesh::GetFrame skins and animates as the retail v436 Engine.dll does.
+	The native Animation and SkeletalMesh classes v436 engine.u references: loaded byte for byte,
+	skinned and animated as the retail v436 DLL does.
 =============================================================================*/
 
 #include "EnginePrivate.h"
 
 IMPLEMENT_CLASS(UAnimation);
 
-// v436-compat port: SkeletalMesh native class (OldSkool/ONP, Infiltration and other v436 mods).
+// SkeletalMesh native class (OldSkool/ONP, Infiltration and other v436 mods).
 IMPLEMENT_CLASS(USkeletalMesh);
 
 //
-// v436-compat port: USkeletalMesh's constructor. As in v436, the weapon adjustment starts as the
-// identity; everything else starts zeroed. A loaded mesh then reads WeaponAdjust from its package.
+// As in v436, the weapon adjustment starts as the identity and everything else zeroed;
+// a loaded mesh then reads WeaponAdjust from its package.
 //
 USkeletalMesh::USkeletalMesh()
 {
@@ -26,8 +25,8 @@ USkeletalMesh::USkeletalMesh()
 }
 
 //
-// v436-compat port: as ULodMesh::SetScale, but a skeletal mesh gauges LOD on 1/25.6 of its
-// bounding-sphere radius instead of 1/128 (retail v436 constant 0.0390625). Called by the editor.
+// As ULodMesh::SetScale, but, as in v436, a skeletal mesh gauges LOD on 1/25.6 of its
+// bounding-sphere radius instead of 1/128. Called by the editor.
 //
 void USkeletalMesh::SetScale( FVector NewScale )
 {
@@ -38,8 +37,8 @@ void USkeletalMesh::SetScale( FVector NewScale )
 }
 
 //
-// v436-compat port: reverse the winding of every face (swap each face's first two wedges), as the
-// retail v436 USkeletalMesh::FlipFaces does. Editor-only; nothing in the engine calls it at run time.
+// Reverse the winding of every face (swap each face's first two wedges), as the retail v436 DLL
+// does. Editor-only; nothing in the engine calls it at run time.
 //
 void USkeletalMesh::FlipFaces()
 {
@@ -54,7 +53,7 @@ void UAnimation::Serialize( FArchive& Ar )
 {
 	guard(UAnimation::Serialize);
 	Super::Serialize( Ar );
-	// Skeletal animation data (v436 format). Consumed for byte-accurate loading; not played back.
+	// Skeletal animation data (v436 format), read byte for byte; USkeletalMesh::GetFrame plays it.
 	Ar << RefBones;
 	Ar << Moves;
 	Ar << AnimSeqs;
@@ -65,7 +64,7 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 {
 	guard(USkeletalMesh::Serialize);
 	Super::Serialize( Ar );			// ULodMesh: base mesh + LOD data.
-	// Skeletal-specific blob (v436 format). Order per Ut99PubSrc/SurrealEngine.
+	// Skeletal-specific blob (v436 format).
 	Ar << ExtWedges;
 	Ar << Points;
 	Ar << RefSkeleton;
@@ -80,10 +79,9 @@ void USkeletalMesh::Serialize( FArchive& Ar )
 }
 
 //
-// v436-compat port: render bounding box of a skeletal mesh (retail v436
-// USkeletalMesh::GetRenderBoundingBox). It is UMesh's non-animating case, always: the authored
-// BoundingBox, scaled about Origin, expanded by one unit and moved into the actor's frame. A
-// skeletal mesh has no per-frame BoundingBoxes, so UMesh's animating case must not be used.
+// Render bounding box, as the retail v436 DLL computes it: always UMesh's non-animating case (the
+// authored BoundingBox, scaled about Origin, expanded by one unit and moved into the actor's frame),
+// since a skeletal mesh has no per-frame BoundingBoxes.
 //
 FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 {
@@ -98,19 +96,18 @@ FBox USkeletalMesh::GetRenderBoundingBox( const AActor* Owner, UBOOL Exact )
 }
 
 /*-----------------------------------------------------------------------------
-	USkeletalMesh::GetFrame (v436-compat port of the retail v436 Engine.dll function).
+	USkeletalMesh::GetFrame.
 -----------------------------------------------------------------------------*/
 
 //
-// Per-actor skeletal state, kept in the global cache under MakeCacheID(CID_SkeletalData, Owner)
-// exactly as v436 keeps it: this header, then per bone the track link, the last local position
-// and the last local orientation. It is what a tween blends FROM and what links the mesh's bones
-// to the current animation's tracks.
+// Per-actor skeletal state in the global cache under MakeCacheID(CID_SkeletalData, Owner), laid out
+// as v436's: this header, then the per-bone track links, last local positions and last local
+// orientations. It links the mesh's bones to the animation's tracks; a tween blends from it.
 //
 struct FSkelDataHeader
 {
-	UMesh*		Mesh;			// Mesh the payload was built for.
-	UAnimation*	LinkedAnim;		// Animation Links was built for.
+	UMesh*		Mesh;			// Mesh the payload belongs to.
+	UAnimation*	LinkedAnim;		// Animation the Links point into.
 	FLOAT		TweenFrame;		// AnimFrame at the previous tween step.
 	FName		TweenSeq;		// Sequence being tweened into.
 	INT			Unused;			// v436 never reads or writes this slot.
@@ -121,16 +118,11 @@ struct FSkelDataHeader
 };
 
 //
-// Skin the mesh into its owner's animation pose.
-//
-// The owner's animation is its SkelAnim, which is set to the mesh's DefaultAnimation the first
-// time the actor draws without one. Each bone is sampled from its track at the owner's AnimFrame
-// (a key-time search, slerp and lerp), or holds its reference pose if the animation has no
-// track for it. While the owner tweens (AnimFrame < 0), the pose cached from the last frame
-// eases toward the first key of the new sequence instead. Bones are then composed down the
-// hierarchy. Each vertex is the weighted sum of its influences' bone-local points (LocalPoints)
-// carried by their bones. The weapon bone yields ClassicWeaponCoords, which DrawLodMesh uses for
-// the third-person weapon.
+// Skin the mesh into its owner's animation pose. Each bone of the owner's SkelAnim (the mesh's
+// DefaultAnimation if it has none) is sampled at AnimFrame, or, while tweening (AnimFrame < 0),
+// eased from the cached pose toward the new sequence's first key; a bone without a track keeps its
+// reference pose. Bones are composed down the hierarchy, vertices skinned from LocalPoints by bone
+// weight, and the weapon bone yields ClassicWeaponCoords for DrawLodMesh.
 //
 void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AActor* Owner, INT& LODRequest )
 {
@@ -340,7 +332,7 @@ void USkeletalMesh::GetFrame( FVector* ResultVerts, INT Size, FCoords Coords, AA
 	}
 	else
 	{
-		// No animation, or not tweening into a sequence it lacks: reference pose.
+		// No animation, or a sequence it lacks while not tweening: reference pose.
 		for( INT b=0; b<NumBones; b++ )
 			BoneCoords(b) = RefSkeleton(b).BonePos.Orientation.ToCoords( RefSkeleton(b).BonePos.Position );
 	}

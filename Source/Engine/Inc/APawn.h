@@ -91,8 +91,7 @@
 	DECLARE_FUNCTION(execPollStrafeFacing)
 	DECLARE_FUNCTION(execPollTurnToward)
 	DECLARE_FUNCTION(execPollTurnTo)
-	// v436-compat port: skin-package validation native added to v436 Pawn; stubbed (returns
-	// True) in UnPawn.cpp. Bound eagerly at class load. See EngineClasses.h.
+	// v436: validates a skin package for Pawn.SetSkinElement.
 	DECLARE_FUNCTION(execCheckValidSkinPackage)
 
 private:

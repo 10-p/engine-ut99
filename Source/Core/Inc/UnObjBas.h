@@ -492,7 +492,7 @@ public:
 	static void ResetLoaders( UObject* InOuter, UBOOL DynamicOnly, UBOOL ForceLazyLoad );
 	static UPackage* CreatePackage( UObject* InOuter, const TCHAR* PkgName );
 	static ULinkerLoad* GetPackageLinker( UObject* InOuter, const TCHAR* Filename, DWORD LoadFlags, UPackageMap* Sandbox, FGuid* CompatibleGuid );
-	static UBOOL GetLoadedPackageGuid( UObject* Package, FGuid& OutGuid );	// ufront 2.79o: is it loaded, and from which version?
+	static UBOOL GetLoadedPackageGuid( UObject* Package, FGuid& OutGuid );	// 1 when a linker is loaded for Package; OutGuid is its file's GUID
 	static void StaticShutdownAfterError();
 	static UObject* GetIndexedObject( INT Index );
 
@@ -812,7 +812,7 @@ public:
 	DECLARE_FUNCTION(execLeft)
 	DECLARE_FUNCTION(execRight)
 	DECLARE_FUNCTION(execCaps)
-	// ufront 2.79p: the string natives OldUnreal 469 backported from UT2004 (469-compiled mods call them).
+	// The five string natives OldUnreal 469 backported, at 469's numbers (469-compiled mods call them).
 	DECLARE_FUNCTION(execLocs)
 	DECLARE_FUNCTION(execRepl)
 	DECLARE_FUNCTION(execConcatEqual_StrStr)

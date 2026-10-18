@@ -11,7 +11,7 @@ Revision history:
 // The synthetic LAN (WebRTCDrv). Header only: the call is resolved at the final --whole-archive link, so
 // IpDrv does not link WebRTCDrv.
 #include "WebRTCLan.h"
-// 2.79o -- queries a browser build answers itself in Proxy networking mode (the table is in TcpLink.cpp).
+// Queries a web build answers itself in Proxy networking mode.
 #include "WebLinks.h"
 
 /*-----------------------------------------------------------------------------
@@ -217,7 +217,7 @@ UBOOL AUdpLink::Tick( FLOAT DeltaTime, enum ELevelTick TickType )
 		FString Text;
 		DWORD Addr = 0;
 		INT   Port = 0;
-		// 2.79o -- the answers to queries the game proxy's list took (UdpSend above), same stock path.
+		// Answers to the queries the game proxy's list took (GWebLinks->UdpSend), via the stock events.
 		ANSICHAR Reply[2048];
 		while( GWebLinks && GWebLinks->UdpNextReply( this, &Addr, &Port, Reply, sizeof(Reply) ) )
 		{

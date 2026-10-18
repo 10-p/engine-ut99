@@ -114,7 +114,7 @@ UBOOL ENGINE_API GetFROTATOR
 	FLOAT	Temp=0.0;
 	int 	N = 0;
 
-	// v436-compat port: components are rounded, not truncated (436 GetFROTATOR).
+	// v436: components are rounded, not truncated.
 	// Old format.
 	if( Parse(Stream,TEXT("PITCH="),Temp) ) {Rotation.Pitch = appRound(Temp * ScaleFactor); N++;}
 	if( Parse(Stream,TEXT("YAW="),  Temp) ) {Rotation.Yaw   = appRound(Temp * ScaleFactor); N++;}

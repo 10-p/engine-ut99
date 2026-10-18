@@ -383,7 +383,7 @@ UObject::~UObject()
 	if( StateFrame )
 	{
 		delete StateFrame;
-		StateFrame = NULL; // v436-compat port: 436 ~UObject clears the pointer.
+		StateFrame = NULL; // As v436 does.
 	}
 
 	unguard;
@@ -1687,8 +1687,8 @@ struct FSubItem
 };
 static QSORT_RETURN CDECL CompareSubItems( const FSubItem* A, const FSubItem* B )
 {
-	// v436-compat port: ties are broken by class name, then by the number after the class
-	// name in the object's name (436's OBJ LIST comparator).
+	// As v436 does, ties are broken by class name, then by the number after the class
+	// name in the object's name.
 	INT Result = B->Max - A->Max;
 	if( Result==0 )
 	{
@@ -1913,8 +1913,8 @@ UBOOL UObject::StaticExec( const TCHAR* Cmd, FOutputDevice& Ar )
 					Total.Add( Count );
 				}
 			}
-			// v436-compat port: 436's layout -- pending-kill objects are only listed with VERBOSE
-			// (marked "X") and are counted; class sizes are in KB.
+			// v436's layout: pending-kill objects are listed only with VERBOSE (marked "X") and are
+			// counted; class sizes are in KB.
 			INT NumDeleted = 0;
 			if( Objects.Num() )
 			{
@@ -2014,7 +2014,7 @@ void UObject::SafeLoadError( DWORD LoadFlags, const TCHAR* Error, const TCHAR* F
 	GET_VARARGS( TempStr, ARRAY_COUNT(TempStr), Fmt );
 
 	guard(UObject::SafeLoadError);
-	// v436-compat port: -STRICT makes every load failure critical (436 Core SafeLoadError).
+	// As v436 does, -STRICT makes every load failure critical.
 	if( GIsStrict )
 		LoadFlags = LOAD_NoFail;
 	if( !(LoadFlags & LOAD_Quiet)  ) debugf( NAME_Warning, TempStr );
@@ -2129,8 +2129,7 @@ ULinkerLoad* UObject::GetPackageLinker
 			}
 		}
 
-		// v436-compat port: 436 no longer refuses packages outside the sandbox package map
-		// (the Sandbox->SupportsPackage check is gone from 436 Core GetPackageLinker).
+		// As v436 does, a package outside the sandbox package map is not refused.
 
 		// Create new linker.
 		if( !Result )
@@ -2500,7 +2499,7 @@ public:
 	FArchive& operator<<( UObject*& Obj )
 	{
 		guard(FArchiveSaveTagExports<<Obj);
-		// v436-compat port: a pending-kill object is reported and not exported.
+		// v436: a pending-kill object is reported and not exported.
 		if( Obj && Obj->IsPendingKill() )
 			debugf( NAME_Warning, TEXT("trying to archive deleted object: %s"), Obj->GetName() );
 		if( Obj && !Obj->IsPendingKill() && Obj->IsIn(Parent) && !(Obj->GetFlags() & (RF_Transient|RF_TagExp)) )
@@ -2999,10 +2998,8 @@ ULinkerLoad* UObject::GetLoader( INT i )
 }
 
 //
-// Is this package LOADED (a linker is attached to it), and from a file with which GUID? (ufront 2.79o.)
-// A join uses it before any download: a package the game already holds in another version than the
-// server's cannot be swapped (a '.u' stays loaded for the session -- measured), so the join is refused
-// at once and in words instead of after a download the linker would then reject.
+// Is a linker loaded for this package, and what is its file's GUID? A join asks before any download: a
+// package loaded in another version than the server's cannot be swapped, one in the server's needs no file.
 //
 UBOOL UObject::GetLoadedPackageGuid( UObject* Package, FGuid& OutGuid )
 {

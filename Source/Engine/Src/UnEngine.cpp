@@ -177,7 +177,7 @@ void UEngine::Flush( UBOOL AllowPrecache )
 FLOAT UEngine::GetMaxTickRate()
 {
 	guard(UEngine::GetMaxTickRate);
-	// v436-compat port: the editor engine ticks at 30 Hz (436 UEngine::GetMaxTickRate).
+	// v436: the editor engine ticks at 30 Hz.
 	return GIsEditor ? 30 : 0;
 	unguard;
 }
