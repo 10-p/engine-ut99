@@ -3260,7 +3260,6 @@ UObject* UObject::StaticConstructObject
 	UObject* Result = StaticAllocateObject( InClass, InOuter, InName, InFlags, InTemplate, Error );
 	if( Result )
 	{
-#ifndef __EMSCRIPTEN__
 		// Safety net: DECLARE_CLASS default-initialises, but a constructor that wipes the UObject header
 		// (Class went NULL) of a native CLASS_Config class gets the whole header back and re-loads its config.
 		INT      SavedIndex = Result->Index;
@@ -3278,16 +3277,6 @@ UObject* UObject::StaticConstructObject
 			Result->ObjectFlags = SavedFlags;
 			Result->LoadConfig();
 		}
-#else
-		(*InClass->ClassConstructor)( Result );
-		// The same safety net, restoring only Class: a native CLASS_Config object whose constructor wiped it gets
-		// it back and re-loads its config. An object whose Class survived is untouched.
-		if( Result->Class==NULL && (InClass->GetFlags() & RF_Native) && (InClass->ClassFlags & CLASS_Config) )
-		{
-			Result->Class = InClass;
-			Result->LoadConfig();
-		}
-#endif
 	}
 	return Result;
 	unguard;
