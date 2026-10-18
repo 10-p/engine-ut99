@@ -482,11 +482,11 @@ if(EMSCRIPTEN)
 endif()
 
 # ProxyNetDrv, "Proxy networking" (experimental): a client-only net driver that joins an ordinary native server
-# through a WSS<->UDP game proxy. It shares nothing with WebRTCDrv: -DUT_WITH_PROXYNET=OFF removes the package,
+# through a WSS<->UDP game proxy. It shares nothing with WebRTCDrv: -DUE_WITH_PROXYNET=OFF removes the package,
 # its JS shim and its link inputs, and P2P is unaffected.
 if(EMSCRIPTEN)
-  option(UT_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
-  if(UT_WITH_PROXYNET)
+  option(UE_WITH_PROXYNET "Build ProxyNetDrv (join native servers through a game proxy; web only)" ON)
+  if(UE_WITH_PROXYNET)
     add_subdirectory(ProxyNetDrv)
     list(APPEND INSTALL_TARGETS ProxyNetDrv)
   endif()

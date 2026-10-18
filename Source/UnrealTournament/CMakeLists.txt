@@ -176,9 +176,8 @@ if(EMSCRIPTEN)
     "${CMAKE_SOURCE_DIR}/../vendor/glue/pkgguid-shim.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js")
   # ProxyNetDrv's own shim (the optional proxynet ABI module), a separate --js-library so that a build without
-  # UT_WITH_PROXYNET has no ue_proxynet_* imports at all.
-  if(UT_WITH_PROXYNET)
-    target_compile_definitions(${PROJECT_NAME} PRIVATE UT_WITH_PROXYNET=1)
+  # UE_WITH_PROXYNET has no ue_proxynet_* imports at all.
+  if(UE_WITH_PROXYNET)
     target_link_options(${PROJECT_NAME} PRIVATE
       "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/proxynet-shim.js")
     set_property(TARGET ${PROJECT_NAME} APPEND PROPERTY LINK_DEPENDS
