@@ -350,9 +350,10 @@ void UNOpenGLESRenderDevice::Lock( FPlane FlashScale, FPlane FlashFog, FPlane Sc
 	glClearDepthf( 1.f );
 	glDepthFunc( GL_LEQUAL );
 
+	// The client's Brightness (0..1; the shader scales by 0.5 + Brightness).
 	FLOAT TargetBrightness = CurrentBrightness;
-	if( Viewport && Viewport->Actor )
-		TargetBrightness = 0.5f; // TODO: Get brightness from somewhere
+	if( Viewport && Viewport->GetOuterUClient() )
+		TargetBrightness = Viewport->GetOuterUClient()->Brightness;
 	else if( CurrentBrightness < 0.f )
 		TargetBrightness = 0.5f;
 
@@ -381,12 +382,6 @@ void UNOpenGLESRenderDevice::Lock( FPlane FlashScale, FPlane FlashFog, FPlane Sc
 void UNOpenGLESRenderDevice::Unlock( UBOOL Blit )
 {
 	guard(UNOpenGLESRenderDevice::Unlock);
-
-	static INT UnlockCount = 0;
-	if( (++UnlockCount % 60) == 0 )
-	{
-		debugf( NAME_Log, TEXT("NOpenGLESDrv: Unlock %d (Blit=%d)"), UnlockCount, Blit );
-	}
 
 	FlushTriangles();
 
