@@ -31,6 +31,7 @@ class ENGINE_API UChannel : public UObject
 	INT				NegotiatedVer;	// Negotiated version of engine = Min(client version, server version).
 	FInBunch*		InRec;			// Incoming data with queued dependencies.
 	FOutBunch*		OutRec;			// Outgoing reliable unacked data.
+	UBOOL			Broken;			// Has met a bad bunch and ignores everything it receives afterwards.
 
 	// Statics.
 	static UClass* ChannelClasses[CHTYPE_MAX];

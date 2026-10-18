@@ -695,13 +695,22 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 	guard(UActorChannel::ReceivedBunch);
 	check(!Closing);
 
+	// A bad actor bunch is not fatal: it is logged, the channel is marked Broken and ignores everything it
+	// receives afterwards (as the retail v436 engine does).
+	if( Broken )
+		return;
+
 	// Initialize client if first time through.
 	FClassNetCache* ClassCache = NULL;
 	if( Actor==NULL )
 	{
 		guard(InitialClientActor);
 		if( !Bunch.bOpen )
-			appErrorf(TEXT("New actor channel received non-open packet: %i/%i/%i"),Bunch.bOpen,Bunch.bClose,Bunch.bReliable);
+		{
+			GWarn->Logf(TEXT("New actor channel received non-open packet: %i/%i/%i"),Bunch.bOpen,Bunch.bClose,Bunch.bReliable);
+			Broken = 1;
+			return;
+		}
 
 		// Read class.
 		UObject* Object;
@@ -711,12 +720,23 @@ void UActorChannel::ReceivedBunch( FInBunch& Bunch )
 		{
 			// Transient actor.
 			UClass* ActorClass = Cast<UClass>( Object );
+			if( !ActorClass || !ActorClass->IsChildOf(AActor::StaticClass()) )
+			{
+				GWarn->Logf(TEXT("Received invalid actor class"));
+				Broken = 1;
+				return;
+			}
 			check(ActorClass);
 			check(ActorClass->IsChildOf(AActor::StaticClass()));
 			FVector Location;
 			Bunch << Location;
 			InActor = Level->SpawnActor( ActorClass, NAME_None, NULL, NULL, Location, FRotator(0,0,0), NULL, 1, 1 );
-			check(InActor);
+			if( !InActor )
+			{
+				GWarn->Logf(TEXT("Actor not spawned for new channel"));
+				Broken = 1;
+				return;
+			}
 		}
 		debugfSlow( NAME_DevNetTraffic, TEXT("      Spawn %s:"), InActor->GetFullName() );
 		SetChannelActor( InActor );
