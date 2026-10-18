@@ -1774,7 +1774,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 		// Create Package.ini from default.ini.
 		FString S;
 		if( !appLoadFileToString( S, TEXT("Default.ini"), GFileManager ) )
-			appErrorf( LocalizeError("MissingIni Default.ini"), "Default.ini" );
+			appErrorf( LocalizeError("MisingIni"), "Default.ini" );
 		appSaveStringToFile( S, GIni );
 	}
 
@@ -1793,7 +1793,7 @@ CORE_API void appInit( const TCHAR* InPackage, const TCHAR* InCmdLine, FMalloc* 
 		// Create User.ini from DefUser.ini.
 		FString S;
 		if( !appLoadFileToString( S, TEXT("DefUser.ini"), GFileManager ) )
-			appErrorf( LocalizeError("MissingIni DefUser.ini"), "DefUser.ini" );
+			appErrorf( LocalizeError("MisingIni"), "DefUser.ini" );
 		appSaveStringToFile( S, GUserIni );
 	}
 
