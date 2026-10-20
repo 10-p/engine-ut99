@@ -1,21 +1,14 @@
 /*=============================================================================
 	glad_symbol_prefix.h: give this (GLES2) glad loader a private symbol namespace.
 
-	ufront step 2.34. NOpenGLESDrv vendors this GLES2 loader and XOpenGLDrv vendors its
-	own desktop-GL one; both generators emit the same external names for every entry
-	point the two APIs share (`glad_glClear`, `GLVersion`, ...). That is invisible while
-	each driver is its own .so — which is why the Linux build has always carried all five
-	renderers — and a hard `multiple definition` error the moment both land in one static
-	binary. Until now the answer was a FATAL_ERROR forbidding the combination
-	(Source/CMakeLists.txt), so a single-exe Linux build could not have both.
+	NOpenGLESDrv vendors this GLES2 loader and XOpenGLDrv its own desktop-GL one; both generators
+	emit the same external names for every entry point the two APIs share (`glad_glClear`,
+	`GLVersion`, ...), a `multiple definition` error once both drivers sit in one static binary.
+	The rename lives here because XOpenGLDrv is fetched from its own repository, and this loader
+	is not compiled on the web (NOpenGLESDrv takes Emscripten's GLES2 entry points there).
 
-	Renaming happens HERE rather than in XOpenGLDrv because this loader is NOT compiled on
-	the web at all (NOpenGLESDrv takes Emscripten's linked-in GLES2 entry points instead,
-	see its CMakeLists), so the wasm cannot be affected — and because XOpenGLDrv is fetched
-	from its own repo, where a rename would be a change to somebody else's namespace.
-
-	Link-time names only: glad already reaches every function through its own
-	`glClear -> glad_glClear` macro, so no call site changes.
+	Link-time names only: glad reaches every function through its own `glClear -> glad_glClear`
+	macro, so no call site changes.
 
 	Regenerate after re-running the glad generator:
 	    cc -c glad.c -I. -o /tmp/glad.o
