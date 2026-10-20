@@ -17,6 +17,7 @@ All presets are in `Source/CMakePresets.json`; run `cmake --preset …` from `So
 | `native` | `build-native/UnrealTournament/UnrealTournament` + `libopenal.so.1`, `build-native/UCC/ucc-bin` | 32-bit Linux, one static binary (needs a 32-bit SDL2) |
 | `native64` | `build-native64/…` | the same at x86_64 (LP64); needs the amd64 SDL2 development files (Debian `libsdl2-dev:amd64`, Arch `sdl2-compat`) |
 | `native64-asan` | `build-native64-asan/…` | `native64` with AddressSanitizer; run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0:verify_asan_link_order=0` (the second because `stdbuf` preloads a library) |
+| `android-arm64` | `build-android-arm64-client/UnrealTournament/libUT99.so` + `_deps/sdl2-build/libSDL2.so`, `libut99_android_bridge.so` | the game as one shared library for Android arm64 (API 30, shared libc++; needs `ANDROID_NDK_HOME`): the configuration the Gradle project in `Android/` builds into the APK |
 | `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` | a headless `ucc-bin` for Android arm64 (bionic, API 24, static libc++; needs `ANDROID_NDK_HOME`) |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the same for armeabi-v7a |
 | `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` + `OpenAL32.dll`, `build-windows/UCC/ucc-bin.exe` | 32-bit Windows, MinGW-w64 (cross or MSYS2) |
@@ -48,8 +49,8 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 | `UE_ALLOW_64BIT` | OFF | build x86_64 as a 64-bit engine; OFF demotes an x86_64 compiler to -m32 (an arm64 compiler always builds 64-bit; 64-bit MSVC is refused) |
 | `BUILD_STATIC` | OFF (ON in every preset) | one binary |
 | `BUILD_EDITOR` | ON | the Editor package |
-| `BUILD_UNREALTOURNAMENT` | ON | the game launcher (`android-*` turn it off) |
-| `USE_SDL` | ON | the SDL2 client (NSDLDrv); off for the Dreamcast's KOSDrv and the headless `android-*` presets |
+| `BUILD_UNREALTOURNAMENT` | ON | the game launcher (`android-*-ucc` turn it off) |
+| `USE_SDL` | ON | the SDL2 client (NSDLDrv); off for the Dreamcast's KOSDrv and the headless `android-*-ucc` presets. On Android with it on, the playable set is forced (below) |
 | `BUILD_XOPENGLDRV`, `BUILD_UTGLR`, `BUILD_NOPENGLESDRV` | OFF, OFF, ON (the presets turn on what they build) | the hardware render devices: XOpenGLDrv, OpenGLDrv/UTGLR, NOpenGLESDrv |
 | `USE_GL4ES` | OFF (ON on the web) | build UTGLR against gl4es (desktop GL → GLES2); implies `BUILD_UTGLR` |
 | `BUILD_SOFTDRV`, `BUILD_NULLDRV` | ON, ON | the software and null render devices |
@@ -60,7 +61,10 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 
 The web (`if(EMSCRIPTEN)` in `Source/CMakeLists.txt`) forces its own set: static, SDL, Editor, XOpenGLDrv, UTGLR
 through gl4es, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv, the silent audio subsystem, `ASM=0`, `-pthread` and
-`-sUSE_SDL=2` at compile time, `-fpack-struct=4`.
+`-sUSE_SDL=2` at compile time, `-fpack-struct=4`. The Android client (`if(ANDROID AND USE_SDL)`) forces static,
+Editor, XOpenGLDrv, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv and the silent audio subsystem, no UTGLR (desktop
+GL) and no `ucc-bin`, defines `UE_ANDROID_APP` for the app's own platform paths, and adds
+`-fno-delete-null-pointer-checks` and clang's non-POD-varargs leniency.
 
 ## Fetched libraries
 
@@ -73,6 +77,7 @@ The first configure of a preset fetches (FetchContent; the cache variables name 
 | gl4es | [ptitSeb/gl4es](https://github.com/ptitSeb/gl4es), branch `master` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web |
 | openal-soft | [10-p/openal-soft-web](https://github.com/10-p/openal-soft-web), branch `ufront/web` | `OPENALSOFT_GIT_REPOSITORY`, `OPENALSOFT_GIT_TAG` | NOpenALDrv: static on the web, `libopenal.so.1` on native Linux (`Source/cmake/OpenALSoft.cmake`) |
 | libxmp | `libxmp-4.7.1` | `LIBXMP_GIT_REPOSITORY`, `LIBXMP_GIT_TAG`, `LIBXMP_SOURCE_DIR` | NOpenALDrv (`Source/NOpenALDrv/CMakeLists.txt`) |
+| SDL2 | [libsdl-org/SDL](https://github.com/libsdl-org/SDL), branch `release-2.32.x` | `SDL2_GIT_REPOSITORY`, `SDL2_GIT_TAG`, `FETCHCONTENT_SOURCE_DIR_SDL2` | the Android client, built shared as `libSDL2.so` (the Gradle project passes its own checkout, whose Java it compiles) |
 | SDL2, OpenAL Soft (Windows binaries) | 2.32.10, 1.25.2 | `SDL2_MINGW_VERSION`, `OPENAL_MINGW_VERSION` | `windows` when cross-compiling (`Source/cmake/SDL2Mingw.cmake`, `OpenALMingw.cmake`) |
 
 A branch ref is re-fetched on every configure (`cmake --preset …`), never by a plain `cmake --build`. To build a local
@@ -171,6 +176,70 @@ packages unchanged. `PLATFORM_64BITS` comes from the compiler (`Core/Inc/Core.h`
 
 On a phone: push the asset tree to `/data/local/tmp/ut99/` and `ucc-bin` beside it, run the server from
 `adb shell`, and join from a desktop client by the phone's address (UDP cannot be `adb forward`ed).
+
+## Android
+
+`Android/` is a Gradle/NDK project (Android Gradle plugin 9.4.0, Gradle 9.6.0 through the wrapper, its daemon on
+an installed JDK 17) whose `externalNativeBuild` points at `Source/CMakeLists.txt` (targets `UnrealTournament`,
+the game as `libUT99.so`, and `ut99_android_bridge`), built for `arm64-v8a` (`-Pabis=arm64-v8a,x86_64` adds the
+emulator). It needs platform 36 (`compileSdk`; `targetSdk` 34, `minSdk` 30), build-tools 36.0.0, NDK
+28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK into `/usr/lib/android-sdk`;
+`local.properties` names it and the distribution's CMake:
+
+```bash
+sudo apt install openjdk-17-jdk cmake ninja-build adb google-android-cmdline-tools-19.0-installer \
+  google-android-platform-36-installer google-android-build-tools-36.0.0-installer google-android-ndk-r28c-installer
+printf 'sdk.dir=/usr/lib/android-sdk\ncmake.dir=/usr\n' > Android/local.properties
+```
+
+```bash
+cd Android
+./gradlew :app:assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
+#   -Psdl2Dir=<path>     an SDL2 checkout (release-2.32.x); else one is cloned into Android/build/SDL2
+#   -PnativeDebug        the engine at the variant's own CMAKE_BUILD_TYPE (every variant is RelWithDebInfo otherwise)
+adb install -r app/build/outputs/apk/debug/app-debug.apk
+```
+
+- SDL2 is one checkout for both halves: the C library the engine's CMake builds (`FETCHCONTENT_SOURCE_DIR_SDL2`,
+  shared, `libSDL2.so`) and the Java `SDLActivity` compiled from `android-project/`.
+- openal-soft (OpenSL ES, no C++20 modules, no RTKit) and libxmp are linked statically into `libUT99.so`.
+- The engine runs on a thread of its own with an 8 MB stack (`SDL_main`, `Source/UnrealTournament/Src/Launch.cpp`);
+  the log is on logcat (tag `UT99`, with stdout and stderr as `UT99-stdio` and the bridge as `UT99Bridge`) and in
+  the game folder's `System/UnrealTournament.log`.
+- The inis: `tools/dev/sync-android-ini.py` writes `Config/System/android/{Default,DefUser}.ini` from the web
+  pair (`--check` verifies them); the APK carries them as assets, and the game installs them into the folder's
+  `System/` before each start when they differ. The engine derives `UnrealTournament.ini` and `User.ini` from
+  them when those are missing.
+
+The engine reads its game folder (a retail install: `System/`, `Maps/`, `Textures/`, ...) by path; the bridge
+(`Android/app/src/main/cpp/android_bridge.cpp`) sets `UT99_ANDROID_BASEDIR`, `HOME` and the working directory
+before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which folder:
+
+- Internal storage (`/data/data/com.ut99.android/files/UT99`): fast, deleted with the app, no permission. "Choose
+  the UT99 folder" opens Android's folder picker, which gives the app that folder only, and "Copy to internal
+  storage" copies it in (only what is new or changed: a stopped copy resumes); with no folder chosen yet it opens
+  the picker first. "Copy settings and saves" writes the internal copy's `System/UnrealTournament.ini`,
+  `System/User.ini` and `Save/` back to the chosen folder.
+- A UT99 folder in place: `Android/data/com.ut99.android/files/UT99` on shared storage or an SD card needs no
+  permission; `/sdcard/UT99` or `UT99` at the top of an SD card needs All files access, which the launcher asks
+  for, with the copy as the alternative, only when the game is started from there. Shared storage is a FUSE
+  mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
+
+Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`); touch
+as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
+look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
+`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The system's Back key is Escape.
+
+A travel URL can be passed from adb; the launcher's countdown then starts the game without a touch:
+
+```bash
+adb shell am start -n com.ut99.android/.MainActivity --es com.ut99.android.ARGS 'DM-Deck16][?Game=Botpack.DeathMatchPlus'
+adb logcat -s UT99 UT99-stdio UT99Bridge SDL
+```
+
+`GameActivity` is not exported; launch `MainActivity`. The same native configuration without the APK is the
+`android-arm64` preset (`ANDROID_NDK_HOME` set; pass `-DFETCHCONTENT_SOURCE_DIR_SDL2=<checkout>` to reuse the
+Gradle project's SDL2).
 
 ## Windows (MinGW-w64)
 

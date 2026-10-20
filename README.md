@@ -15,6 +15,7 @@ Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details,
 * **WebRTC net driver (WebRTCDrv):** browser multiplayer over the frontend's WebRTC transport, with a synthetic LAN that makes the stock server browser work.
 * **OpenAL Soft audio (NOpenALDrv):** one openal-soft build on the web, Linux and Windows, with EFX reverb, optional HRTF and libxmp tracker music.
 * **64-bit and ARM support:** x86_64 and arm64 builds (a headless `ucc-bin` on Android) that run the retail 32-bit packages unchanged.
+* **Android build:** a Gradle project that builds the game as `libUT99.so` with SDL2, a launcher that picks the game folder, touch as the mouse in the menus and an on-screen overlay in play, game pads.
 * **Windows build:** one static MinGW-w64 executable, cross-compiled from Linux or built under MSYS2.
 * **Dreamcast build** (from maximqaxd/ut99dc): kept compiling, built by no preset here.
 * **GCC and Clang support:** the engine compiles with GCC, Clang, Emscripten and MinGW-w64, with the native class layouts matching the script packages.

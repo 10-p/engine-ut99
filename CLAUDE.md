@@ -26,6 +26,7 @@ separate commits.
 | Frontend | `10-p/unreal-frontend-arch-private` | consumes `build-wasm-perf/SDLLaunch/`; host, UI, glue, publishing |
 | Fetched renderers | `10-p/XOpenGLDrv` (`ut99-v400-compat`), `10-p/utglr-copy` (`main`) | edited in their repos; `Source/XOpenGLDrv` and `Source/OpenGLDrv` hold the build glue |
 | Game assets | any local folder (never in git) | a retail UT99 install; no build reads it |
+| Android app | `Android/` | the Gradle/NDK project: `libUT99.so` from `Source/CMakeLists.txt`, the launcher and the touch overlay (`BUILD.md`, Android) |
 | Android reference | [Andiweli/UT99-Android](https://github.com/Andiweli/UT99-Android) | SDL2 glue ideas only |
 
 ## Load-bearing facts
@@ -63,6 +64,11 @@ separate commits.
 - **Net on the web:** WebRTCDrv (`UWebRTCNetDriver`) over the `ue_net_*` imports, with a synthetic LAN
   (`WebRTCLan`); a configured `IpDrv.TcpNetDriver` is replaced at startup. The package, class and `NetworkDevice`
   value keep their names.
+- **Android** is the SDL client as a shared library (`UE_ANDROID_CLIENT` in CMake, `UE_ANDROID_APP` in the code
+  for the app's own paths: the game folder from `UT99_ANDROID_BASEDIR`, the log on logcat); `__ANDROID__` guards
+  what every Android build shares. Touch stays a mouse for the menus; the overlay's input enters through
+  `Source/NSDLDrv/Src/NSDLAndroid.cpp`. The Android inis are generated (`tools/dev/sync-android-ini.py`), never
+  edited by hand.
 - **Render device at startup:** a `-*RENDERER` switch, else the persisted choice when it is a hardware default or
   the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES.
 
