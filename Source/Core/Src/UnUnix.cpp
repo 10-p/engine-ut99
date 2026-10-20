@@ -218,8 +218,19 @@ CORE_API void appRequestExit( UBOOL Force )
 	debugf( TEXT("appRequestExit(%i)"), Force );
 	if( Force )
 	{
+#if defined(UE_ANDROID_APP) && defined(PLATFORM_SDL)
+		// The app shows the error first (SDL's box runs on the UI thread and waits), then ends the process
+		// without exit()'s handlers: SDL_Quit from atexit would tear the display down under Android's own
+		// render thread, which aborts. The pause lets the stdio reader thread hand its last lines to logcat.
+		if( GIsCriticalError && GErrorHist[0] )
+			SDL_ShowSimpleMessageBox( SDL_MESSAGEBOX_ERROR, "Unreal Tournament", GErrorHist, NULL );
+		fflush( NULL );
+		usleep( 200000 );
+		_exit( 1 );
+#else
 		// Force immediate exit. Dangerous because config code isn't flushed, etc.
 		exit( 1 );
+#endif
 	}
 	else
 	{
