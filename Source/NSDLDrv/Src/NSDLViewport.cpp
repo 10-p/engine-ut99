@@ -1133,7 +1133,7 @@ void UNSDLViewport::UpdatePadAxis( INT Axis, INT NewValue )
 static BYTE GHeldTap[32];
 static INT GHeldTapNum = 0;
 #if defined(__ANDROID__)
-// Mouse button events held back for later ticks (TickInput).
+// Mouse button events held back for later ticks, and the one-pixel move after a press (TickInput).
 struct FAndroidClick { BYTE Key; BYTE Action; };
 static FAndroidClick GAndroidClick[16];
 static INT GAndroidClickNum = 0;
@@ -1176,10 +1176,19 @@ UBOOL UNSDLViewport::TickInput()
 #if defined(__ANDROID__)
 	// A touch's tap arrives in one poll: the motion, the press and the release. UWindow acts on the cursor it
 	// drew last frame, so a press sent with its motion lands where the finger was before. In absolute mode each
-	// button event waits for a later tick, one per tick, after a frame has put the cursor under the finger.
+	// button event waits for a later tick, one per tick, after a frame has put the cursor under the finger. A
+	// press is followed by a one-pixel move: UWindow's menu bar takes a pulldown's clicks only once the mouse
+	// has moved while its button was down, which a finger held still never does.
 	if( GAndroidClickNum )
 	{
-		CauseInputEvent( GAndroidClick[0].Key, (EInputAction)GAndroidClick[0].Action );
+		if( GAndroidClick[0].Action == IST_Axis )
+		{
+			WindowsMouseX += 1.f;
+			Client->Engine->MousePosition( this, 0, WindowsMouseX, WindowsMouseY );
+			CauseInputEvent( IK_MouseX, IST_Axis, 1.f );
+		}
+		else
+			CauseInputEvent( GAndroidClick[0].Key, (EInputAction)GAndroidClick[0].Action );
 		for( INT k = 1; k < GAndroidClickNum; k++ )
 			GAndroidClick[k-1] = GAndroidClick[k];
 		GAndroidClickNum--;
@@ -1231,11 +1240,17 @@ UBOOL UNSDLViewport::TickInput()
 			case SDL_MOUSEBUTTONDOWN:
 			case SDL_MOUSEBUTTONUP:
 #if defined(__ANDROID__)
-				if( !SDL_GetRelativeMouseMode() && GAndroidClickNum < ARRAY_COUNT(GAndroidClick) )
+				if( !SDL_GetRelativeMouseMode() && GAndroidClickNum < ARRAY_COUNT(GAndroidClick) - 1 )
 				{
 					GAndroidClick[GAndroidClickNum].Key = MouseButtonMap[Ev.button.button];
 					GAndroidClick[GAndroidClickNum].Action = ( Ev.type == SDL_MOUSEBUTTONDOWN ) ? IST_Press : IST_Release;
 					GAndroidClickNum++;
+					if( Ev.type == SDL_MOUSEBUTTONDOWN )
+					{
+						GAndroidClick[GAndroidClickNum].Key = 0;
+						GAndroidClick[GAndroidClickNum].Action = IST_Axis;
+						GAndroidClickNum++;
+					}
 					break;
 				}
 #endif
@@ -1322,6 +1337,19 @@ UBOOL UNSDLViewport::TickInput()
 					// Absolute (menu / cursor-visible) mode. MousePosition feeds WindowsMouseX/Y, which UWindow reads on
 					// a windowed viewport (bWindowsMouseAvailable); the axis deltas move its cursor where that is off
 					// (fullscreen). In game the relative branch runs (capture is armed while a level is up and no menu shows).
+#if defined(__ANDROID__)
+					// A touch's tap arrives with no deltas (SDL zeroes them for a finger's first position); UWindow
+					// moves its cursor on the mouse axis events, as a mouse's, so they come from the cursor's last
+					// position (the position itself it takes from WindowsMouseX/Y each frame).
+					if( !Ev.motion.xrel && !Ev.motion.yrel )
+					{
+						const INT XRel = Ev.motion.x - (INT)WindowsMouseX, YRel = Ev.motion.y - (INT)WindowsMouseY;
+						Client->Engine->MousePosition( this, 0, Ev.motion.x, Ev.motion.y );
+						if( XRel ) CauseInputEvent( IK_MouseX, IST_Axis, XRel );
+						if( YRel ) CauseInputEvent( IK_MouseY, IST_Axis, -YRel );
+						break;
+					}
+#endif
 					Client->Engine->MousePosition( this, 0, Ev.motion.x, Ev.motion.y );
 					if( Ev.motion.xrel ) CauseInputEvent( IK_MouseX, IST_Axis, Ev.motion.xrel );
 					if( Ev.motion.yrel ) CauseInputEvent( IK_MouseY, IST_Axis, -Ev.motion.yrel );
