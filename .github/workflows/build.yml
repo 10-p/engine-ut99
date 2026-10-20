@@ -223,9 +223,53 @@ jobs:
   #
   # `permissions: contents: write` is required: the default workflow token is
   # read-only.
+  android:
+    name: android (arm64 APK)
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # JDK 17: the Gradle daemon's (Android/gradle/gradle-daemon-jvm.properties).
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      # Only platform-tools: the action's default list names `tools`, which the current SDK repository does not
+      # have. The NDK and CMake come from the next step.
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      # The NDK and the CMake the Gradle plugin asks for; the NDK version matches app/build.gradle's ndkVersion,
+      # because AGP silently downloads its own on a mismatch. CI writes its own local.properties for this
+      # runner's SDK.
+      - name: Install the NDK + CMake and point the build at this runner's SDK
+        run: |
+          sdkmanager --install "ndk;28.2.13676358" "cmake;4.1.2" >/dev/null
+          printf 'sdk.dir=%s\nndk.dir=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
+
+      # The Gradle project's default ABI set (arm64-v8a; -Pabis= adds the emulator's x86_64).
+      - name: Build the APK
+        run: ./gradlew assembleDebug --console=plain
+        working-directory: Android
+
+      - name: Assert the ABI is packaged
+        run: |
+          set -euo pipefail
+          apk=Android/app/build/outputs/apk/debug/app-debug.apk
+          unzip -l "$apk" | grep -q "lib/arm64-v8a/libUT99.so" || { echo "::error::missing arm64-v8a"; exit 1; }
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ut99-android
+          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          if-no-files-found: error
+          retention-days: 7
+
   latest:
     name: rolling "latest" release
-    needs: [linux, windows, web]
+    needs: [linux, windows, web, android]
     if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'feat/v436-compat')
     runs-on: ubuntu-24.04
     permissions:
