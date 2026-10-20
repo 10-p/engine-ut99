@@ -70,7 +70,8 @@ separate commits.
   `Source/NSDLDrv/Src/NSDLAndroid.cpp`. The Android inis are generated (`tools/dev/sync-android-ini.py`), never
   edited by hand.
 - **Render device at startup:** a `-*RENDERER` switch, else the persisted choice when it is a hardware default or
-  the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES.
+  the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES (on Android
+  NOpenGLES, then XOpenGL).
 
 ## Rules
 - **Comments** explain the code as it is, in one or two lines. No stage markers or work ids, no story of a fix,

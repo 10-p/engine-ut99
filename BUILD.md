@@ -122,8 +122,8 @@ system and the network transport at run time.
   present one of its list, and logs it; on the web a stock `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`.
 - **Render device.** `-XOPENGLRENDERER`, `-UTGLRRENDERER`, `-NOPENGLESRENDERER`, `-SOFTWARERENDERER`,
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
-  user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order. A switch
-  whose device survives Init is persisted.
+  user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
+  (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
 - **Settings from outside.** `-ini:<File>:[<Section>]:<Key>=<Value>` (`User`/`System` name the user and system inis)
   sets any config key right after the config cache loads, and the value is written into the ini.
 - **Frame cap.** `[Engine.Engine] FrameRateCap` (120; 0 or less is uncapped) when the engine sets no max tick rate;

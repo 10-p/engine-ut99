@@ -288,12 +288,18 @@ static const FRenderSwitch GRenderSwitches[] =
 	// GRenderPreference, so it is never a default.
 	{ TEXT("NULLRENDERER"),      TEXT("NullDrv.NullRenderDevice") },
 };
-// Default when nothing is chosen: best HW first.
+// Default when nothing is chosen: best HW first. On Android NOpenGLESDrv leads: on a mobile GPU XOpenGLDrv's
+// ES path runs a match at a fraction of its frame rate.
 static const TCHAR* GRenderPreference[] =
 {
+#if defined(__ANDROID__)
+	TEXT("NOpenGLESDrv.NOpenGLESRenderDevice"),
+	TEXT("XOpenGLDrv.XOpenGLRenderDevice"),
+#else
 	TEXT("XOpenGLDrv.XOpenGLRenderDevice"),
 	TEXT("OpenGLDrv.OpenGLRenderDevice"),
 	TEXT("NOpenGLESDrv.NOpenGLESRenderDevice"),
+#endif
 };
 // The class a -*RENDERER switch requested (empty if none) — persisted after a successful Init().
 static FString GRequestedRenderDevice;
