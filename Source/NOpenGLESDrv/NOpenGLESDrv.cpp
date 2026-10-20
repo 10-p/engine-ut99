@@ -143,6 +143,14 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 	guard(UNOpenGLESRenderDevice::Init)
 	debugf( NAME_Log, TEXT("NOpenGLESDrv::Init: NewX=%d, NewY=%d, ColorBytes=%d, Fullscreen=%d"), NewX, NewY, NewColorBytes, Fullscreen );
 
+	// The viewport takes the mode: its window size and, through the blit flags, whether the absolute mouse path
+	// is available to UWindow (a windowed viewport), which a tap on a touch screen needs.
+	if( !InViewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen | BLIT_OpenGL) : (BLIT_HardwarePaint | BLIT_OpenGL), NewX, NewY, NewColorBytes ) )
+	{
+		debugf( NAME_Warning, TEXT("NOpenGLESDrv: could not resize the viewport to %ix%i"), NewX, NewY );
+		return false;
+	}
+
 #ifndef __EMSCRIPTEN__
 	// Resolve the GLES2 entry points through SDL.
 	if( !gladLoadGLES2Loader( &SDL_GL_GetProcAddress ) )
@@ -283,6 +291,11 @@ UBOOL UNOpenGLESRenderDevice::SetRes( INT NewX, INT NewY, INT NewColorBytes, UBO
 {
 	guard(UNOpenGLESRenderDevice::SetRes);
 	debugf( NAME_Log, TEXT("NOpenGLESDrv::SetRes: NewX=%d, NewY=%d"), NewX, NewY );
+	if( !Viewport->ResizeViewport( Fullscreen ? (BLIT_Fullscreen | BLIT_OpenGL) : (BLIT_HardwarePaint | BLIT_OpenGL), NewX, NewY, NewColorBytes ) )
+	{
+		debugf( NAME_Warning, TEXT("NOpenGLESDrv: could not resize the viewport to %ix%i"), NewX, NewY );
+		return false;
+	}
 	// Update GL viewport when resolution changes
 	glViewport( 0, 0, NewX, NewY );
 	return true;
