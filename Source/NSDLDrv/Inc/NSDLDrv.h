@@ -95,6 +95,10 @@ private:
 	// UNSDLViewport private methods.
 	static void InitKeyMap();
 	UBOOL CauseInputEvent( INT iKey, EInputAction Action, FLOAT Delta=0.0 );
+#if defined(__ANDROID__)
+	// The touch overlay's input, folded into the engine's once per tick (NSDLAndroid.cpp).
+	void TickAndroidTouch();
+#endif
 };
 
 /*-----------------------------------------------------------------------------

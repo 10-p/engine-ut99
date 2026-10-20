@@ -100,6 +100,13 @@ void UNSDLClient::Init( UEngine* InEngine )
 
 	Controller = NULL;
 
+#if defined(__ANDROID__)
+	// The system's Back is a key (SDL_SCANCODE_AC_BACK, the game's Escape) instead of closing the activity.
+	// Touches stay mouse events (SDL's default): the menus are driven by tapping, and in play the on-screen
+	// overlay takes the touches before SDL sees them.
+	SDL_SetHint( SDL_HINT_ANDROID_TRAP_BACK_BUTTON, "1" );
+#endif
+
 	// The game-controller subsystem is always up; whether a pad is used is UseJoystick, which the viewport reads
 	// every tick (UNSDLViewport::TickInput).
 	if ( SDL_Init( SDL_INIT_VIDEO | SDL_INIT_GAMECONTROLLER ) < 0 )
