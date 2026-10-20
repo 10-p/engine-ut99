@@ -67,6 +67,14 @@ android {
                     '-DBUILD_DCUTIL=OFF',
                     "-DFETCHCONTENT_SOURCE_DIR_SDL2=${sdl2Dir}".toString(),
                 ]
+                // -PxopenglDir=<path> (or XOPENGL_SOURCE_DIR) builds a local XOpenGLDrv checkout instead of
+                // the fetched branch.
+                def xopenglDir = project.findProperty('xopenglDir') ?: System.getenv('XOPENGL_SOURCE_DIR')
+                if (xopenglDir) {
+                    if (!file(xopenglDir).isDirectory())
+                        throw new GradleException("xopenglDir=${xopenglDir} is not a directory")
+                    cmakeArgs += "-DFETCHCONTENT_SOURCE_DIR_XOPENGLDRV=${file(xopenglDir).absolutePath}".toString()
+                }
                 // The engine optimised in every variant (the Gradle debug variant would build it at -O0);
                 // -PnativeDebug keeps the variant's own CMAKE_BUILD_TYPE.
                 if (!project.hasProperty('nativeDebug'))
