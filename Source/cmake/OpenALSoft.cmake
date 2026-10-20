@@ -1,12 +1,15 @@
 # OpenALSoft.cmake — openal-soft, the project's fork, for the web build and for native Linux.
 #
-#   ufront_openal_soft(PLATFORM <WEB|NATIVE> EAX <ON|OFF>)   -> defines the target `OpenAL`
-#     WEB    a STATIC archive linked into the wasm, mixed on its own pthread and played by an AudioWorklet
-#            (the `web` backend on the fork's ufront/web branch): 5.1/7.1 where the device has it, HRTF on
-#            request, EFX reverb, the launcher's audio buffer settings (Module.alsoftConfig).
-#     NATIVE a SHARED libopenal.so.1 that NOpenALDrv links (DT_NEEDED) and the launcher copies beside the
-#            binary, found through $ORIGIN, so native plays through the same library as the web.
-#            Backends are whatever the host's headers allowed at configure time, each dlopen'd at run time.
+#   ufront_openal_soft(PLATFORM <WEB|NATIVE|ANDROID> EAX <ON|OFF>)   -> defines the target `OpenAL`
+#     WEB     a STATIC archive linked into the wasm, mixed on its own pthread and played by an AudioWorklet
+#             (the `web` backend on the fork's ufront/web branch): 5.1/7.1 where the device has it, HRTF on
+#             request, EFX reverb, the launcher's audio buffer settings (Module.alsoftConfig).
+#     NATIVE  a SHARED libopenal.so.1 that NOpenALDrv links (DT_NEEDED) and the launcher copies beside the
+#             binary, found through $ORIGIN, so native plays through the same library as the web.
+#             Backends are whatever the host's headers allowed at configure time, each dlopen'd at run time.
+#     ANDROID a STATIC archive linked into the game library, playing through OpenSL ES. No C++20 modules
+#             (the NDK's clang rejects libc++'s range adaptors across a module boundary) and no RTKit (its
+#             probe would find the build machine's D-Bus headers).
 #
 # The fork: https://github.com/10-p/openal-soft-web `ufront/web` = openal-soft 1.25.2 + the Web Audio backend
 # + the wasm build patches (all under __EMSCRIPTEN__). A branch: a rebuild takes its tip
@@ -33,8 +36,8 @@ function(ufront_openal_soft)
   if(NOT ARG_EAX)
     set(ARG_EAX OFF)
   endif()
-  if(NOT ARG_PLATFORM MATCHES "^(WEB|NATIVE)$")
-    message(FATAL_ERROR "ufront_openal_soft: PLATFORM must be WEB or NATIVE (got '${ARG_PLATFORM}')")
+  if(NOT ARG_PLATFORM MATCHES "^(WEB|NATIVE|ANDROID)$")
+    message(FATAL_ERROR "ufront_openal_soft: PLATFORM must be WEB, NATIVE or ANDROID (got '${ARG_PLATFORM}')")
   endif()
   include(FetchContent)
   set(OPENALSOFT_GIT_REPOSITORY "https://github.com/10-p/openal-soft-web.git"
@@ -57,6 +60,13 @@ function(ufront_openal_soft)
     set(ALSOFT_CPUEXT_NEON OFF CACHE BOOL "" FORCE)
     set(ALSOFT_BACKEND_WEB ON CACHE BOOL "" FORCE)
     set(ALSOFT_REQUIRE_SSE4_1 ON CACHE BOOL "" FORCE)  # fail rather than fall back to the slower C mixers
+  elseif(ARG_PLATFORM STREQUAL "ANDROID")
+    set(LIBTYPE STATIC CACHE STRING "" FORCE)
+    set(ALSOFT_DLOPEN OFF CACHE BOOL "" FORCE)
+    set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)
+    set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "" FORCE)
+    set(ALSOFT_ENABLE_MODULES OFF CACHE BOOL "" FORCE)
+    set(ALSOFT_RTKIT OFF CACHE BOOL "" FORCE)
   else()
     set(LIBTYPE SHARED CACHE STRING "" FORCE)           # -> libopenal.so.1, beside the binary
     set(ALSOFT_DLOPEN ON CACHE BOOL "" FORCE)           # backends load libpulse/libasound at run time

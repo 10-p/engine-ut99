@@ -121,6 +121,37 @@ if(EMSCRIPTEN)
 endif()
 
 
+# Android: the playable client as one shared library, libUT99.so, loaded by the Gradle project's SDLActivity
+# (Android/). USE_SDL OFF is the headless ucc-bin of the android-*-ucc presets, which this block leaves alone.
+# SDL2 is fetched and built shared beside it (the Dependencies section), openal-soft and libxmp link in
+# statically, and the render devices are those that run on a GLES context: XOpenGLDrv (GLES 3), NOpenGLESDrv
+# (GLES 2), SoftDrv and NullDrv; OpenGLDrv/UTGLR needs desktop GL.
+if(ANDROID AND USE_SDL)
+  set(BUILD_STATIC ON)
+  set(BUILD_EDITOR ON)            # a runtime dependency (see the option)
+  set(BUILD_DCUTIL OFF)
+  set(BUILD_PVRDRV OFF)
+  set(BUILD_AICADRV OFF)
+  set(BUILD_XOPENGLDRV ON)
+  set(BUILD_NOPENGLESDRV ON)
+  set(BUILD_UTGLR OFF)
+  set(USE_GL4ES OFF)
+  set(BUILD_NULLSOUNDDRV ON)
+  set(BUILD_NOPENALDRV ON)
+  set(UE_ANDROID_CLIENT ON)
+  # The app's own platform paths (the game folder from the bridge, the log on logcat); the headless
+  # ucc-bin of the android-*-ucc presets keeps the plain POSIX ones.
+  add_definitions(-DUE_ANDROID_APP=1)
+  # The static packages become part of a shared library.
+  set(CMAKE_POSITION_INDEPENDENT_CODE ON)
+endif()
+if(ANDROID)
+  # clang rejects a non-POD FString passed through variadic debugf/appErrorf; GCC tolerates it.
+  add_compile_options(-Wno-error=non-pod-varargs -Wno-non-pod-varargs)
+  # UE1 calls methods through a null pointer and tests `this` inside them; clang deletes those tests.
+  add_compile_options(-fno-delete-null-pointer-checks)
+endif()
+
 if(BUILD_STATIC)
   if(MSVC)
     message(FATAL_ERROR "Static mode is not supported with MSVC")
@@ -365,6 +396,21 @@ if(USE_SDL)
         # The -sUSE_SDL=2 port supplies SDL2 and picks the threaded variant under -pthread; an explicit -lSDL2
         # would resolve to the non-threaded archive.
         set(SDL2_LIBRARY )
+      elseif(ANDROID)
+        # SDL2 from its source, built shared (libSDL2.so: SDLActivity loads it before the game library and its
+        # JNI lives in it). The Gradle project passes FETCHCONTENT_SOURCE_DIR_SDL2, the checkout whose Java it
+        # compiles, so the C and Java sides are one version. The target carries its include directories.
+        include(FetchContent)
+        set(SDL2_GIT_REPOSITORY "https://github.com/libsdl-org/SDL.git" CACHE STRING "SDL2 git repo")
+        set(SDL2_GIT_TAG "release-2.32.x" CACHE STRING "SDL2 git tag/branch/commit")
+        message(STATUS "SDL2: fetching ${SDL2_GIT_REPOSITORY}@${SDL2_GIT_TAG}")
+        FetchContent_Declare(SDL2 GIT_REPOSITORY "${SDL2_GIT_REPOSITORY}" GIT_TAG "${SDL2_GIT_TAG}" GIT_SHALLOW TRUE)
+        set(SDL_SHARED ON CACHE BOOL "" FORCE)
+        set(SDL_STATIC OFF CACHE BOOL "" FORCE)
+        set(SDL_TEST OFF CACHE BOOL "" FORCE)
+        set(SDL2_DISABLE_SDL2MAIN ON CACHE BOOL "" FORCE)
+        FetchContent_MakeAvailable(SDL2)
+        set(SDL2_LIBRARY SDL2)
       elseif(MINGW AND CMAKE_CROSSCOMPILING)
         # Cross-building for Windows: fetch SDL2's official prebuilt MinGW binaries. Under MSYS2 (not
         # cross-compiling) pacman's mingw-w64-i686-SDL2 answers -lSDL2.
@@ -420,8 +466,8 @@ add_subdirectory(Render)
 add_subdirectory(IpDrv)
 add_subdirectory(UWeb)
 add_subdirectory(Fire)
-# ucc (dedicated server, make, commandlets): native only.
-if(NOT EMSCRIPTEN)
+# ucc (dedicated server, make, commandlets): native only; the Android app has the android-*-ucc presets.
+if(NOT EMSCRIPTEN AND NOT UE_ANDROID_CLIENT)
   add_subdirectory(UCC)
 endif()
 
@@ -528,6 +574,10 @@ if(BUILD_NOPENALDRV)
     # AL_EFFECT_EAXREVERB and it never calls the EAX API.
     include(OpenALSoft)
     ufront_openal_soft(PLATFORM WEB EAX OFF)
+  elseif(ANDROID)
+    # Android links the same fork statically into the game library, playing through OpenSL ES.
+    include(OpenALSoft)
+    ufront_openal_soft(PLATFORM ANDROID EAX OFF)
   elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND UE_BUNDLED_OPENAL)
     # Native Linux builds the same fork as a shared library shipped beside the binary (cmake/OpenALSoft.cmake).
     include(OpenALSoft)
@@ -552,6 +602,14 @@ endif()
 if(BUILD_UNREALTOURNAMENT)
   add_subdirectory(UnrealTournament)
   list(APPEND INSTALL_TARGETS UnrealTournament)
+endif()
+
+# The Android bridge: a library of its own that GameActivity loads first to set the game folder, HOME and the
+# working directory before SDLActivity starts SDL_main (Android/app/src/main/cpp/android_bridge.cpp).
+if(UE_ANDROID_CLIENT)
+  add_library(ut99_android_bridge SHARED "${CMAKE_SOURCE_DIR}/../Android/app/src/main/cpp/android_bridge.cpp")
+  set_target_properties(ut99_android_bridge PROPERTIES PREFIX "lib")
+  target_link_libraries(ut99_android_bridge log)
 endif()
 
 # assemble all modules and pdbs in one dir

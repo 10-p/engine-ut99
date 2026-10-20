@@ -50,6 +50,23 @@
       }
     },
     {
+      "name": "android-arm64",
+      "displayName": "Android arm64 -- the game as libUT99.so",
+      "description": "The playable client as one shared library for arm64-v8a (SDL2 fetched and built shared beside it, openal-soft and libxmp static, XOpenGLDrv on GLES 3, NOpenGLESDrv on GLES 2, SoftDrv, NullDrv): the same configure the Gradle project in Android/ runs, for a build without the APK. Needs ANDROID_NDK_HOME. Builds in build-android-arm64-client/.",
+      "generator": "Unix Makefiles",
+      "binaryDir": "${sourceDir}/../build-android-arm64-client",
+      "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",
+      "cacheVariables": {
+        "CMAKE_BUILD_TYPE": "RelWithDebInfo",
+        "ANDROID_ABI": "arm64-v8a",
+        "ANDROID_PLATFORM": "android-30",
+        "ANDROID_STL": "c++_shared",
+        "BUILD_STATIC": "ON",
+        "USE_SDL": "ON",
+        "BUILD_DCUTIL": "OFF"
+      }
+    },
+    {
       "name": "android-arm64-ucc",
       "displayName": "Android arm64 -- headless ucc-bin only",
       "description": "The dedicated server and commandlets as one Android executable (no SDL, no renderer, no audio, no APK): the 64-bit engine on an ARM device, run from adb shell. Needs ANDROID_NDK_HOME (e.g. ~/Android/Sdk/ndk/30.0.14904198). Builds in build-android-arm64/.",
@@ -135,6 +152,7 @@
     { "name": "native", "configurePreset": "native" },
     { "name": "native64", "configurePreset": "native64" },
     { "name": "native64-asan", "configurePreset": "native64-asan" },
+    { "name": "android-arm64", "configurePreset": "android-arm64" },
     { "name": "android-arm64-ucc", "configurePreset": "android-arm64-ucc" },
     { "name": "android-armv7-ucc", "configurePreset": "android-armv7-ucc" },
     { "name": "wasm", "configurePreset": "wasm" },
