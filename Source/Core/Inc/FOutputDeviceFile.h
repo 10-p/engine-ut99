@@ -7,6 +7,9 @@
 =============================================================================*/
 
 #include <stdio.h> // fputs/stdout for the GLog->stdout echo
+#if defined(UE_ANDROID_APP)
+#include <android/log.h> // the echo goes to logcat instead
+#endif
 
 //
 // ANSI file output device.
@@ -87,10 +90,15 @@ public:
 				// NAME_Title filter matches the file write above.
 				if( Event != NAME_Title )
 				{
+#if defined(UE_ANDROID_APP)
+					// The app has no terminal: the line goes to logcat (tag UT99) instead of stdout.
+					__android_log_print( ANDROID_LOG_INFO, "UT99", "%s: %s", FName::SafeString(Event), Data );
+#else
 					fputs( FName::SafeString(Event), stdout );
 					fputs( ": ", stdout );
 					fputs( Data, stdout );
 					fputc( '\n', stdout );
+#endif
 				}
 				if( GLogHook )
 					GLogHook->Serialize( Data, Event );

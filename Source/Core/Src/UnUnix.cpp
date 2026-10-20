@@ -690,7 +690,18 @@ CORE_API const char* appBaseDir()
 	if( !BaseDir[0] )
 	{
 		// Get directory this executable was launched from.
-#if defined(__EMSCRIPTEN__)
+#if defined(UE_ANDROID_APP)
+		// The game folder's System directory, set by the app's bridge (UT99_ANDROID_BASEDIR) before SDL_main;
+		// SDL_GetBasePath() is NULL on Android. The bridge has also made it the working directory.
+		if( const char* Dir = getenv( "UT99_ANDROID_BASEDIR" ) )
+		{
+			appStrncpy( BaseDir, Dir, sizeof(BaseDir)-1 );
+			if( BaseDir[0] && BaseDir[strlen(BaseDir)-1] != '/' )
+				appStrcat( BaseDir, "/" );
+		}
+		else if( getcwd( BaseDir, sizeof(BaseDir)-1 ) )
+			appStrcat( BaseDir, "/" );
+#elif defined(__EMSCRIPTEN__)
 		// SDL_GetBasePath() returns "/" under Emscripten; the launcher chdir's to /System, so take getcwd().
 		if( getcwd( BaseDir, sizeof(BaseDir) ) )
 			appStrcat( BaseDir, "/" );

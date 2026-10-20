@@ -10,6 +10,62 @@ Revision history:
 #ifdef PLATFORM_SDL
 #include <SDL2/SDL.h>
 #endif
+#if defined(__ANDROID__)
+#include <android/log.h>
+#include <pthread.h>
+#include <unistd.h>
+
+// stdout and stderr on logcat (tag UT99-stdio): both are a pipe that a thread reads line by line. GLog's own
+// lines go to logcat directly (FOutputDeviceFile); this catches printf output, appThrowf's among it.
+static void* AndroidStdioReader( void* Arg )
+{
+	const int Fd = (int)(intptr_t)Arg;
+	char Buf[1024];
+	size_t Len = 0;
+	for( ;; )
+	{
+		const ssize_t N = read( Fd, Buf + Len, sizeof(Buf) - 1 - Len );
+		if( N <= 0 )
+			break;
+		Len += (size_t)N;
+		Buf[Len] = 0;
+		char* Start = Buf;
+		while( char* End = strchr( Start, '\n' ) )
+		{
+			*End = 0;
+			if( End > Start )
+				__android_log_write( ANDROID_LOG_INFO, "UT99-stdio", Start );
+			Start = End + 1;
+		}
+		Len = strlen( Start );
+		memmove( Buf, Start, Len + 1 );
+		if( Len == sizeof(Buf) - 1 )
+		{
+			__android_log_write( ANDROID_LOG_INFO, "UT99-stdio", Buf );
+			Len = 0;
+		}
+	}
+	return NULL;
+}
+static void AndroidRedirectStdio()
+{
+	int Fds[2];
+	if( pipe( Fds ) != 0 )
+		return;
+	setvbuf( stdout, NULL, _IOLBF, 0 );
+	setvbuf( stderr, NULL, _IONBF, 0 );
+	dup2( Fds[1], STDOUT_FILENO );
+	dup2( Fds[1], STDERR_FILENO );
+	close( Fds[1] );
+	pthread_t Thread;
+	pthread_attr_t Attr;
+	pthread_attr_init( &Attr );
+	pthread_attr_setdetachstate( &Attr, PTHREAD_CREATE_DETACHED );
+	if( pthread_create( &Thread, &Attr, AndroidStdioReader, (void*)(intptr_t)Fds[0] ) != 0 )
+		close( Fds[0] );
+	pthread_attr_destroy( &Attr );
+}
+#endif
 #ifdef __EMSCRIPTEN__
 #include <emscripten.h>
 #include <emscripten/heap.h> // emscripten_get_heap_size, for the pacing ring
@@ -405,6 +461,11 @@ static UEngine* InitEngine()
 	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bLocalLog"), TEXT("False") );
 	GConfig->SetString( TEXT("IpServer.UdpServerUplink"),  TEXT("DoUplink"),  TEXT("False") );
 #endif
+#if defined(__ANDROID__)
+	// The stats logging ends in appCreateProc, a fork/exec of a batcher an app does not carry.
+	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bWorldLog"), TEXT("False") );
+	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bLocalLog"), TEXT("False") );
+#endif
 
 	// Replace the subsystems the ini names but this build lacks (the retail WinDrv.WindowsClient and
 	// Galaxy.GalaxyAudioSubsystem), before Engine->Init() loads them. Each list is best real driver first.
@@ -639,9 +700,13 @@ int CleanUpOnExit(int ErrorLevel)
 }
 
 //
-// Entry point.
+// Entry point. On Android SDL_main (below) runs this on a thread of its own.
 //
+#if defined(__ANDROID__)
+static int UT99Main( int argc, char* argv[] )
+#else
 int main( int argc, char* argv[] )
+#endif
 {
 #ifdef PLATFORM_DREAMCAST
 	// fix thread stack underrun
@@ -672,7 +737,11 @@ int main( int argc, char* argv[] )
 	
 	INT ErrorLevel = 0;
 	GIsStarted	   = 1;
-#ifndef PLATFORM_DREAMCAST
+#if defined(__ANDROID__)
+	// argv[0] is the host process's name (app_process), not the game's: the log file and appPackage() take
+	// the game's own.
+	appStrcpy( GModule, "UnrealTournament" );
+#elif !defined(PLATFORM_DREAMCAST)
 	// Set module name.
 	appStrcpy( GModule, argv[0] );
 
@@ -783,3 +852,36 @@ int main( int argc, char* argv[] )
 		return CleanUpOnExit(1);
 	}
 }
+
+#if defined(__ANDROID__)
+//
+// Android: SDLActivity loads libUT99.so and calls SDL_main on its SDL thread, whose stack is Android's default
+// 1 MB. The engine runs on a thread of its own with the 8 MB a Linux main thread has (the script VM and the
+// level code recurse deeply); SDL_main waits for it. SDL's Android calls attach whichever thread makes them.
+//
+struct FUT99MainArgs { int argc; char** argv; int Result; };
+static void* UT99MainThread( void* Arg )
+{
+	FUT99MainArgs* Args = (FUT99MainArgs*)Arg;
+	Args->Result = UT99Main( Args->argc, Args->argv );
+	return NULL;
+}
+extern "C" __attribute__((visibility("default"))) int SDL_main( int argc, char** argv )
+{
+	AndroidRedirectStdio();
+	FUT99MainArgs Args = { argc, argv, 1 };
+	pthread_attr_t Attr;
+	pthread_attr_init( &Attr );
+	pthread_attr_setstacksize( &Attr, 8 * 1024 * 1024 );
+	pthread_t Thread;
+	if( pthread_create( &Thread, &Attr, UT99MainThread, &Args ) != 0 )
+	{
+		__android_log_write( ANDROID_LOG_ERROR, "UT99", "could not start the engine thread: running it on the SDL thread" );
+		Args.Result = UT99Main( argc, argv );
+	}
+	else
+		pthread_join( Thread, NULL );
+	pthread_attr_destroy( &Attr );
+	return Args.Result;
+}
+#endif
