@@ -1,11 +1,13 @@
 package com.ut99.android;
 
+import android.app.Activity;
 import android.app.AlertDialog;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
 import android.graphics.Color;
 import android.graphics.Paint;
+import android.graphics.Rect;
 import android.graphics.RectF;
 import android.os.Bundle;
 import android.os.SystemClock;
@@ -49,6 +51,14 @@ public class GameActivity extends SDLActivity {
      */
     static final String EXTRA_ARGS = "com.ut99.android.ARGS";
 
+    /**
+     * The frame's size as a multiple of the screen's (the launcher's resolution scale), from 0.1 to 1; 0 or absent
+     * is the screen's size. The surface's buffer takes that size, SDL reports it as the window, and Android scales
+     * the buffer to the screen.
+     */
+    static final String EXTRA_RENDER_SCALE = "com.ut99.android.RENDER_SCALE";
+    static final float RENDER_SCALE_MIN = 0.1f, RENDER_SCALE_MAX = 1f;
+
     private AlertDialog exitDialog;
 
     private static boolean bridgeLoaded = false;
@@ -90,6 +100,7 @@ public class GameActivity extends SDLActivity {
             Log.e(TAG, "no bridge: the engine will not find the game folder " + root);
         }
         super.onCreate(savedInstanceState);
+        applyRenderScale();
 
         // A match can go on for long without a touch (a pad, spectating).
         getWindow().addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON);
@@ -109,6 +120,30 @@ public class GameActivity extends SDLActivity {
         } catch (Throwable t) {
             Log.e(TAG, "could not add the touch controls", t);
         }
+    }
+
+    /** Sizes SDL's surface buffer to the scaled frame before the surface is created; at scale 1 it stays the screen's. */
+    private void applyRenderScale() {
+        float scale = getIntent() != null ? getIntent().getFloatExtra(EXTRA_RENDER_SCALE, 0f) : 0f;
+        if (scale < RENDER_SCALE_MIN || scale >= RENDER_SCALE_MAX || mSurface == null) return;
+        int[] screen = landscapeScreen(this);
+        int[] frame = frameSize(screen[0], screen[1], scale);
+        mSurface.getHolder().setFixedSize(frame[0], frame[1]);
+        Log.i(TAG, "resolution scale " + scale + ": " + frame[0] + "x" + frame[1] + " for the " + screen[0] + "x" + screen[1] + " screen");
+    }
+
+    /** The whole screen's size in landscape, the way the game holds it: the long side first. */
+    static int[] landscapeScreen(Activity a) {
+        Rect b = a.getWindowManager().getMaximumWindowMetrics().getBounds();
+        return new int[] { Math.max(b.width(), b.height()), Math.min(b.width(), b.height()) };
+    }
+
+    /** The frame for a screen at a scale: each side rounded to an even number, at least 320 x 240. */
+    static int[] frameSize(int screenW, int screenH, float scale) {
+        if (scale >= RENDER_SCALE_MAX) return new int[] { screenW, screenH };
+        int w = Math.max(320, Math.round(screenW * scale / 2f) * 2);
+        int h = Math.max(240, Math.round(screenH * scale / 2f) * 2);
+        return new int[] { w, h };
     }
 
     /**

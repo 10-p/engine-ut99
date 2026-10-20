@@ -13,6 +13,9 @@ import android.os.Looper;
 import android.os.SystemClock;
 import android.provider.DocumentsContract;
 import android.provider.Settings;
+import android.text.Editable;
+import android.text.InputType;
+import android.text.TextWatcher;
 import android.util.Log;
 import android.util.TypedValue;
 import android.view.Gravity;
@@ -21,19 +24,23 @@ import android.view.MotionEvent;
 import android.view.View;
 import android.view.ViewGroup;
 import android.view.ViewTreeObserver;
+import android.view.inputmethod.EditorInfo;
 import android.widget.Button;
 import android.widget.CompoundButton;
+import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.ProgressBar;
 import android.widget.ScrollView;
+import android.widget.SeekBar;
 import android.widget.Switch;
 import android.widget.TextView;
 import android.widget.Toast;
 
 import java.io.File;
+import java.util.Locale;
 
 /**
- * The launcher: which game folder the game runs from, and getting the game into it.
+ * The launcher: which game folder the game runs from, getting the game into it, and the resolution.
  *
  * The engine reads its game folder by path. Internal storage (the app's own, fast, deleted with the app)
  * needs no permission: "Choose the UT99 folder" opens Android's folder picker, which gives the app that
@@ -43,7 +50,7 @@ import java.io.File;
  * anywhere else on shared storage (/sdcard/UT99, an SD card's UT99) needs All files access: starting from there
  * without it asks to allow it or to copy the game to internal storage instead. "Clear internal storage" deletes the
  * internal copy; "Copy settings and saves" writes the internal copy's inis and saves back to the chosen
- * folder.
+ * folder. The resolution scale is the frame's size against the screen's, at most 1.
  *
  * Start game launches {@link GameActivity} in its own process with these choices on the Intent; it also
  * starts by itself after a countdown that the first touch or key stops. The page is built in code (the app
@@ -56,16 +63,26 @@ public class MainActivity extends Activity {
     private static final String PREFS = "launcher";
     private static final String PREF_EXTERNAL = "runFromExternal";
     private static final String PREF_FOLDER = "folderUri";
+    private static final String PREF_SCALE = "renderScale";
+    // The scale's slider: 0.25 to 1.00 in steps of 0.05; the field also takes values down to 0.1.
+    private static final float SCALE_MIN = 0.25f, SCALE_STEP = 0.05f,
+            FIELD_MIN = GameActivity.RENDER_SCALE_MIN, FIELD_MAX = GameActivity.RENDER_SCALE_MAX;
+    private static final int SCALE_STEPS = 15;
+    // The screen's own resolution.
+    private static final float SCALE_DEFAULT = 1f;
 
     private boolean launcherShown = false;
     private boolean opRunning = false;
     private boolean gameLaunched = false;
+    private boolean scaleUpdating = false;
     private boolean startWhenAllowed = false;  // back from the access page with access: start the game
     private boolean copyAfterPick = false;     // a folder picked for a copy: copy it
 
     private Switch storageSwitch;
     private Button startButton, pickButton, copyButton, clearButton, exportButton;
-    private TextView statusText, progressText;
+    private TextView statusText, progressText, scaleText;
+    private SeekBar scaleBar;
+    private EditText scaleField;
     private ProgressBar progressBar;
 
     private final Handler ui = new Handler(Looper.getMainLooper());
@@ -196,6 +213,8 @@ public class MainActivity extends Activity {
             @Override public void onClick(View v) { doExportSettings(); }
         });
 
+        buildScaleRow(col);
+
         label(col, "Choose the UT99 folder (on the device or an SD card) and copy it to internal storage for the fastest "
                 + "loading. Playing from the UT99 folder directly needs access to all files.", 11f, 0xFF6E747C, 24);
 
@@ -230,6 +249,80 @@ public class MainActivity extends Activity {
 
     private void applyStorageSwitchText() {
         storageSwitch.setText(storageSwitch.isChecked() ? "UT99 folder (slower)" : "Internal storage (fast)");
+    }
+
+    // ---- resolution scale -----------------------------------------------------------------------
+
+    private void buildScaleRow(LinearLayout col) {
+        label(col, "Resolution scale", 14f, 0xFFB8BCC2, 20);
+        LinearLayout row = new LinearLayout(this);
+        row.setOrientation(LinearLayout.HORIZONTAL);
+        row.setGravity(Gravity.CENTER_VERTICAL);
+        col.addView(row, new LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        scaleBar = new SeekBar(this);
+        scaleBar.setMax(SCALE_STEPS);
+        row.addView(scaleBar, new LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f));
+
+        scaleField = new EditText(this);
+        scaleField.setInputType(InputType.TYPE_CLASS_NUMBER | InputType.TYPE_NUMBER_FLAG_DECIMAL);
+        scaleField.setImeOptions(EditorInfo.IME_ACTION_DONE);
+        scaleField.setSingleLine(true);
+        scaleField.setTextColor(0xFFECEFF3);
+        scaleField.setGravity(Gravity.CENTER);
+        row.addView(scaleField, new LinearLayout.LayoutParams(dp(88), ViewGroup.LayoutParams.WRAP_CONTENT));
+
+        scaleText = label(col, "", 12f, 0xFF9AA0A8, 2);
+
+        float scale = prefs().getFloat(PREF_SCALE, SCALE_DEFAULT);
+        showScale(scale, true, true);
+
+        scaleBar.setOnSeekBarChangeListener(new SeekBar.OnSeekBarChangeListener() {
+            @Override public void onProgressChanged(SeekBar bar, int progress, boolean fromUser) {
+                if (!fromUser || scaleUpdating) return;
+                float v = SCALE_MIN + progress * SCALE_STEP;
+                setScale(v, false, true);
+            }
+            @Override public void onStartTrackingTouch(SeekBar bar) { cancelCountdown(true); }
+            @Override public void onStopTrackingTouch(SeekBar bar) {}
+        });
+        scaleField.addTextChangedListener(new TextWatcher() {
+            @Override public void beforeTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void onTextChanged(CharSequence s, int a, int b, int c) {}
+            @Override public void afterTextChanged(Editable s) {
+                if (scaleUpdating) return;
+                float v;
+                try { v = Float.parseFloat(s.toString().trim()); } catch (NumberFormatException e) { v = -1f; }
+                if (v >= FIELD_MIN && v <= FIELD_MAX) setScale(v, true, false);
+                else scaleText.setText(String.format(Locale.US, "Enter a scale from %.1f to %.0f.", FIELD_MIN, FIELD_MAX));
+            }
+        });
+    }
+
+    private void setScale(float v, boolean moveBar, boolean writeField) {
+        prefs().edit().putFloat(PREF_SCALE, v).apply();
+        showScale(v, moveBar, writeField);
+    }
+
+    /** Shows {@code v} on the slider and in the field, and the frame it gives. */
+    private void showScale(float v, boolean moveBar, boolean writeField) {
+        scaleUpdating = true;
+        if (moveBar) {
+            int step = Math.round((Math.min(v, 1f) - SCALE_MIN) / SCALE_STEP);
+            scaleBar.setProgress(Math.max(0, Math.min(SCALE_STEPS, step)));
+        }
+        if (writeField) scaleField.setText(formatScale(v));
+        scaleUpdating = false;
+
+        int[] screen = GameActivity.landscapeScreen(this);
+        int[] frame = GameActivity.frameSize(screen[0], screen[1], v);
+        scaleText.setText(String.format(Locale.US, "The game draws %d × %d for the %d × %d screen",
+                frame[0], frame[1], screen[0], screen[1]));
+    }
+
+    private static String formatScale(float v) {
+        String s = String.format(Locale.US, "%.2f", v);
+        return s.endsWith("0") ? s.substring(0, s.length() - 1) : s;
     }
 
     // ---- start and the countdown ----------------------------------------------------------------
@@ -282,9 +375,11 @@ public class MainActivity extends Activity {
         }
         gameLaunched = true;
         cancelCountdown(false);
-        Log.i(TAG, "starting the game (" + mode + ")");
+        float scale = prefs().getFloat(PREF_SCALE, SCALE_DEFAULT);
+        Log.i(TAG, "starting the game (" + mode + ", resolution scale " + scale + ")");
         Intent i = new Intent(this, GameActivity.class);
         i.putExtra(GameActivity.EXTRA_STORAGE_MODE, mode);
+        i.putExtra(GameActivity.EXTRA_RENDER_SCALE, scale);
         // An engine command line this launcher was started with (adb: GameActivity is not exported).
         String extraArgs = getIntent() != null ? getIntent().getStringExtra(GameActivity.EXTRA_ARGS) : null;
         if (extraArgs != null && !extraArgs.trim().isEmpty()) i.putExtra(GameActivity.EXTRA_ARGS, extraArgs);
