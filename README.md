@@ -63,6 +63,8 @@ Copy `<prefix>/lib/libSDL2-2.0.so.0` next to the binary (or add `<prefix>/lib` t
    ```
 3. The result is `build-windows/UnrealTournament/UnrealTournament.exe` plus `OpenAL32.dll`, which must stay next to it.
    A dedicated server, `build-windows/UCC/ucc-bin.exe`, is built too.
+4. For 64-bit Windows, install the x86_64 toolchain (`g++-mingw-w64-x86-64-posix`) and use the `windows64` preset; the
+   result is in `build-windows64/`.
 
 ### Windows x86 (MSYS2 on Windows)
 1. Install MSYS2 and open the `MINGW32` prompt. **Do not** use the `MINGW64` or `MSYS` prompts.

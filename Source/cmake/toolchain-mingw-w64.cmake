@@ -3,13 +3,14 @@
 # This is the compiler MSYS2 ships in its `mingw32` environment (`mingw-w64-i686-toolchain`), so a build from
 # an MSYS2 prompt needs no toolchain file; this file supplies only what a cross build cannot infer.
 #
-# 32-bit: the Windows build is i686 (a 64-bit Windows engine has never been built or run).
+# MINGW_TARGET_ARCH picks the compiler: i686 (the windows preset) or x86_64 (windows64, which also sets
+# UE_ALLOW_64BIT; without it Source/CMakeLists.txt would demote the compiler to -m32).
 #
-# Usage: `cmake --preset windows` (the preset points here). Standalone:
+# Usage: `cmake --preset windows` or `--preset windows64` (the presets point here). Standalone:
 #   cmake -S Source -B build-windows -DCMAKE_TOOLCHAIN_FILE=Source/cmake/toolchain-mingw-w64.cmake
 
 set(CMAKE_SYSTEM_NAME Windows)
-set(MINGW_TARGET_ARCH "i686" CACHE STRING "MinGW-w64 target arch: i686 (UE1) or x86_64")
+set(MINGW_TARGET_ARCH "i686" CACHE STRING "MinGW-w64 target arch: i686 or x86_64")
 set(CMAKE_SYSTEM_PROCESSOR ${MINGW_TARGET_ARCH})
 
 set(_MINGW_TRIPLE "${MINGW_TARGET_ARCH}-w64-mingw32")

@@ -297,8 +297,11 @@ if(TARGET_IS_WINDOWS)
     add_link_options(-Wl,-Bstatic,--whole-archive -lwinpthread -Wl,--no-whole-archive,-Bdynamic)
     # UE1 assumes Win32 /Zp4 struct packing: a reflected C++ class's size must equal its script property size.
     # MinGW follows the MSVC ABI and aligns double and int64 to 8 (x86-32 Linux aligns them to 4), so every source
-    # is packed to 4, as MSVC's /Zp4 does.
-    add_compile_options(-fpack-struct=4 -Wno-address-of-packed-member)
+    # is packed to 4, as MSVC's /Zp4 does. Not on x86_64, where it would repack the Win64 API's structs too: there
+    # the script-mirrored headers pack themselves (#pragma pack(push,4)).
+    if(NOT TARGET_IS_64BIT)
+      add_compile_options(-fpack-struct=4 -Wno-address-of-packed-member)
+    endif()
     # Windows puts in libraries what glibc keeps in libc: sockets (Core's appComputerName/appGetLocalIP
     # and all of IpDrv) are ws2_32, and appGetGUID's CoCreateGuid is ole32. Declared here, before the
     # add_subdirectory calls, so every package inherits them.

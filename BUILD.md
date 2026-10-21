@@ -21,6 +21,7 @@ All presets are in `Source/CMakePresets.json`; run `cmake --preset …` from `So
 | `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` | a headless `ucc-bin` for Android arm64 (bionic, API 24, static libc++; needs `ANDROID_NDK_HOME`) |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the same for armeabi-v7a |
 | `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` + `OpenAL32.dll`, `build-windows/UCC/ucc-bin.exe` | 32-bit Windows, MinGW-w64 (cross or MSYS2) |
+| `windows64` | the same in `build-windows64/` | 64-bit Windows, MinGW-w64 (x86_64), the shipped 32-bit `.u` unchanged |
 | `wasm` | `build-wasm/SDLLaunch/` | web, the development build: -O2 with DWARF and assertions |
 | `wasm-debug` | `build-wasm-debug/SDLLaunch/` | web at -O0, for a bug the optimiser is suspected of |
 | `wasm-perf` | `build-wasm-perf/SDLLaunch/` | web, the shipping build: -O2 compile, -O3 -g0 link, no assertions, a symbol map beside the loader |
@@ -243,19 +244,21 @@ Gradle project's SDL2).
 
 ## Windows (MinGW-w64)
 
-One 32-bit `.exe` with `OpenAL32.dll` beside it: libgcc, libstdc++ and winpthread are linked statically, and CI checks
+One `.exe` with `OpenAL32.dll` beside it: libgcc, libstdc++ and winpthread are linked statically, and CI checks
 that the exe imports only system DLLs. The toolchain file (`Source/cmake/toolchain-mingw-w64.cmake`) targets
-`i686-w64-mingw32`, the compiler MSYS2's `MINGW32` environment ships, so the same preset works from an MSYS2 prompt
-(where pacman's SDL2 answers). Renderers: XOpenGLDrv and UTGLR through the system `opengl32`, SoftDrv and NullDrv;
+`i686-w64-mingw32` for `windows`, the compiler MSYS2's `MINGW32` environment ships, so the same preset works from an
+MSYS2 prompt (where pacman's SDL2 answers), and `x86_64-w64-mingw32` for `windows64` (LLP64: `long` stays 4 bytes,
+pointers are 8). Renderers: XOpenGLDrv and UTGLR through the system `opengl32`, SoftDrv and NullDrv;
 NOpenGLESDrv is off.
 
 The platform layer is chosen by compiler: MSVC gets `Core/Src/UnVcWin32.cpp`, every GCC/Clang target
 `Core/Src/UnUnix.cpp`, with MinGW's few Win32-only calls in `Core/Src/UnMinGW.cpp`. Windows-specific code keys on
-`PLATFORM_WIN32` (IpDrv on `__WINSOCK__`/`__BSD_SOCKETS__`), not on the compiler. Every source is built with
-`-fpack-struct=4` (MinGW aligns doubles to 8; UE1 assumes `/Zp4`), and `ABrush`'s bitfield pad is skipped under
-MinGW's MS bitfields.
+`PLATFORM_WIN32` (IpDrv on `__WINSOCK__`/`__BSD_SOCKETS__`), not on the compiler. The 32-bit build compiles every
+source with `-fpack-struct=4` (MinGW aligns doubles to 8; UE1 assumes `/Zp4`); the 64-bit one leaves the Win64 API's
+structs alone and relies on the script-mirrored headers' own `#pragma pack(push,4)`. `ABrush`'s bitfield pad is skipped
+under MinGW's MS bitfields.
 
-Checking without Windows, with `wine` (32-bit) and `Xvfb`; SoftDrv and NullDrv need no GPU:
+Checking without Windows, with `wine` and `Xvfb`; SoftDrv and NullDrv need no GPU:
 
 ```bash
 Xvfb :99 -screen 0 1024x768x24 &

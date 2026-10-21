@@ -146,6 +146,17 @@
         "BUILD_NULLSOUNDDRV": "ON",
         "BUILD_NOPENALDRV": "ON"
       }
+    },
+    {
+      "name": "windows64",
+      "inherits": "windows",
+      "displayName": "Windows x86_64 (MinGW-w64) -- one .exe + OpenAL32.dll",
+      "description": "The 64-bit twin of windows: x86_64-w64-mingw32 with the 64-bit SDL2 and OpenAL Soft builds (LLP64: long stays 4 bytes, pointers are 8). The shipped 32-bit .u packages run unchanged, as on native64. Builds in build-windows64/.",
+      "binaryDir": "${sourceDir}/../build-windows64",
+      "cacheVariables": {
+        "MINGW_TARGET_ARCH": "x86_64",
+        "UE_ALLOW_64BIT": "ON"
+      }
     }
   ],
   "buildPresets": [
@@ -158,6 +169,7 @@
     { "name": "wasm", "configurePreset": "wasm" },
     { "name": "wasm-debug", "configurePreset": "wasm-debug" },
     { "name": "wasm-perf", "configurePreset": "wasm-perf" },
-    { "name": "windows", "configurePreset": "windows" }
+    { "name": "windows", "configurePreset": "windows" },
+    { "name": "windows64", "configurePreset": "windows64" }
   ]
 }
