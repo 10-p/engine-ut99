@@ -65,6 +65,11 @@ function(ufront_openal_soft)
     set(ALSOFT_DLOPEN OFF CACHE BOOL "" FORCE)
     set(ALSOFT_BACKEND_OPENSL ON CACHE BOOL "" FORCE)
     set(ALSOFT_REQUIRE_OPENSL ON CACHE BOOL "" FORCE)
+    # The desktop backends stay off: their pkg-config probes find the build machine's libraries (PipeWire), not the
+    # NDK's, and the link would ask for them.
+    foreach(_al_be PIPEWIRE PULSEAUDIO ALSA OSS JACK SNDIO)
+      set(ALSOFT_BACKEND_${_al_be} OFF CACHE BOOL "" FORCE)
+    endforeach()
     set(ALSOFT_ENABLE_MODULES OFF CACHE BOOL "" FORCE)
     set(ALSOFT_RTKIT OFF CACHE BOOL "" FORCE)
   else()
