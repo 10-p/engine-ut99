@@ -22,7 +22,7 @@ import java.util.Arrays;
  */
 final class GameFolder {
     private static final String TAG = "UT99";
-    static final String NAME = "UT99";
+    static final String NAME = BuildConfig.GAME_FOLDER;
 
     private GameFolder() {}
 

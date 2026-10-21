@@ -19,8 +19,21 @@ if (!new File(sdl2Java, 'org/libsdl/app/SDLActivity.java').isFile()) {
         throw new GradleException("could not clone SDL2 into ${sdl2Dir}")
 }
 
-// The ABIs: arm64-v8a, the phones; -Pabis=arm64-v8a,x86_64 adds the emulator.
-def ut99Abis = (project.findProperty('abis') ?: 'arm64-v8a').split(',').collect { it.trim() }
+// The engine this branch builds: ENGINE_VERSION in Source/Core/Inc/UnObjVer.h, 400 on main and 436 on
+// feat/v436-compat. The two apps install side by side: the v436 one takes an applicationId suffix, its own label and
+// its own game folder (v436 content is not v400's); the Java package (the namespace, the JNI names) stays the same.
+def objVer = file("${rootDir}/../Source/Core/Inc/UnObjVer.h")
+def versionMatch = (objVer.text =~ /(?m)^#define\s+ENGINE_VERSION\s+(\d+)/)
+if (!versionMatch.find())
+    throw new GradleException("no #define ENGINE_VERSION in ${objVer}")
+def ut99Engine = versionMatch.group(1)
+def ut99V436 = ut99Engine == '436'
+def ut99AppName = ut99V436 ? 'Unreal Tournament v436' : 'Unreal Tournament'
+def ut99GameFolder = ut99V436 ? 'UT99-436' : 'UT99'
+logger.lifecycle("UT99 engine v${ut99Engine}: \"${ut99AppName}\", game folder ${ut99GameFolder}")
+
+// The ABIs: 32-bit and 64-bit ARM devices in one APK; -Pabis=<list> builds others (x86_64 for a fast emulator).
+def ut99Abis = (project.findProperty('abis') ?: 'armeabi-v7a,arm64-v8a').split(',').collect { it.trim() }
 
 // What the APK installs into the game folder's System/ before each start (GameActivity): the Android inis
 // of Config/System/android, those of them that exist.
@@ -42,6 +55,19 @@ def ut99SystemOverlay = tasks.register('ut99SystemOverlay', Ut99SystemOverlay) {
     outputDir.set(layout.buildDirectory.dir('generated/ut99/assets'))
 }
 
+// Signing: ueAndroidSigning (a Gradle property, e.g. in ~/.gradle/gradle.properties) or UE_ANDROID_SIGNING names a
+// properties file kept outside the repository with storeFile, storePassword, keyAlias and keyPassword. With it every
+// variant is signed with that key, so each new APK installs over the last; without it, with the debug key.
+def ueSigningPath = project.findProperty('ueAndroidSigning') ?: System.getenv('UE_ANDROID_SIGNING')
+def ueSigning = null
+if (ueSigningPath) {
+    def signingFile = file(ueSigningPath)
+    if (!signingFile.isFile())
+        throw new GradleException("ueAndroidSigning=${ueSigningPath} is not a file")
+    ueSigning = new Properties()
+    signingFile.withInputStream { ueSigning.load(it) }
+}
+
 android {
     namespace = 'com.ut99.android'
     // Android 16, what the phones run; the app keeps Android 14's behaviour (targetSdk).
@@ -50,12 +76,14 @@ android {
     ndkVersion = '28.2.13676358'
 
     defaultConfig {
-        applicationId = 'com.ut99.android'
+        applicationId = ut99V436 ? 'com.ut99.android.v436' : 'com.ut99.android'
+        resValue 'string', 'app_name', ut99AppName
+        buildConfigField 'String', 'GAME_FOLDER', "\"${ut99GameFolder}\""
         // Android 11: All files access, which reading the game folder in place needs.
         minSdk = 30
         targetSdk = 34
-        versionCode = 1
-        versionName = '0.1'
+        versionCode = 10000
+        versionName = '1.0.0'
         ndk { abiFilters.addAll(ut99Abis) }
         externalNativeBuild {
             cmake {
@@ -86,9 +114,19 @@ android {
         }
     }
 
+    signingConfigs {
+        if (ueSigning) {
+            release {
+                storeFile = file(ueSigning.getProperty('storeFile'))
+                storePassword = ueSigning.getProperty('storePassword')
+                keyAlias = ueSigning.getProperty('keyAlias')
+                keyPassword = ueSigning.getProperty('keyPassword')
+            }
+        }
+    }
     buildTypes {
-        // Installable as it is (the debug key): a release build for testing on a device, not for a store.
-        release { signingConfig = signingConfigs.debug }
+        release { signingConfig = ueSigning ? signingConfigs.release : signingConfigs.debug }
+        debug { if (ueSigning) signingConfig = signingConfigs.release }
     }
 
     // The engine's CMake root, Source/: its ANDROID branches build the game as libUT99.so.
@@ -103,6 +141,8 @@ android {
         main { java.srcDir(sdl2Java) }
     }
 
+    // BuildConfig.GAME_FOLDER and the app_name resource come from defaultConfig.
+    buildFeatures { buildConfig = true; resValues = true }
     // The libraries extracted to the file system at install, as the manifest's extractNativeLibs says.
     packaging { jniLibs { useLegacyPackaging = true } }
     compileOptions {

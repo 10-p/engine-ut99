@@ -224,7 +224,7 @@ jobs:
   # `permissions: contents: write` is required: the default workflow token is
   # read-only.
   android:
-    name: android (arm64 APK)
+    name: android (arm64 + arm32 APK)
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -254,11 +254,12 @@ jobs:
         run: ./gradlew assembleDebug --console=plain
         working-directory: Android
 
-      - name: Assert the ABI is packaged
+      - name: Assert both ABIs are packaged
         run: |
           set -euo pipefail
           apk=Android/app/build/outputs/apk/debug/app-debug.apk
           unzip -l "$apk" | grep -q "lib/arm64-v8a/libUT99.so" || { echo "::error::missing arm64-v8a"; exit 1; }
+          unzip -l "$apk" | grep -q "lib/armeabi-v7a/libUT99.so" || { echo "::error::missing armeabi-v7a"; exit 1; }
 
       - uses: actions/upload-artifact@v4
         with:

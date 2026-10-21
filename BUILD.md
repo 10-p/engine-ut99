@@ -182,10 +182,10 @@ On a phone: push the asset tree to `/data/local/tmp/ut99/` and `ucc-bin` beside 
 
 `Android/` is a Gradle/NDK project (Android Gradle plugin 9.4.0, Gradle 9.6.0 through the wrapper, its daemon on
 an installed JDK 17) whose `externalNativeBuild` points at `Source/CMakeLists.txt` (targets `UnrealTournament`,
-the game as `libUT99.so`, and `ut99_android_bridge`), built for `arm64-v8a` (`-Pabis=arm64-v8a,x86_64` adds the
-emulator). It needs platform 36 (`compileSdk`; `targetSdk` 34, `minSdk` 30), build-tools 36.0.0, NDK
-28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK into `/usr/lib/android-sdk`;
-`local.properties` names it and the distribution's CMake:
+the game as `libUT99.so`, and `ut99_android_bridge`), built for `armeabi-v7a` and `arm64-v8a` in one APK
+(`-Pabis=<list>` builds others, `x86_64` for a fast emulator). It needs platform 36 (`compileSdk`; `targetSdk` 34,
+`minSdk` 30), build-tools 36.0.0, NDK 28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK
+into `/usr/lib/android-sdk`; `local.properties` names it and the distribution's CMake:
 
 ```bash
 sudo apt install openjdk-17-jdk cmake ninja-build adb google-android-cmdline-tools-19.0-installer \
@@ -195,12 +195,19 @@ printf 'sdk.dir=/usr/lib/android-sdk\ncmake.dir=/usr\n' > Android/local.properti
 
 ```bash
 cd Android
-./gradlew :app:assembleDebug        # -> app/build/outputs/apk/debug/app-debug.apk
+./gradlew :app:assembleRelease      # -> app/build/outputs/apk/release/app-release.apk (assembleDebug: debuggable)
 #   -Psdl2Dir=<path>     an SDL2 checkout (release-2.32.x); else one is cloned into Android/build/SDL2
 #   -PnativeDebug        the engine at the variant's own CMAKE_BUILD_TYPE (every variant is RelWithDebInfo otherwise)
-adb install -r app/build/outputs/apk/debug/app-debug.apk
+adb install -r app/build/outputs/apk/release/app-release.apk
 ```
 
+- Signing: every variant is signed with the key the Gradle property `ueAndroidSigning` names, a properties file kept
+  outside the repository (`storeFile`, `storePassword`, `keyAlias`, `keyPassword`), set in `~/.gradle/gradle.properties`
+  or as `UE_ANDROID_SIGNING`. One key signs every release, so each APK installs over the last; without the property
+  the build uses the debug key.
+- The engine version (`ENGINE_VERSION`, `Source/Core/Inc/UnObjVer.h`) names the app: v400 is `com.ut99.android`,
+  "Unreal Tournament", game folder `UT99`; v436 (`feat/v436-compat`) is `com.ut99.android.v436`, "Unreal Tournament
+  v436", game folder `UT99-436`. The two install side by side.
 - SDL2 is one checkout for both halves: the C library the engine's CMake builds (`FETCHCONTENT_SOURCE_DIR_SDL2`,
   shared, `libSDL2.so`) and the Java `SDLActivity` compiled from `android-project/`.
 - openal-soft (OpenSL ES, no C++20 modules, no RTKit) and libxmp are linked statically into `libUT99.so`.

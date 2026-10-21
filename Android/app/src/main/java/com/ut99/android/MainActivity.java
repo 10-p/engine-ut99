@@ -43,9 +43,9 @@ import java.util.Locale;
  * The launcher: which game folder the game runs from, getting the game into it, and the resolution.
  *
  * The engine reads its game folder by path. Internal storage (the app's own, fast, deleted with the app)
- * needs no permission: "Choose the UT99 folder" opens Android's folder picker, which gives the app that
+ * needs no permission: "Choose the <game> folder" opens Android's folder picker, which gives the app that
  * folder only, and "Copy to internal storage" copies it in (only what is new or changed; with no folder
- * chosen yet it opens the picker first). A UT99 folder in the app's own folder on a volume
+ * chosen yet it opens the picker first). A game folder in the app's own folder on a volume
  * (Android/data/com.ut99.android/files/UT99) is read in place without permission too; running in place from
  * anywhere else on shared storage (/sdcard/UT99, an SD card's UT99) needs All files access: starting from there
  * without it asks to allow it or to copy the game to internal storage instead. "Clear internal storage" deletes the
@@ -196,7 +196,7 @@ public class MainActivity extends Activity {
         progressBar.setVisibility(View.GONE);
         col.addView(progressBar, wide(dp(12)));
 
-        pickButton = mkButton(col, "Choose the UT99 folder…");
+        pickButton = mkButton(col, "Choose the " + GameFolder.NAME + " folder…");
         pickButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { pickFolder(); }
         });
@@ -208,15 +208,15 @@ public class MainActivity extends Activity {
         clearButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { doClearInternal(); }
         });
-        exportButton = mkButton(col, "Copy settings and saves to the UT99 folder");
+        exportButton = mkButton(col, "Copy settings and saves to the " + GameFolder.NAME + " folder");
         exportButton.setOnClickListener(new View.OnClickListener() {
             @Override public void onClick(View v) { doExportSettings(); }
         });
 
         buildScaleRow(col);
 
-        label(col, "Choose the UT99 folder (on the device or an SD card) and copy it to internal storage for the fastest "
-                + "loading. Playing from the UT99 folder directly needs access to all files.", 11f, 0xFF6E747C, 24);
+        label(col, "Choose the " + GameFolder.NAME + " folder (on the device or an SD card) and copy it to internal storage for the fastest "
+                + "loading. Playing from the " + GameFolder.NAME + " folder directly needs access to all files.", 11f, 0xFF6E747C, 24);
 
         setContentView(scroll);
         // In touch mode the first D-pad press only leaves touch mode and never reaches dispatchKeyEvent.
@@ -248,7 +248,7 @@ public class MainActivity extends Activity {
     }
 
     private void applyStorageSwitchText() {
-        storageSwitch.setText(storageSwitch.isChecked() ? "UT99 folder (slower)" : "Internal storage (fast)");
+        storageSwitch.setText(storageSwitch.isChecked() ? GameFolder.NAME + " folder (slower)" : "Internal storage (fast)");
     }
 
     // ---- resolution scale -----------------------------------------------------------------------
@@ -361,7 +361,7 @@ public class MainActivity extends Activity {
         if (GameActivity.MODE_INTERNAL.equals(mode)) {
             if (!GameFolder.isGameFolder(GameFolder.internalRoot(this))) {
                 cancelCountdown(true);
-                showMessage("There's no game in internal storage yet. Copy it from the UT99 folder first.");
+                showMessage("There's no game in internal storage yet. Copy it from the " + GameFolder.NAME + " folder first.");
                 return;
             }
         } else {
@@ -388,13 +388,13 @@ public class MainActivity extends Activity {
     }
 
     /**
-     * Playing in place from the UT99 folder needs All files access; copying the game to internal storage does not.
+     * Playing in place from shared storage needs All files access; copying the game to internal storage does not.
      * Allow access opens the system's page for it, and the game starts when the player comes back with it on.
      */
     private void askAllFilesAccess() {
         new AlertDialog.Builder(this)
                 .setTitle("Allow access to all files?")
-                .setMessage("To play from the UT99 folder, Unreal Tournament needs access to all files. Or copy the game to internal "
+                .setMessage("To play from the " + GameFolder.NAME + " folder, Unreal Tournament needs access to all files. Or copy the game to internal "
                         + "storage \u2014 no access needed.")
                 .setNeutralButton("Copy to internal storage", new DialogInterface.OnClickListener() {
                     @Override public void onClick(DialogInterface d, int w) { doCopyToInternal(); }
@@ -426,7 +426,7 @@ public class MainActivity extends Activity {
         Intent i = new Intent(Intent.ACTION_OPEN_DOCUMENT_TREE);
         i.addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION | Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 | Intent.FLAG_GRANT_PERSISTABLE_URI_PERMISSION);
-        // Opens at /sdcard/UT99 when it exists.
+        // Opens at the game folder on primary shared storage when it exists.
         i.putExtra(DocumentsContract.EXTRA_INITIAL_URI,
                 DocumentsContract.buildDocumentUri("com.android.externalstorage.documents", "primary:" + GameFolder.NAME));
         try {
@@ -456,9 +456,9 @@ public class MainActivity extends Activity {
             @Override public void run() {
                 final boolean ok = Storage.isGameTree(getContentResolver(), tree);
                 ui.post(new Runnable() { @Override public void run() {
-                    if (!ok) showMessage("That folder doesn't contain the game (no System/Core.u). Choose the UT99 folder.");
+                    if (!ok) showMessage("That folder doesn't contain the game (no System/Core.u). Choose the " + GameFolder.NAME + " folder.");
                     else if (copy) doCopyToInternal();
-                    else showMessage("UT99 folder chosen: " + folderName(tree));
+                    else showMessage(GameFolder.NAME + " folder chosen: " + folderName(tree));
                     refreshStatusAsync();
                 } });
             }
@@ -495,7 +495,7 @@ public class MainActivity extends Activity {
                 if (tree != null) {
                     err = Storage.isGameTree(getContentResolver(), tree)
                             ? Storage.syncFromTree(getContentResolver(), tree, dst, throttledListener())
-                            : "Unreal Tournament can't read the chosen folder anymore. Choose the UT99 folder again.";
+                            : "Unreal Tournament can't read the chosen folder anymore. Choose the " + GameFolder.NAME + " folder again.";
                 } else {
                     err = Storage.syncTree(src, dst, throttledListener());
                 }
@@ -545,7 +545,7 @@ public class MainActivity extends Activity {
             return;
         }
         if (tree == null && !GameFolder.isGameFolder(external)) {
-            showMessage("Choose the UT99 folder first.");
+            showMessage("Choose the " + GameFolder.NAME + " folder first.");
             return;
         }
         startOp("Copying settings and saves…");
@@ -644,8 +644,8 @@ public class MainActivity extends Activity {
                         : "needs access to all files";
                 final String s = "Internal storage free: " + Storage.human(free) + '\n'
                         + "Internal copy: " + (intReady ? Storage.human(Storage.dirSize(internal)) + "  " + internal : "none") + '\n'
-                        + "Chosen UT99 folder: " + chosen + '\n'
-                        + "UT99 folder, in place: " + shared;
+                        + "Chosen " + GameFolder.NAME + " folder: " + chosen + '\n'
+                        + GameFolder.NAME + " folder, in place: " + shared;
                 ui.post(new Runnable() { @Override public void run() { statusText.setText(s); } });
             }
         }, "ut99-status").start();
