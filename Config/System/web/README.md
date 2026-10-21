@@ -10,6 +10,8 @@ when the web config changes, never an asset tree.
 `IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). On top of the
 retail file it carries `[WebRTCDrv.WebRTCNetDriver]`, `[XOpenGLDrv.XOpenGLRenderDevice]`,
 `[NOpenGLESDrv.NOpenGLESRenderDevice]`, `[NOpenALDrv.NOpenALAudioSubsystem]`, `[NullDrv.NullRenderDevice]`,
-`[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`. `DefUser.ini` adds the game-pad bindings (Unreal 1's layout).
+`[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`. `DefUser.ini` adds the game-pad bindings (Unreal 1's layout) and
+`[Engine.PlayerPawn] bMaxMouseSmoothing=False`: the view stops on the frame the mouse stops (the script's default
+keeps turning for up to `MouseSmoothThreshold` after it).
 
 `../*.ini` is ut99dc's Dreamcast config; no build preloads or installs it.
