@@ -36,6 +36,7 @@ this engine are under `#if ENGINE_VERSION==400`:
 - The `DistanceFogParams` uniform block is declared only with `OPT_DistanceFog`, so no shader carries an unbound block.
 - `SetGamma` substitutes the retail defaults when the config loads zero: brightness 0.5 and `GammaMultiplier` 1.75.
 - DXT1 is uploaded through `glCompressedTexImage2D` with its size computed directly (8 bytes per 4x4 block).
+- `ReadPixels` reads the resolved frame when `UseAA` is on.
 
 ## Textures
 
@@ -51,8 +52,10 @@ P8, 1024x1024 DXT1). `CheckExtensions` picks from the context's formats, the sam
 | none of them | not used: the engine keeps the P8 mips | 8 (palette) |
 
 A transcode decodes each mip with the fork's gl4es block decoder (`Src/decompress.cpp`) and encodes it, at the
-texture's first upload. ASTC 4x4 holds a DXT1 block's four colours almost exactly, at twice the memory; ETC2 keeps
-the size but quantizes colour per 2x4 sub-block, which shows on dark, low-contrast surfaces. The ASTC encoder is
-the slower of the two, most without SIMD (32-bit ARM, wasm). `Init` logs the choice (`XOpenGL: no S3TC: DXT1
-textures ...`).
-- `ReadPixels` reads the resolved frame when `UseAA` is on.
+texture's first upload: in the precache after a level loads (`UsePrecache`, on by default; `PrecacheTexture` takes a
+program for the upload, since the engine precaches between frames), else when it first comes into view. ASTC 4x4
+holds a DXT1 block's four colours almost exactly, at twice the memory, and is decoded at 8-bit precision where the
+context has `GL_EXT_texture_compression_astc_decode_mode`; ETC2 keeps the size but quantizes colour per 2x4
+sub-block, which shows on dark, low-contrast surfaces. The ASTC encoder (`Src/ASTCEncoder.cpp`) shares a texture of
+256x256 and up among one thread a core, up to 8; it is the slower of the two encoders, most without SIMD (32-bit
+ARM, wasm). `Init` logs the choice (`XOpenGL: no S3TC: DXT1 textures ...`).
