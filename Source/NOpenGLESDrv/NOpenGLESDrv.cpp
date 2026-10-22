@@ -72,6 +72,7 @@ void UNOpenGLESRenderDevice::StaticConstructor()
 	new(GetClass(), "UseBGRA",        RF_Public)UBoolProperty( CPP_PROPERTY(UseBGRA),        "Options", CPF_Config );
 	new(GetClass(), "MaxAnisotropy",  RF_Public)UFloatProperty( CPP_PROPERTY(MaxAnisotropy),  "Options", CPF_Config );
 	new(GetClass(), "NumAASamples",   RF_Public)UIntProperty( CPP_PROPERTY(NumAASamples),     "Options", CPF_Config );
+	new(GetClass(), "SwapInterval",   RF_Public)UIntProperty( CPP_PROPERTY(SwapInterval),     "Options", CPF_Config );
 	// Compiled defaults, on the class default object, where the ini overrides them (the constructor runs on an
 	// object the ini has already filled). They match the web ini.
 	DetailTextures = true;
@@ -81,6 +82,7 @@ void UNOpenGLESRenderDevice::StaticConstructor()
 	UseBGRA = true;
 	MaxAnisotropy = 16.f;   // clamped at Init to the driver's maximum
 	NumAASamples = 4;
+	SwapInterval = 1;	// 0 off, 1 vsync, -1 adaptive
 	unguardSlow;
 }
 
@@ -172,6 +174,8 @@ UBOOL UNOpenGLESRenderDevice::Init( UViewport* InViewport, INT NewX, INT NewY, I
 
 	SupportsFogMaps = true;
 	SupportsDistanceFog = true;
+
+	UpdateSwapInterval();
 
 	ComposeSize = 256 * 256 * 4;
 	Compose = (BYTE*)appMalloc( ComposeSize, "GLComposeBuf" );
@@ -325,6 +329,8 @@ void UNOpenGLESRenderDevice::PostEditChange()
 	guard(UNOpenGLESRenderDevice::PostEditChange)
 
 	Super::PostEditChange();
+
+	UpdateSwapInterval();
 
 	unguard;
 }
@@ -1135,6 +1141,35 @@ void UNOpenGLESRenderDevice::UploadTexture( FTextureInfo& Info, UBOOL Masked, UB
 			glTexImage2D( GL_TEXTURE_2D, MipIndex, UploadFormat, Mip->USize, Mip->VSize, 0, UploadFormat, GL_UNSIGNED_BYTE, (void*)UploadBuf );
 		else
 			glTexSubImage2D( GL_TEXTURE_2D, MipIndex, 0, 0, Mip->USize, Mip->VSize, UploadFormat, GL_UNSIGNED_BYTE, (void*)UploadBuf );
+	}
+
+	unguard;
+}
+
+void UNOpenGLESRenderDevice::UpdateSwapInterval()
+{
+	guard(UNOpenGLESRenderDevice::UpdateSwapInterval);
+
+	if( SwapInterval < -1 )
+	{
+		SwapInterval = -1;
+	}
+
+#if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
+	// Presentation is ours (explicitSwapControl + emscripten_webgl_commit_frame), so SDL's swap interval
+	// is meaningless here and would only log a failure against a context SDL does not own.
+	if( 0 )
+#else
+	if( SDL_GL_SetSwapInterval( SwapInterval ) < 0 )
+#endif
+	{
+		debugf( NAME_Warning, "Failed to set swap interval %d: %s", SwapInterval, SDL_GetError() );
+		if( SwapInterval < 0 )
+		{
+			// Adaptive VSync not supported, try normal VSync.
+			SwapInterval = 1;
+			UpdateSwapInterval();
+		}
 	}
 
 	unguard;

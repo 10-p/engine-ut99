@@ -73,6 +73,7 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 	//     multisampled back buffer; natively the viewport made the context first, so it is only logged.
 	FLOAT MaxAnisotropy;
 	INT NumAASamples;
+	INT SwapInterval;
 	UBOOL UseBGRA;
 	UBOOL Overbright;
 	UBOOL DetailTextures;
@@ -191,6 +192,7 @@ class DLL_EXPORT UNOpenGLESRenderDevice : public URenderDevice
 	void ResetTexture( INT TMU );
 	void UploadTexture( FTextureInfo& Info, UBOOL Masked, UBOOL NewTexture );
 	void UpdateTextureFilter( const FTextureInfo& Info, DWORD PolyFlags );
+	void UpdateSwapInterval();
 
 private:
 	// Fixed function mode emulation.
