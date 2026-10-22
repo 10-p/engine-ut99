@@ -200,8 +200,10 @@ private:
 		{
 			check( IdxDataPtr <= IdxDataEnd );
 			check( VtxDataPtr <= VtxDataEnd );
+			// Each batch fills the buffer whole: a glBufferSubData into the buffer the previous batch's draw still
+			// reads makes the driver copy it or wait.
 			if ( UseVAO )
-				glBufferSubData( GL_ARRAY_BUFFER, 0, ( (BYTE*)VtxDataPtr - (BYTE*)VtxData ), VtxData );
+				glBufferData( GL_ARRAY_BUFFER, ( (BYTE*)VtxDataPtr - (BYTE*)VtxData ), VtxData, GL_STREAM_DRAW );
 			glDrawElements( GL_TRIANGLES, IdxDataPtr - IdxData, GL_UNSIGNED_SHORT, IdxData );
 			IdxCount = 0;
 		}
