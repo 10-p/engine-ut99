@@ -2,7 +2,7 @@
 
 `XOpenGLDrv.XOpenGLRenderDevice` is OldUnreal's OpenGL 3.3 / GLES 3 renderer. The source is fetched from the fork
 [10-p/XOpenGLDrv](https://github.com/10-p/XOpenGLDrv) (`XOPENGL_GIT_REPOSITORY`, `XOPENGL_GIT_TAG`, branch
-`ut99-v400-compat`), which also carries its `XOpenGLDrv.int`; this folder holds the build glue (`CMakeLists.txt`) and
+`ufront`), which also carries its `XOpenGLDrv.int`; this folder holds the build glue (`CMakeLists.txt`) and
 these notes. `BUILD_XOPENGLDRV` builds it (on in the native, Windows and web builds); `-XOPENGLRENDERER` selects
 it. The web path: `WEB_INTEGRATION.md`.
 

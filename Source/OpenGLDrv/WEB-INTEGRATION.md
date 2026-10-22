@@ -1,9 +1,10 @@
 # OpenGLDrv (UTGLR) on the web
 
-On the web UTGLR draws through [gl4es](https://github.com/ptitSeb/gl4es) (desktop GL to GLES2), linked statically
-into the wasm (`USE_GL4ES`, on in the `if(EMSCRIPTEN)` branch). gl4es is fetched from `GL4ES_GIT_REPOSITORY` at
-`GL4ES_GIT_TAG` (`ptitSeb/gl4es`, `master`), or taken from `GL4ES_SOURCE_DIR`, and built with `NOX11 NOEGL STATICLIB
-DEFAULT_ES=2 NO_INIT_CONSTRUCTOR`. The frontend lists the device as `-UTGLRRENDERER` in its `targets/ut99/target.json`.
+On the web UTGLR draws through gl4es ([10-p/gl4es](https://github.com/10-p/gl4es), a fork of ptitSeb's: desktop GL
+to GLES2), linked statically into the wasm (`USE_GL4ES`, on in the `if(EMSCRIPTEN)` branch). gl4es is fetched from
+`GL4ES_GIT_REPOSITORY` at `GL4ES_GIT_TAG` (`10-p/gl4es`, `ufront`, the branch every engine fetches), or taken from
+`GL4ES_SOURCE_DIR`, and built with `NOX11 NOEGL STATICLIB DEFAULT_ES=2 NO_INIT_CONSTRUCTOR`. The frontend lists the
+device as `-UTGLRRENDERER` in its `targets/ut99/target.json`.
 
 ## Context
 

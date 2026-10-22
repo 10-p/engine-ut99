@@ -24,7 +24,7 @@ separate commits.
 | This repo (private) | `10-p/engine-ut99` | UT99 v400 source → web and native builds |
 | The v436 branch | `feat/v436-compat` | the same engine for v436 content; carries all of `main` |
 | Frontend | `10-p/unreal-frontend-arch-private` | consumes `build-wasm-perf/SDLLaunch/`; host, UI, glue, publishing |
-| Fetched renderers | `10-p/XOpenGLDrv` (`ut99-v400-compat`), `10-p/utglr-copy` (`main`) | edited in their repos; `Source/XOpenGLDrv` and `Source/OpenGLDrv` hold the build glue |
+| Fetched renderers | `10-p/XOpenGLDrv` (`ufront`), `10-p/utglr-copy` (`main`) | edited in their repos; `Source/XOpenGLDrv` and `Source/OpenGLDrv` hold the build glue |
 | Game assets | any local folder (never in git) | a retail UT99 install; no build reads it |
 | Android app | `Android/` | the Gradle/NDK project: `libUT99.so` from `Source/CMakeLists.txt`, the launcher and the touch overlay (`BUILD.md`, Android) |
 | Android reference | [Andiweli/UT99-Android](https://github.com/Andiweli/UT99-Android) | SDL2 glue ideas only |

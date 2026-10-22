@@ -73,11 +73,11 @@ The first configure of a preset fetches (FetchContent; the cache variables name 
 
 | Library | Default | Variables | Used by |
 |---|---|---|---|
-| XOpenGLDrv | [10-p/XOpenGLDrv](https://github.com/10-p/XOpenGLDrv), branch `ut99-v400-compat` | `XOPENGL_GIT_REPOSITORY`, `XOPENGL_GIT_TAG` | `Source/XOpenGLDrv` (build glue) |
+| XOpenGLDrv | [10-p/XOpenGLDrv](https://github.com/10-p/XOpenGLDrv), branch `ufront` | `XOPENGL_GIT_REPOSITORY`, `XOPENGL_GIT_TAG` | `Source/XOpenGLDrv` (build glue) |
 | etcpak | [wolfpld/etcpak](https://github.com/wolfpld/etcpak), commit `3d716e1` | `ETCPAK_GIT_REPOSITORY`, `ETCPAK_GIT_TAG` | XOpenGLDrv's ETC2 encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
 | astc-encoder | [ARM-software/astc-encoder](https://github.com/ARM-software/astc-encoder), 5.7.0 (`baff485`) | `ASTCENC_GIT_REPOSITORY`, `ASTCENC_GIT_TAG` | XOpenGLDrv's ASTC encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
 | OpenGLDrv/UTGLR | [10-p/utglr-copy](https://github.com/10-p/utglr-copy), branch `main` | `UTGLR_GIT_REPOSITORY`, `UTGLR_GIT_TAG` | `Source/OpenGLDrv` (build glue) |
-| gl4es | [ptitSeb/gl4es](https://github.com/ptitSeb/gl4es), branch `master` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web |
+| gl4es | [10-p/gl4es](https://github.com/10-p/gl4es) (a fork of ptitSeb/gl4es), branch `ufront` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web |
 | openal-soft | [10-p/openal-soft-web](https://github.com/10-p/openal-soft-web), branch `ufront/web` | `OPENALSOFT_GIT_REPOSITORY`, `OPENALSOFT_GIT_TAG` | NOpenALDrv: static on the web, `libopenal.so.1` on native Linux (`Source/cmake/OpenALSoft.cmake`) |
 | libxmp | `libxmp-4.7.1` | `LIBXMP_GIT_REPOSITORY`, `LIBXMP_GIT_TAG`, `LIBXMP_SOURCE_DIR` | NOpenALDrv (`Source/NOpenALDrv/CMakeLists.txt`) |
 | SDL2 | [libsdl-org/SDL](https://github.com/libsdl-org/SDL), branch `release-2.32.x` | `SDL2_GIT_REPOSITORY`, `SDL2_GIT_TAG`, `FETCHCONTENT_SOURCE_DIR_SDL2` | the Android client, built shared as `libSDL2.so` (the Gradle project passes its own checkout, whose Java it compiles) |
