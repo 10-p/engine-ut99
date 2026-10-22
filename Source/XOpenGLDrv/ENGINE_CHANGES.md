@@ -13,6 +13,10 @@ it. The web path: `WEB_INTEGRATION.md`.
 - Defines `UPACKAGE_NAME=XOpenGLDrv` (the static build's package symbols; it must match `IMPLEMENT_PACKAGE`, the `.int`
   and the ini's `XOpenGLDrv.XOpenGLRenderDevice`) and `SDLBUILD=1 SDL2BUILD=1 SDL3BUILD=0`, since the fork's header
   picks its SDL flavour from macros this engine does not define. It needs `USE_SDL`.
+- Fetches etcpak and ARM astc-encoder at pinned commits and compiles only their codec sources into the device
+  (etcpak's `ProcessRGB`, `Tables`, `Dither`; astc-encoder's `Source/astcenc_*.cpp`), on every target, with
+  `XOPENGL_TRANSCODE=1`. Each picks its SIMD paths from the compiler's target macros (astc-encoder: NEON on arm64,
+  SSE2 on x86_64, scalar on 32-bit ARM and wasm without SIMD).
 
 ## What the fork changes for this engine
 
@@ -33,3 +37,25 @@ this engine are under `#if ENGINE_VERSION==400`:
 - `SetGamma` substitutes the retail defaults when the config loads zero: brightness 0.5 and `GammaMultiplier` 1.75.
 - DXT1 is uploaded through `glCompressedTexImage2D` with its size computed directly (8 bytes per 4x4 block).
 - `ReadPixels` reads the resolved frame when `UseAA` is on.
+
+## Textures
+
+The engine hands a device the DXT1 copy of an S3TC texture only when the device sets `SupportsTC`, else its P8
+mips; for the high-res S3TC set the P8 mips are a quarter to an eighth of the DXT1 size (`UTcrypt.nuwood`: 128x128
+P8, 1024x1024 DXT1). `CheckExtensions` picks from the context's formats, the same way on every platform:
+
+| The context has | DXT1 mips are | Bits a texel |
+|---|---|---|
+| S3TC (`GL_EXT_texture_compression_s3tc`, `WEBGL_compressed_texture_s3tc`) | uploaded as they are | 4 |
+| ASTC (`GL_KHR_texture_compression_astc_ldr`, `WEBGL_compressed_texture_astc`) | transcoded to ASTC 4x4 at upload (astc-encoder, fastest preset) | 8 |
+| ETC2 (an ES 3 context, desktop GL with `GL_ARB_ES3_compatibility`, `WEBGL_compressed_texture_etc`) | transcoded to ETC2 RGB at upload (etcpak) | 4 |
+| none of them | not used: the engine keeps the P8 mips | 8 (palette) |
+
+A transcode decodes each mip with the fork's gl4es block decoder (`Src/decompress.cpp`) and encodes it, at the
+texture's first upload: in the precache after a level loads (`UsePrecache`, on by default; `PrecacheTexture` takes a
+program for the upload, since the engine precaches between frames), else when it first comes into view. ASTC 4x4
+holds a DXT1 block's four colours almost exactly, at twice the memory, and is decoded at 8-bit precision where the
+context has `GL_EXT_texture_compression_astc_decode_mode`; ETC2 keeps the size but quantizes colour per 2x4
+sub-block, which shows on dark, low-contrast surfaces. The ASTC encoder (`Src/ASTCEncoder.cpp`) shares a texture of
+256x256 and up among one thread a core, up to 8; it is the slower of the two encoders, most without SIMD (32-bit
+ARM, wasm). `Init` logs the choice (`XOpenGL: no S3TC: DXT1 textures ...`).

@@ -37,3 +37,25 @@ target_link_libraries(${PROJECT_NAME} Render Engine Core)
 target_compile_definitions(${PROJECT_NAME} PRIVATE
   XOPENGLDRV_EXPORTS UPACKAGE_NAME=${PROJECT_NAME}
   SDLBUILD=1 SDL2BUILD=1 SDL3BUILD=0)
+
+# Texture transcoding: on a GL context without S3TC, XOpenGL transcodes the DXT1 mips at upload, to ASTC 4x4
+# (ARM astc-encoder) where the context has ASTC, else to ETC2 (etcpak); with neither it keeps the P8 mips. The
+# choice is made from the context's formats at run time, so both encoders are built on every target. Only their
+# codec sources are compiled (neither project's own CMakeLists.txt is used); each picks its SIMD paths from the
+# compiler's target macros. Both are pinned to commits.
+set(ETCPAK_GIT_REPOSITORY "https://github.com/wolfpld/etcpak.git" CACHE STRING "etcpak git repo")
+set(ETCPAK_GIT_TAG "3d716e1550023dc5ff8b602636af8b76584e0b66" CACHE STRING "etcpak commit")
+set(ASTCENC_GIT_REPOSITORY "https://github.com/ARM-software/astc-encoder.git" CACHE STRING "astc-encoder git repo")
+set(ASTCENC_GIT_TAG "baff485b0ff36d2f95d28961605106502c653966" CACHE STRING "astc-encoder commit (5.7.0)")
+include(FetchContent)
+FetchContent_Declare(etcpak
+  GIT_REPOSITORY "${ETCPAK_GIT_REPOSITORY}" GIT_TAG "${ETCPAK_GIT_TAG}" SOURCE_SUBDIR no-cmake-build)
+FetchContent_Declare(astcenc
+  GIT_REPOSITORY "${ASTCENC_GIT_REPOSITORY}" GIT_TAG "${ASTCENC_GIT_TAG}" SOURCE_SUBDIR no-cmake-build)
+FetchContent_MakeAvailable(etcpak astcenc)
+file(GLOB ASTCENC_SOURCES "${astcenc_SOURCE_DIR}/Source/astcenc_*.cpp")
+target_sources(${PROJECT_NAME} PRIVATE
+  ${etcpak_SOURCE_DIR}/ProcessRGB.cpp ${etcpak_SOURCE_DIR}/Tables.cpp ${etcpak_SOURCE_DIR}/Dither.cpp
+  ${ASTCENC_SOURCES})
+target_include_directories(${PROJECT_NAME} PRIVATE ${etcpak_SOURCE_DIR} ${astcenc_SOURCE_DIR}/Source)
+target_compile_definitions(${PROJECT_NAME} PRIVATE XOPENGL_TRANSCODE=1)

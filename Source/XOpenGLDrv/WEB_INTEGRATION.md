@@ -22,8 +22,14 @@ same shaders natively.
 - WebGL exposes S3TC as `WEBGL_compressed_texture_s3tc`; the extension check accepts that name, so DXT1 uploads
   compressed.
 - WebGL 2 rejects a compressed DXT1 mip whose base size is not a multiple of 4 (a 128x2 gradient, for example). On
-  the `ES_WEBGL` profile those mips are decoded to RGBA8 in software with the S3TC block decoder taken from gl4es
-  (the fork's `Src/decompress.cpp`, by Benjamin Dobell and Matthäus Chajdas) and uploaded uncompressed.
+  the `ES_WEBGL` profile, with S3TC, those mips are decoded to RGBA8 in software with the S3TC block decoder taken
+  from gl4es (the fork's `Src/decompress.cpp`, by Benjamin Dobell and Matthäus Chajdas) and uploaded uncompressed.
+- Without `WEBGL_compressed_texture_s3tc` (most mobile browsers), DXT1 mips are transcoded at upload to ASTC 4x4
+  where the browser exposes `WEBGL_compressed_texture_astc`, else to ETC2 where it exposes
+  `WEBGL_compressed_texture_etc`, else the engine keeps the P8 mips (`ENGINE_CHANGES.md`, "Textures"). The
+  transcode pads every mip to whole 4x4 blocks, so it takes any size. Both encoders build for wasm with their
+  scalar paths unless the web build enables wasm SIMD, so the ASTC transcode at a texture's first upload is slower
+  there than natively.
 
 ## Antialiasing
 
