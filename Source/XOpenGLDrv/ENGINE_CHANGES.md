@@ -37,6 +37,9 @@ this engine are under `#if ENGINE_VERSION==400`:
 - `SetGamma` substitutes the retail defaults when the config loads zero: brightness 0.5 and `GammaMultiplier` 1.75.
 - DXT1 is uploaded through `glCompressedTexImage2D` with its size computed directly (8 bytes per 4x4 block).
 - `ReadPixels` reads the resolved frame when `UseAA` is on.
+- On an OpenGL ES or WebGL context (`IsES()`) each batch fills the vertex and parameter buffers whole
+  (`glBufferData`) and rotates them after every flush, as OldUnreal does on macOS and ARM Linux: those drivers copy
+  a buffer, or wait, on a `glBufferSubData` into it while queued draws still read it.
 
 ## Textures
 
