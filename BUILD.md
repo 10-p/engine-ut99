@@ -74,6 +74,8 @@ The first configure of a preset fetches (FetchContent; the cache variables name 
 | Library | Default | Variables | Used by |
 |---|---|---|---|
 | XOpenGLDrv | [10-p/XOpenGLDrv](https://github.com/10-p/XOpenGLDrv), branch `ut99-v400-compat` | `XOPENGL_GIT_REPOSITORY`, `XOPENGL_GIT_TAG` | `Source/XOpenGLDrv` (build glue) |
+| etcpak | [wolfpld/etcpak](https://github.com/wolfpld/etcpak), commit `3d716e1` | `ETCPAK_GIT_REPOSITORY`, `ETCPAK_GIT_TAG` | XOpenGLDrv's ETC2 encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
+| astc-encoder | [ARM-software/astc-encoder](https://github.com/ARM-software/astc-encoder), 5.7.0 (`baff485`) | `ASTCENC_GIT_REPOSITORY`, `ASTCENC_GIT_TAG` | XOpenGLDrv's ASTC encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
 | OpenGLDrv/UTGLR | [10-p/utglr-copy](https://github.com/10-p/utglr-copy), branch `main` | `UTGLR_GIT_REPOSITORY`, `UTGLR_GIT_TAG` | `Source/OpenGLDrv` (build glue) |
 | gl4es | [ptitSeb/gl4es](https://github.com/ptitSeb/gl4es), branch `master` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web |
 | openal-soft | [10-p/openal-soft-web](https://github.com/10-p/openal-soft-web), branch `ufront/web` | `OPENALSOFT_GIT_REPOSITORY`, `OPENALSOFT_GIT_TAG` | NOpenALDrv: static on the web, `libopenal.so.1` on native Linux (`Source/cmake/OpenALSoft.cmake`) |
