@@ -9,6 +9,7 @@
 #endif
 
 #include "NSDLDrv.h"
+#include "NSDLInputTest.h"
 #include "UnRender.h"
 
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
@@ -222,6 +223,12 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 	QuitRequested = false;
 	HoldCount = 0;
 
+	appMemzero( PadKeySent, sizeof(PadKeySent) );
+	InputTest = NULL;
+	FString InputTestFile;
+	if( Parse( appCmdLine(), TEXT("INPUTTEST="), InputTestFile ) )
+		InputTest = new FNSDLInputTest( *InputTestFile );
+
 	unguard;
 }
 
@@ -230,6 +237,8 @@ void UNSDLViewport::Destroy()
 {
 	guard(UNSDLViewport::Destroy);
 	// Note: FullscreenViewport tracking removed - Unreal 1 specific
+	delete InputTest;
+	InputTest = NULL;
 	UViewport::Destroy();
 	unguard;
 }
@@ -1111,9 +1120,9 @@ void UNSDLViewport::UpdatePadAxis( INT Axis, INT NewValue )
 	{
 		// Treat the axis like a trigger.
 		if ( PrevValue < JoyAxisPressThreshold && NewValue >= JoyAxisPressThreshold )
-			CauseInputEvent( Key, IST_Press );
+			PadKey( Key, IST_Press );
 		else if ( PrevValue >= JoyAxisPressThreshold && NewValue < JoyAxisPressThreshold )
-			CauseInputEvent( Key, IST_Release );
+			PadKey( Key, IST_Release );
 	}
 	else
 	{
@@ -1147,15 +1156,39 @@ static INT GPadsOn = -1;	// UseJoystick as last seen (-1: not yet; the client's 
 void UNSDLViewport::ReleasePad()
 {
 	guard(UNSDLViewport::ReleasePad);
-	for( INT b=0; b<SDL_CONTROLLER_BUTTON_MAX; b++ )
-		if( JoyButtonMap[b] )
-			CauseInputEvent( JoyButtonMap[b], IST_Release );
+	for( INT k=0; k<IK_MAX; k++ )
+		PadKey( k, IST_Release );
 	for( INT a=0; a<SDL_CONTROLLER_AXIS_MAX; a++ )
-	{
-		if( JoyAxisMap[a] && JoyAxisMap[a] < IK_JoyX && JoyAxis[a] >= JoyAxisPressThreshold )
-			CauseInputEvent( JoyAxisMap[a], IST_Release );
 		JoyAxis[a] = 0;
+	unguard;
+}
+
+//
+// A pad key's press or release. A press already held is ignored, and a release sends the engine key the press
+// sent.
+//
+void UNSDLViewport::PadKey( INT Key, EInputAction Action )
+{
+	guard(UNSDLViewport::PadKey);
+	if( Key <= 0 || Key >= IK_MAX )
+		return;
+	INT Sent = PadKeySent[Key];
+	if( Action == IST_Press )
+	{
+		if( Sent )
+			return;
+		Sent = Key;
+		PadKeySent[Key] = Sent;
 	}
+	else
+	{
+		if( !Sent )
+			return;
+		PadKeySent[Key] = 0;
+	}
+	if( InputTest )
+		debugf( NAME_Log, TEXT("NSDLInputTest: key %s %s"), Input->GetKeyName( (EInputKey)Sent ), Action == IST_Press ? TEXT("press") : TEXT("release") );
+	CauseInputEvent( Sent, Action );
 	unguard;
 }
 
@@ -1170,8 +1203,11 @@ UBOOL UNSDLViewport::TickInput()
 	const DOUBLE CurTime = appSeconds();
 	const FLOAT DeltaTime = InputUpdateTime > 0.0 ? (FLOAT)Clamp( CurTime - InputUpdateTime, 0.0, 0.25 ) : 0.f;
 	for( INT k = 0; k < GHeldTapNum; k++ )
-		CauseInputEvent( GHeldTap[k], IST_Release );
+		PadKey( GHeldTap[k], IST_Release );
 	GHeldTapNum = 0;
+
+	if( InputTest )
+		InputTest->Tick( this );
 
 #if defined(__ANDROID__)
 	// A touch's tap arrives in one poll: the motion, the press and the release. UWindow acts on the cursor it
@@ -1300,13 +1336,13 @@ UBOOL UNSDLViewport::TickInput()
 								const INT Axis = b==6 ? SDL_CONTROLLER_AXIS_TRIGGERLEFT : SDL_CONTROLLER_AXIS_TRIGGERRIGHT;
 								if( JoyAxisMap[Axis] )
 								{
-									CauseInputEvent( JoyAxisMap[Axis], IST_Press );
+									PadKey( JoyAxisMap[Axis], IST_Press );
 									GHeldTap[GHeldTapNum++] = JoyAxisMap[Axis];	// released next tick (a tap)
 								}
 							}
 							else if( JoyButtonMap[W3CToSDL[b]] )
 							{
-								CauseInputEvent( JoyButtonMap[W3CToSDL[b]], IST_Press );
+								PadKey( JoyButtonMap[W3CToSDL[b]], IST_Press );
 								GHeldTap[GHeldTapNum++] = JoyButtonMap[W3CToSDL[b]];	// released next tick (a tap)
 							}
 						}
@@ -1325,7 +1361,7 @@ UBOOL UNSDLViewport::TickInput()
 					// Note: GetMainFrame() is Unreal 1 specific, disabled for UT99
 					const UBOOL bIsInUI = 0; // Console && ((UObject*)Console)->GetMainFrame() && ...
 					const BYTE* JoyMap = bIsInUI ? JoyButtonMapUI : JoyButtonMap;
-					CauseInputEvent( JoyMap[Ev.cbutton.button], ( Ev.type == SDL_CONTROLLERBUTTONDOWN ) ? IST_Press : IST_Release );
+					PadKey( JoyMap[Ev.cbutton.button], ( Ev.type == SDL_CONTROLLERBUTTONDOWN ) ? IST_Press : IST_Release );
 				}
 				break;
 			case SDL_CONTROLLERAXISMOTION:

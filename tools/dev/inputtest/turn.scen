@@ -1,0 +1,37 @@
+# The view stick's turn rate at full and half tilt, and the move stick's speed from just past its dead zone to
+# full tilt. Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'; rate.py reads the watch lines.
+waitlog up for play
+sleep 3
+pad attach
+sleep 1
+probe start
+pad axis rightx 32767
+sleep 0.5
+watch 200 turn-full
+sleep 4
+pad axis rightx 16384
+sleep 0.5
+watch 200 turn-half
+sleep 4
+pad axis rightx 0
+# The match starts on Fire (the right trigger in DefUser.ini's layout, the A button in a retail User.ini).
+pad axis righttrigger 32767
+pad button a 1
+sleep 0.3
+pad axis righttrigger 0
+pad button a 0
+sleep 5
+pad axis lefty -6000
+sleep 1.5
+watch 80 move-0.18
+sleep 1.5
+pad axis lefty -16384
+sleep 1.5
+watch 80 move-0.5
+sleep 1.5
+pad axis lefty -32767
+sleep 1.5
+watch 80 move-full
+sleep 1.5
+pad axis lefty 0
+probe end

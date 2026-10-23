@@ -4,6 +4,7 @@ set(SRC_FILES
   "Src/NSDLViewport.cpp"
   "Src/NSDLClient.cpp"
   "Src/NSDLDrv.cpp"
+  "Src/NSDLInputTest.cpp"
 )
 # The touch overlay's JNI side (the Gradle project's GameActivity calls it).
 if(ANDROID)
