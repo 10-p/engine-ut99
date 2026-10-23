@@ -1191,8 +1191,8 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 // The menus' keys on the pad while it has their cursor: Back and B go back, Start and A confirm (A clicks instead:
 // under the cursor shown when that is on a control, else the focused control when that takes a click), the D-pad
 // is the arrow keys (an arrow the focused control does not use moves the focus as Tab does: down and right to the
-// next control, up and left to the previous one). A message box takes A and the way back as MessageBoxAnswer says,
-// an open drop-down list the others as ComboListKey says.
+// next control, up and left to the previous one). A message box takes A, Start and the way back as
+// MessageBoxAnswer says, an open drop-down list the others as ComboListKey says.
 //
 static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
 {
@@ -1466,8 +1466,8 @@ static UObject* ClickFocus( UObject* Root )
 }
 
 //
-// A message box on top (UWindowMessageBox, modal) answers the pad's A with its affirmative button (Yes, else OK)
-// and the pad's way back with its negative one (Cancel, else No; a box with OK alone keeps Escape's answer).
+// A message box on top (UWindowMessageBox, modal) answers the pad's A and Start with its affirmative button (Yes,
+// else OK) and the pad's way back with its negative one (Cancel, else No; a box with OK alone keeps Escape's answer).
 // Returns the button clicked, or NULL.
 //
 static UObject* MessageBoxAnswer( UObject* Root, UBOOL Affirmative )
@@ -1524,8 +1524,9 @@ INT UNSDLViewport::PadMenuKey( INT Key, UBOOL HadCursor )
 	UObject* Root = ObjectProp( (UObject*)Console, TEXT("Root") );
 	if( Key == IK_Joy1 && HadCursor && ControlUnderCursor( Root ) )
 		return IK_LeftMouse;
-	if( Key == IK_Joy1 || MenuKey == IK_Escape )
-		if( UObject* Answer = MessageBoxAnswer( Root, Key == IK_Joy1 ) )
+	const UBOOL Affirmative = Key == IK_Joy1 || Key == IK_Joy7;	// A and Start
+	if( Affirmative || MenuKey == IK_Escape )
+		if( UObject* Answer = MessageBoxAnswer( Root, Affirmative ) )
 		{
 			if( InputTest )
 				debugf( NAME_Log, TEXT("NSDLInputTest: key %s answers the message box with %s"), Input->GetKeyName( (EInputKey)Key ), Answer->GetName() );

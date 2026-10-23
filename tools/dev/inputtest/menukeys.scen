@@ -296,8 +296,8 @@ pad button back 1
 pad button back 0
 sleep 1
 probe closed-again
-# The Quit box (Yes/No, Escape No, Enter Yes), the cursor off the menus: B answers No and play goes on; then A
-# answers Yes and the game quits.
+# The Quit box (Yes/No, Escape No, Enter Yes), the cursor off the menus: B answers No and play goes on; then Start
+# answers Yes, as A does, and the game quits.
 pad button start 1
 pad button start 0
 sleep 1
@@ -328,6 +328,6 @@ sleep 0.2
 pad button a 1
 pad button a 0
 sleep 0.5
-pad button a 1
-pad button a 0
+pad button start 1
+pad button start 0
 sleep 3
