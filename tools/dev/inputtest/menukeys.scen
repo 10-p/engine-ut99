@@ -1,0 +1,52 @@
+# The pad's menu keys: while UWindow shows its cursor A is Enter, B Escape and the D-pad the arrow keys; in play they
+# are the pad's Joy keys. The run through the menus: Back opens them with the Game menu dropped down, Right twice
+# goes to Options, Down to Preferences, A runs it, B closes its window (no menu is dropped down after it, so Left
+# moves nothing) and Back closes the menus; the keyboard's Escape, Right, Down, Return and Left give the same states.
+# Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
+waitlog up for play
+sleep 3
+pad attach
+sleep 1
+pad button a 1
+pad button a 0
+pad button b 1
+pad button b 0
+pad button dpup 1
+pad button dpup 0
+sleep 0.5
+probe play
+# The cursor out of the menus' way, then Back opens them with the Game menu dropped down.
+mouse 400 400
+sleep 0.2
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-menu
+pad button dpright 1
+pad button dpright 0
+sleep 0.3
+probe pad-right-1
+pad button dpright 1
+pad button dpright 0
+sleep 0.3
+probe pad-right-2
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe pad-down
+pad button a 1
+pad button a 0
+sleep 1
+probe pad-a
+pad button b 1
+pad button b 0
+sleep 0.5
+probe pad-b
+pad button dpleft 1
+pad button dpleft 0
+sleep 0.3
+probe pad-left
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-closed

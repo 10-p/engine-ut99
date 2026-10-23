@@ -1159,7 +1159,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	{
 		if( Sent )
 			return;
-		Sent = bShowWindowsMouse ? PadCursorClick( Key ) : Key;
+		Sent = bShowWindowsMouse ? PadMenuKey( Key ) : Key;
 		PadKeySent[Key] = Sent;
 	}
 	else
@@ -1180,6 +1180,19 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 /*-----------------------------------------------------------------------------
 	The menu cursor on the pad.
 -----------------------------------------------------------------------------*/
+
+//
+// The menus' keys on the pad while UWindow shows its cursor: A confirms, B goes back, the D-pad is the arrow keys.
+//
+static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
+{
+	{ IK_Joy1,        IK_Enter  },	// A
+	{ IK_Joy2,        IK_Escape },	// B
+	{ IK_JoyPovUp,    IK_Up     },
+	{ IK_JoyPovDown,  IK_Down   },
+	{ IK_JoyPovLeft,  IK_Left   },
+	{ IK_JoyPovRight, IK_Right  },
+};
 
 //
 // The mouse buttons the menu cursor clicks with: a pad key bound to one of these commands clicks its button while
@@ -1227,15 +1240,23 @@ static UBOOL KeyBinderPolling()
 	return 0;
 }
 
-INT UNSDLViewport::PadCursorClick( INT Key )
+//
+// The key a pad key raises while UWindow shows its cursor: the menus' key of GPadMenuKeys, else the mouse button
+// of GPadCursorClicks its binding names, else itself. A key-binding page waiting for a key gets the pad's own.
+//
+INT UNSDLViewport::PadMenuKey( INT Key )
 {
-	guard(UNSDLViewport::PadCursorClick);
+	guard(UNSDLViewport::PadMenuKey);
 	if( !Input || Key <= 0 || Key >= IK_MAX )
 		return Key;
-	for( INT i = 0; i < ARRAY_COUNT(GPadCursorClicks); i++ )
+	INT MenuKey = 0;
+	for( INT i = 0; i < ARRAY_COUNT(GPadMenuKeys) && !MenuKey; i++ )
+		if( GPadMenuKeys[i].PadKey == Key )
+			MenuKey = GPadMenuKeys[i].MenuKey;
+	for( INT i = 0; i < ARRAY_COUNT(GPadCursorClicks) && !MenuKey; i++ )
 		if( appStricmp( *Input->Bindings[Key], GPadCursorClicks[i].Command ) == 0 )
-			return KeyBinderPolling() ? Key : GPadCursorClicks[i].Button;
-	return Key;
+			MenuKey = GPadCursorClicks[i].Button;
+	return MenuKey && !KeyBinderPolling() ? MenuKey : Key;
 	unguard;
 }
 

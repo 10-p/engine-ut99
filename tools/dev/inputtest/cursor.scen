@@ -3,7 +3,7 @@
 # width a second at full tilt) and the keys bound to Fire and AltFire click left and right; the mouse's own motion
 # takes it back. Positions are for a 640x480 viewport at GUIScale 1 with DefUser.ini's layout (Fire on the right
 # trigger and shoulder); start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'. The Controls page step binds
-# Joy13 in the run tree's User.ini; the last line puts Fire back on it.
+# Joy13 and JoyPovUp in the run tree's User.ini; the last lines put their layout bindings back.
 waitlog up for play
 sleep 3
 pad attach
@@ -106,6 +106,18 @@ sleep 0.1
 pad button rightshoulder 0
 sleep 0.3
 probe waits-again
+# The D-pad, the menus' arrows, is bound as itself too; then the right shoulder makes the binding wait again.
+pad button dpup 1
+sleep 0.1
+pad button dpup 0
+sleep 0.3
+log keybinding JoyPovUp follows
+exec keybinding JoyPovUp
+sleep 0.3
+pad button rightshoulder 1
+sleep 0.1
+pad button rightshoulder 0
+sleep 0.3
 # A binding left waiting when Back closes its window takes nothing: the right shoulder clicks.
 pad button back 1
 pad button back 0
@@ -131,4 +143,5 @@ sleep 0.1
 pad button rightshoulder 0
 sleep 0.3
 exec set input Joy13 Fire
+exec set input JoyPovUp InventoryPrevious
 sleep 0.3
