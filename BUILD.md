@@ -184,8 +184,8 @@ On a phone: push the asset tree to `/data/local/tmp/ut99/` and `ucc-bin` beside 
 
 `Android/` is a Gradle/NDK project (Android Gradle plugin 9.4.0, Gradle 9.6.0 through the wrapper, its daemon on
 an installed JDK 17) whose `externalNativeBuild` points at `Source/CMakeLists.txt` (targets `UnrealTournament`,
-the game as `libUT99.so`, and `ut99_android_bridge`), built for `armeabi-v7a` and `arm64-v8a` in one APK
-(`-Pabis=<list>` builds others, `x86_64` for a fast emulator). It needs platform 36 (`compileSdk`; `targetSdk` 34,
+the game as `libUT99.so`, and `ut99_android_bridge`), built for `armeabi-v7a`, `arm64-v8a` and `x86_64`
+in one APK (x86 Chromebooks and the emulator run the last). It needs platform 36 (`compileSdk`; `targetSdk` 34,
 `minSdk` 30), build-tools 36.0.0, NDK 28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK
 into `/usr/lib/android-sdk`; `local.properties` names it and the distribution's CMake:
 

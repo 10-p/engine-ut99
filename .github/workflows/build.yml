@@ -249,7 +249,7 @@ jobs:
           sdkmanager --install "ndk;28.2.13676358" "cmake;4.1.2" >/dev/null
           printf 'sdk.dir=%s\nndk.dir=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
 
-      # The Gradle project's default ABI set (arm64-v8a; -Pabis= adds the emulator's x86_64).
+      # The Gradle project's ABI set (armeabi-v7a, arm64-v8a, x86_64).
       - name: Build the APK
         run: ./gradlew assembleDebug --console=plain
         working-directory: Android
