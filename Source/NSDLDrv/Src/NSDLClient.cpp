@@ -29,7 +29,7 @@ void UNSDLClient::StaticConstructor()
 	new(GetClass(), "ScaleRUV",          RF_Public)UFloatProperty(CPP_PROPERTY(ScaleRUV),         "Joystick", CPF_Config );
 	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
 	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
-	new(GetClass(), "PadCursorSpeed",    RF_Public)UFloatProperty(CPP_PROPERTY(PadCursorSpeed),   "Joystick", CPF_Config );
+	new(GetClass(), "PadCursorSeconds",  RF_Public)UFloatProperty(CPP_PROPERTY(PadCursorSeconds), "Joystick", CPF_Config );
 
 	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
 	// [NSDLDrv.NSDLClient] section a zero would mean no decals, a black picture and a 0x0 window. They match the
@@ -67,7 +67,7 @@ void UNSDLClient::StaticConstructor()
 	ScaleRUV            = 100.0f;
 	InvertY             = 0;
 	InvertV             = 0;
-	PadCursorSpeed      = 1.0f / 3.0f;	// a viewport's width in three seconds at full tilt
+	PadCursorSeconds    = 3.0f;	// across the viewport's width at full tilt
 
 	unguard;
 }

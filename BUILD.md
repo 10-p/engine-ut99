@@ -147,11 +147,11 @@ system and the network transport at run time.
   to Unreal 1's 100/100, which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and
   Android inis set 200/500 for `DefUser.ini`'s speed 1. While UWindow shows its cursor, any pad press or a stick
   pushed out of its dead zone gives the cursor to the pad and hides the system pointer; the left stick moves it
-  (linear from the dead zone's edge, `PadCursorSpeed` viewport widths a second at full tilt: a third, so three seconds
-  across), A, B and the D-pad are the Enter, Escape and arrow keys (`GPadMenuKeys` in `NSDLViewport.cpp`; Start's
-  Escape in play is `GPadPlayKeys`), and the keys bound to `Fire` and `AltFire` click left and right
-  (`GPadCursorClicks`); a key-binding page waiting for a key gets the pad's own keys. The mouse's own motion takes the
-  cursor back (`NSDLClient: the menu cursor follows the pad|mouse`).
+  (linear from the dead zone's edge, across the viewport's width in `PadCursorSeconds` at full tilt: 3), A, B and the
+  D-pad are the Enter, Escape and arrow keys (`GPadMenuKeys` in `NSDLViewport.cpp`; Start's Escape in play is
+  `GPadPlayKeys`), and the keys bound to `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding
+  page waiting for a key gets the pad's own keys. The mouse's own motion takes the cursor back (`NSDLClient: the menu
+  cursor follows the pad|mouse`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:

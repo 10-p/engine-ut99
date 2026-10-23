@@ -1302,7 +1302,7 @@ void UNSDLViewport::SetPadCursor( UBOOL On )
 //
 // While UWindow shows its cursor, a stick pushed out of its dead zone gives the cursor to the pad (a stick held out
 // since does not take it back from the mouse), and while the pad has it the left stick moves it: linear from the
-// dead zone's edge to full tilt, at PadCursorSpeed viewport widths a second, with no acceleration. It reaches
+// dead zone's edge to full tilt, across the viewport's width in PadCursorSeconds, with no acceleration. It reaches
 // UWindow as the mouse's absolute motion does: the position, and the deltas UWindow counts on a viewport without
 // a system pointer.
 //
@@ -1338,7 +1338,7 @@ void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 	}
 	if( Tilt[0] == 0.f && Tilt[1] == 0.f )
 		return;
-	const FLOAT Step = Client->PadCursorSpeed * SizeX * DeltaTime;
+	const FLOAT Step = SizeX * DeltaTime / Max( Client->PadCursorSeconds, 0.01f );
 	const FLOAT X = Clamp( PadCursorX + Tilt[0] * Step, 0.f, (FLOAT)Max( SizeX - 1, 0 ) );
 	const FLOAT Y = Clamp( PadCursorY + Tilt[1] * Step, 0.f, (FLOAT)Max( SizeY - 1, 0 ) );
 	const FLOAT DX = X - PadCursorX, DY = Y - PadCursorY;
