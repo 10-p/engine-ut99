@@ -32,7 +32,7 @@ void UNSDLClient::StaticConstructor()
 
 	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
 	// [NSDLDrv.NSDLClient] section a zero would mean no decals, a black picture and a 0x0 window. They match the
-	// section in Config/System/web/Default.ini; the ini overrides any of them.
+	// section in Config/System/web/Default.ini but for the stick scales; the ini overrides any of them.
 	CaptureMouse        = 1;
 	CurvedSurfaces      = 1;
 	ScreenFlashes       = 1;
@@ -55,14 +55,15 @@ void UNSDLClient::StaticConstructor()
 	TextureLODSet[1]    = 0;   // TextureDetail = High
 	TextureLODSet[2]    = 0;   // SkinDetail    = High
 
-	// This driver's own nine.
+	// This driver's own nine. The stick scales are Unreal 1's: an ini without this section is a retail one, and
+	// its User.ini's pad bindings (speed 2 and 5.9) turn at Unreal 1's rate with them (web: 200/500 with speed 1).
 	DefaultDisplay      = 0;
 	StartupFullscreen   = 0;
 	UseJoystick         = 1;
 	DeadZoneXYZ         = 0.1f;
 	DeadZoneRUV         = 0.1f;
-	ScaleXYZ            = 200.0f;
-	ScaleRUV            = 500.0f;
+	ScaleXYZ            = 100.0f;
+	ScaleRUV            = 100.0f;
 	InvertY             = 0;
 	InvertV             = 0;
 
