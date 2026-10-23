@@ -251,6 +251,11 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   permission; `/sdcard/UT99` or `UT99` at the top of an SD card needs All files access, which the launcher asks
   for, with the copy as the alternative, only when the game is started from there. Shared storage is a FUSE
   mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
+- The launcher's resolution scale (a slider from 0.25 to 1 and a field that takes 0.1 to 1; 1, the screen's own
+  resolution, by default) sizes SDL's surface buffer (`GameActivity.applyRenderScale`, `SurfaceHolder.setFixedSize`),
+  which Android scales to the screen; the engine sees the scaled size as its window. SDL's surface view
+  (`FrameSurface`) scales every touch and mouse position from the screen to that buffer before SDL reads it, so a
+  tap lands where it is drawn at every scale.
 
 Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; in the
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
