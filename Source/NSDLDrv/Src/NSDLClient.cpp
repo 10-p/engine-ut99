@@ -67,7 +67,7 @@ void UNSDLClient::StaticConstructor()
 	ScaleRUV            = 100.0f;
 	InvertY             = 0;
 	InvertV             = 0;
-	PadCursorSpeed      = 1.0f;	// the viewport's height per second at full tilt
+	PadCursorSpeed      = 1.0f / 3.0f;	// a viewport's width in three seconds at full tilt
 
 	unguard;
 }

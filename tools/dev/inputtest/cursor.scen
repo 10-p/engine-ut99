@@ -1,5 +1,5 @@
 # The menu cursor on the pad: while UWindow shows its cursor the left stick moves it (linear from the dead zone's
-# edge, a viewport height a second at full tilt) and the keys bound to Fire and AltFire click left and right; the
+# edge, a third of the viewport's width a second at full tilt) and the keys bound to Fire and AltFire click left and right; the
 # mouse's own motion takes it back. Positions are for a 640x480 viewport at GUIScale 1 with DefUser.ini's layout
 # (Fire on the right trigger and shoulder); start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'. The
 # Controls page step binds Joy13 in the run tree's User.ini; the last line puts Fire back on it.
@@ -55,7 +55,7 @@ pad axis righttrigger 0
 sleep 0.3
 probe options-menu
 pad axis lefty 32767
-sleep 0.04
+sleep 0.1
 pad axis lefty 0
 sleep 0.3
 probe on-preferences

@@ -130,7 +130,7 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 	UBOOL UseJoystick;
 	UBOOL InvertY;
 	UBOOL InvertV;
-	FLOAT PadCursorSpeed;	// the menu cursor's speed on the pad's left stick at full tilt, in viewport heights a second
+	FLOAT PadCursorSpeed;	// the menu cursor's speed on the pad's left stick at full tilt, in viewport widths a second
 	FLOAT ScaleXYZ;
 	FLOAT ScaleRUV;
 	FLOAT DeadZoneXYZ;

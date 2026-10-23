@@ -146,7 +146,8 @@ system and the network transport at run time.
   `Config/System/web/DefUser.ini` binds them to Unreal 1's pad layout. The stick scales `ScaleXYZ`/`ScaleRUV` default
   to Unreal 1's 100/100, which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and
   Android inis set 200/500 for `DefUser.ini`'s speed 1. While UWindow shows its cursor the left stick moves it
-  (linear from the dead zone's edge, `PadCursorSpeed` viewport heights a second at full tilt: 1), the keys bound to
+  (linear from the dead zone's edge, `PadCursorSpeed` viewport widths a second at full tilt: a third, so three
+  seconds across), the keys bound to
   `Fire` and `AltFire` click left and right (one table, `GPadCursorClicks` in `NSDLViewport.cpp`; not while a
   key-binding page waits for a key, which gets the pad's own key) and the system pointer is hidden; the mouse's own
   motion takes the cursor back (`NSDLClient: the menu cursor follows the pad|mouse`).
