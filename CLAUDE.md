@@ -43,9 +43,9 @@ separate commits.
 - **The compiler is not the platform:** Windows code keys on `PLATFORM_WIN32` (IpDrv on `__WINSOCK__`/
   `__BSD_SOCKETS__`); MSVC builds `Core/Src/UnVcWin32.cpp`, every GCC/Clang target `Core/Src/UnUnix.cpp`, with
   MinGW's Win32 calls in `Core/Src/UnMinGW.cpp`.
-- **Main loop on the web:** `MainLoop` returns to the worker's event loop every frame through Asyncify
-  (`emscripten_sleep`, or the `ufront_yield_frame` `EM_ASYNC_JS` yield), never `emscripten_set_main_loop`, whose
-  unwind collides with `main()`'s try/catch.
+- **Main loop on the web:** `MainLoop` returns to the worker's event loop every frame through Asyncify (the
+  `ufront_wait_frame` `EM_ASYNC_JS` wait: the display's next frame, a timer while the page is hidden or with
+  `-TIMERFRAMES`), never `emscripten_set_main_loop`, whose unwind collides with `main()`'s try/catch.
 - **Files:** the engine uses libc `fopen`/`opendir` (`FFileManagerLinux`); on the web WasmFS's JSImpl backend
   (`vendor/glue/wasmfs-shim.js`) serves them from the host. Do not write an engine-side web file manager.
   `appBaseDir()` is the working directory (the launcher `chdir`s to `System`).

@@ -95,8 +95,9 @@ if(EMSCRIPTEN)
   target_link_options(${PROJECT_NAME} PRIVATE
     -sASYNCIFY
     -sASYNCIFY_STACK_SIZE=262144
-    # emscripten_sleep is the main loop's yield; __syscall_openat lets FetchFS open a file on demand.
-    "-sASYNCIFY_IMPORTS=['emscripten_sleep','emscripten_set_main_loop','__syscall_openat']"
+    # __syscall_openat lets FetchFS open a file on demand; the frame wait (an EM_ASYNC_JS import) is in Asyncify's
+    # default import list.
+    "-sASYNCIFY_IMPORTS=['__syscall_openat']"
     # One binary that creates a WebGL 2 context, or WebGL 1 with -WEBGL=1 or as a fallback (NSDLViewport).
     # GL_ENABLE_GET_PROC_ADDRESS lets glad (XOpenGL) and gl4es (UTGLR) resolve entry points. FULL_ES2 is required
     # by UTGLR: gl4es emits client-side vertex arrays, which WebGL rejects, and FULL_ES2 emulates them.

@@ -104,9 +104,10 @@ system and the network transport at run time.
 - **Files.** WasmFS with a JS-implemented backend (`vendor/glue/wasmfs-shim.js`) forwards file operations to the host.
   `Config/System/web/{Default,DefUser}.ini` are preloaded into `/System`; the launcher `chdir`s there and
   `appBaseDir()` is the working directory.
-- **Main loop.** Each frame returns to the worker's event loop through Asyncify: `emscripten_sleep` spends the frame
-  cap's spare time, otherwise `ufront_yield_frame` (an `EM_ASYNC_JS` `setTimeout(0)`). Each frame is recorded in a
-  ring that the console command `ufront_pacing` dumps as CSV.
+- **Main loop.** Each frame returns to the worker's event loop through Asyncify (`ufront_wait_frame`, an
+  `EM_ASYNC_JS` wait) and resumes at the display's next frame; with a frame-rate cap, at the first display frame its
+  due time reaches; from a timer while the page is hidden, or with `-TIMERFRAMES`. Each frame is recorded in a ring
+  that the console command `ufront_pacing` dumps as CSV.
 - **Exceptions.** The engine's objects do not catch exceptions on the web (only openal-soft's objects are built with
   `-fexceptions`), so loading fails soft there: `GetPackageLinker`, `StaticLoadObject`, `SafeLoadError`, a missing
   nested import and `LoadMap` resolve to NULL or a failed join, and a bad startup map falls back to the menu.
