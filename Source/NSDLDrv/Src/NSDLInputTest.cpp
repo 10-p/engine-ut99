@@ -32,6 +32,18 @@ static FLOAT GetFloatProp( UObject* Obj, const TCHAR* Name )
 	return P ? *(FLOAT*)((BYTE*)Obj + P->Offset) : 0.f;
 }
 
+static INT GetBoolProp( UObject* Obj, const TCHAR* Name )
+{
+	UBoolProperty* P = Obj ? FindField<UBoolProperty>( Obj->GetClass(), Name ) : NULL;
+	return P ? ( ( *(DWORD*)((BYTE*)Obj + P->Offset) & P->BitMask ) ? 1 : 0 ) : -1;
+}
+
+static FString GetStrProp( UObject* Obj, const TCHAR* Name )
+{
+	UStrProperty* P = Obj ? FindField<UStrProperty>( Obj->GetClass(), Name ) : NULL;
+	return P ? *(FString*)((BYTE*)Obj + P->Offset) : FString(TEXT("-"));
+}
+
 static const TCHAR* ClassNameOf( UObject* Obj )
 {
 	return Obj ? Obj->GetClass()->GetName() : TEXT("None");
@@ -286,7 +298,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 	debugf
 	(
 		NAME_Log,
-		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s relative=%i oscursor=%i padcursor=%i pad=%s"),
+		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s checked=%i list=%i value=[%s] relative=%i oscursor=%i padcursor=%i pad=%s"),
 		Tag,
 		Actor ? Actor->ViewRotation.Yaw : 0,
 		Actor ? Actor->ViewRotation.Pitch : 0,
@@ -300,6 +312,9 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 		ClassNameOf( GetObjectProp( Root, TEXT("MouseWindow") ) ),
 		ClassNameOf( GetObjectProp( Root, TEXT("ActiveWindow") ) ),
 		GetObjectProp( Root, TEXT("KeyFocusWindow") ) ? GetObjectProp( Root, TEXT("KeyFocusWindow") )->GetName() : TEXT("None"),
+		GetBoolProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("bChecked") ),
+		GetBoolProp( GetObjectProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("ParentWindow") ), TEXT("bListVisible") ),
+		*GetStrProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("Value") ),
 		(INT)SDL_GetRelativeMouseMode(),
 		SDL_ShowCursor( SDL_QUERY ),
 		(INT)Viewport->PadCursor,

@@ -1,8 +1,9 @@
 # The pad's menu keys, which hold only while the menus are up and the pad has their cursor: Back and B are Escape,
-# Start is Enter, A is Enter (a left click when the cursor shown is on a control), the D-pad is the arrow keys and an
-# arrow the focused control does not use moves the focus as Tab does (down and right to the next control, up and
-# left to the previous one). In play the buttons are their Joy keys and their bindings (DefUser.ini: Back shows the
-# scores, Start opens the menus). Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
+# Start is Enter, A is a left click (under the cursor shown when that is on a control, else on the focused control
+# when that takes a click) or Enter, the D-pad is the arrow keys and an arrow the focused control does not use moves
+# the focus as Tab does (down and right to the next control, up and left to the previous one). In play the buttons
+# are their Joy keys and their bindings (DefUser.ini: Back shows the scores, Start opens the menus). Start a map,
+# e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
 waitlog up for play
 sleep 3
 pad attach
@@ -43,11 +44,32 @@ pad button a 1
 pad button a 0
 sleep 1
 probe a-enter
+# With the cursor off the window, A clicks the focused control: the checkbox toggles (twice, back as it was), and
+# once the D-pad has moved the focus to the drop-down below it, A opens its list and B closes it.
+mouse 600 450
+sleep 0.3
+probe focus-checkbox
+pad button a 1
+pad button a 0
+sleep 0.3
+probe a-toggles
+pad button a 1
+pad button a 0
+sleep 0.3
+probe a-toggles-back
 # In the Preferences window the D-pad's down and up move the focus from control to control.
 pad button dpdown 1
 pad button dpdown 0
 sleep 0.3
 probe focus-1
+pad button a 1
+pad button a 0
+sleep 0.3
+probe a-opens-list
+pad button b 1
+pad button b 0
+sleep 0.3
+probe b-closes-list
 pad button dpdown 1
 pad button dpdown 0
 sleep 0.3
@@ -60,6 +82,43 @@ pad button dpup 1
 pad button dpup 0
 sleep 0.3
 probe focus-back
+# The texture detail drop-down: A opens it, the D-pad selects in it and A picks: first Medium (up to the top, High,
+# then down one), then High, which UT99 asks to confirm in a message box. Its buttons take no keyboard focus and it
+# takes no Enter: the cursor and A answer it, or B closes it as the keyboard's Escape does (the value stays Medium).
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe texture-detail
+pad button a 1
+pad button a 0
+sleep 0.3
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 0.5
+probe picked-medium
+pad button a 1
+pad button a 0
+sleep 0.3
+pad button dpup 1
+pad button dpup 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 0.5
+probe picked-high
+pad button b 1
+pad button b 0
+sleep 0.5
+probe box-closed
 # B closes the window, Back the menus.
 pad button b 1
 pad button b 0

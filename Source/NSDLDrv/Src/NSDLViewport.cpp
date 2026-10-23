@@ -1188,9 +1188,10 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 -----------------------------------------------------------------------------*/
 
 //
-// The menus' keys on the pad while it has their cursor: Back and B go back, Start and A confirm (A clicks instead
-// when the cursor shown is on a control), the D-pad is the arrow keys (an arrow the focused control does not use
-// moves the focus as Tab does: down and right to the next control, up and left to the previous one).
+// The menus' keys on the pad while it has their cursor: Back and B go back, Start and A confirm (A clicks instead:
+// under the cursor shown when that is on a control, else the focused control when that takes a click), the D-pad
+// is the arrow keys (an arrow the focused control does not use moves the focus as Tab does: down and right to the
+// next control, up and left to the previous one). An open drop-down list takes them as ComboListKey says.
 //
 static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
 {
@@ -1239,6 +1240,42 @@ static UBOOL IsAClassNamed( UObject* Obj, const TCHAR* Name )
 			return 1;
 	return 0;
 }
+
+static FLOAT* FloatProp( UObject* Obj, const TCHAR* Name )
+{
+	UFloatProperty* P = Obj ? FindField<UFloatProperty>( Obj->GetClass(), Name ) : NULL;
+	return P ? (FLOAT*)((BYTE*)Obj + P->Offset) : NULL;
+}
+
+//
+// A call of a script function of a UWindow window, its parameters set by name (the others zero, None or False).
+//
+struct FUWindowCall
+{
+	UObject* Obj;
+	UFunction* Function;
+	TArray<BYTE> Parms;
+	FUWindowCall( UObject* InObj, const TCHAR* Name )
+	:	Obj( InObj )
+	,	Function( InObj ? InObj->FindFunction( FName( Name, FNAME_Find ) ) : NULL )
+	{
+		if( Function )
+			Parms.AddZeroed( Function->ParmsSize );
+	}
+	void Set( const TCHAR* Name, const void* Value, INT Size )
+	{
+		UProperty* P = Function ? FindField<UProperty>( Function, Name ) : NULL;
+		if( P && P->ElementSize >= Size )
+			appMemcpy( &Parms(P->Offset), Value, Size );
+	}
+	UBOOL Call()
+	{
+		if( !Function )
+			return 0;
+		Obj->ProcessEvent( Function, Parms.Num() ? &Parms(0) : NULL );
+		return 1;
+	}
+};
 
 //
 // Whether a UWindow window and every window it sits in are shown.
@@ -1315,12 +1352,96 @@ static UObject* MoveFocus( UObject* Root, UBOOL Next )
 	}
 	if( To == From )
 		return NULL;
-	UFunction* Activate = To ? To->FindFunction( FName( TEXT("ActivateWindow"), FNAME_Find ) ) : NULL;
-	struct { INT Depth; BITFIELD bTransientNoDeactivate; } Parms = { 0, 0 };
-	if( !Activate || Activate->ParmsSize != sizeof(Parms) )
+	FUWindowCall Activate( To, TEXT("ActivateWindow") );
+	return Activate.Call() ? To : NULL;
+}
+
+//
+// The keys of an open drop-down list (UWindowComboList, the focus while it is open), whose mouse-only items take
+// the pad's here: Up and Down select the item before or after, Enter picks the selected one (or closes the list
+// when none is), Escape closes it. Returns whether MenuKey was one of them.
+//
+static UBOOL ComboListKey( UObject* List, INT MenuKey )
+{
+	UObject* Items = ObjectProp( List, TEXT("Items") );
+	UObjectProperty* SelectedProp = FindField<UObjectProperty>( List->GetClass(), TEXT("Selected") );
+	UObject* Selected = ObjectProp( List, TEXT("Selected") );
+	if( MenuKey == IK_Up || MenuKey == IK_Down )
+	{
+		UObject* To = Selected ? ObjectProp( Selected, MenuKey == IK_Down ? TEXT("Next") : TEXT("Prev") )
+			: ObjectProp( Items, TEXT("Next") );
+		if( To && To != Items && SelectedProp )
+			appMemcpy( (BYTE*)List + SelectedProp->Offset, &To, sizeof(To) );
+		return 1;
+	}
+	if( MenuKey == IK_Enter && Selected )
+	{
+		FUWindowCall Execute( List, TEXT("ExecuteItem") );
+		Execute.Set( TEXT("I"), &Selected, sizeof(Selected) );
+		Execute.Call();
+		return 1;
+	}
+	if( MenuKey == IK_Enter || MenuKey == IK_Escape )
+	{
+		FUWindowCall Close( List, TEXT("CloseUp") );
+		Close.Call();
+		return 1;
+	}
+	return 0;
+}
+
+//
+// Whether A gives the focused control a click (a button presses, a checkbox toggles, a drop-down list opens) rather
+// than Enter, which the controls that take it keep (pull-down menus, editable boxes, message boxes) and which the
+// controls a click at the centre would set at random do too (lists, the menu bar, sliders; labels take neither).
+//
+static UBOOL FocusTakesClick( UObject* Focus )
+{
+	return IsAClassNamed( Focus, TEXT("UWindowDialogControl") )
+		&& !IsAClassNamed( Focus, TEXT("UWindowListControl") )
+		&& !IsAClassNamed( Focus, TEXT("UWindowLabelControl") )
+		&& !IsAClassNamed( Focus, TEXT("UWindowHSliderControl") )
+		&& !( IsAClassNamed( Focus, TEXT("UWindowEditBox") ) && BoolProp( Focus, TEXT("bCanEdit") ) );
+}
+
+//
+// A left click at the centre of the focused control, as the mouse's would be there: UWindow's mouse down and up at
+// that point, with the root's mouse position there meanwhile (the captures read it); the cursor stays where it is.
+// Returns the control clicked, NULL when the focus takes no click.
+//
+static UObject* ClickFocus( UObject* Root )
+{
+	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
+	FLOAT* RootX = FloatProp( Root, TEXT("MouseX") );
+	FLOAT* RootY = FloatProp( Root, TEXT("MouseY") );
+	FLOAT* Width = FloatProp( Focus, TEXT("WinWidth") );
+	FLOAT* Height = FloatProp( Focus, TEXT("WinHeight") );
+	if( !FocusTakesClick( Focus ) || !RootX || !RootY || !Width || !Height )
 		return NULL;
-	To->ProcessEvent( Activate, &Parms );
-	return To;
+	FLOAT X = *Width / 2.f, Y = *Height / 2.f;
+	for( UObject* W = Focus; W && W != Root; W = ObjectProp( W, TEXT("ParentWindow") ) )
+	{
+		FLOAT* Left = FloatProp( W, TEXT("WinLeft") );
+		FLOAT* Top = FloatProp( W, TEXT("WinTop") );
+		X += Left ? *Left : 0.f;
+		Y += Top ? *Top : 0.f;
+	}
+	const FLOAT SavedX = *RootX, SavedY = *RootY;
+	*RootX = X;
+	*RootY = Y;
+	const INT LeftMouse = IK_LeftMouse;
+	for( BYTE Message = 0; Message < 2; Message++ )	// WM_LMouseDown, WM_LMouseUp
+	{
+		FUWindowCall Event( Root, TEXT("WindowEvent") );
+		Event.Set( TEXT("Msg"), &Message, sizeof(Message) );
+		Event.Set( TEXT("X"), &X, sizeof(X) );
+		Event.Set( TEXT("Y"), &Y, sizeof(Y) );
+		Event.Set( TEXT("Key"), &LeftMouse, sizeof(LeftMouse) );
+		Event.Call();
+	}
+	*RootX = SavedX;
+	*RootY = SavedY;
+	return Focus;
 }
 
 //
@@ -1344,7 +1465,7 @@ static UBOOL KeyBinderPolling()
 
 //
 // The key a pad key raises while the pad has the menus' cursor: the menus' key of GPadMenuKeys, else the mouse
-// button of GPadCursorClicks its binding names, else itself; 0 when it moved the focus instead. A key-binding page
+// button of GPadCursorClicks its binding names, else itself; 0 when it clicked or moved the focus instead. A key-binding page
 // waiting for a key gets the pad's own keys, but for Back, which closes it as the keyboard's Escape does.
 // HadCursor: the cursor was the pad's, so shown, before this press.
 //
@@ -1365,6 +1486,22 @@ INT UNSDLViewport::PadMenuKey( INT Key, UBOOL HadCursor )
 	UObject* Root = ObjectProp( (UObject*)Console, TEXT("Root") );
 	if( Key == IK_Joy1 && HadCursor && ControlUnderCursor( Root ) )
 		return IK_LeftMouse;
+	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
+	if( IsAClassNamed( Focus, TEXT("UWindowComboList") ) && ComboListKey( Focus, MenuKey ) )
+	{
+		if( InputTest )
+			debugf( NAME_Log, TEXT("NSDLInputTest: key %s works the open list %s"), Input->GetKeyName( (EInputKey)Key ), Focus->GetName() );
+		return 0;
+	}
+	if( Key == IK_Joy1 )
+	{
+		if( UObject* Clicked = ClickFocus( Root ) )
+		{
+			if( InputTest )
+				debugf( NAME_Log, TEXT("NSDLInputTest: key %s clicks %s"), Input->GetKeyName( (EInputKey)Key ), Clicked->GetName() );
+			return 0;
+		}
+	}
 	if( ( MenuKey == IK_Up || MenuKey == IK_Down || MenuKey == IK_Left || MenuKey == IK_Right ) && !FocusUsesArrow( Root, MenuKey ) )
 		if( UObject* Focused = MoveFocus( Root, MenuKey == IK_Down || MenuKey == IK_Right ) )
 		{

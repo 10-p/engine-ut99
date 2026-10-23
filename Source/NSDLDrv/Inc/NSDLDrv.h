@@ -95,7 +95,7 @@ private:
 	UBOOL PadStickOut[2];	// whether the left and the right stick were out of their dead zones last tick
 	void TickPadCursor( FLOAT DeltaTime );
 	void SetPadCursor( UBOOL On );
-	INT PadMenuKey( INT Key, UBOOL HadCursor );	// the key pad key Key raises in the menus, 0 for a focus move
+	INT PadMenuKey( INT Key, UBOOL HadCursor );	// the key pad key Key raises in the menus, 0 when it acted itself
 	friend class FNSDLInputTest;
 	UBOOL QuitRequested;
 	DOUBLE InputUpdateTime;	// DOUBLE: see TickInput
