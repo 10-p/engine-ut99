@@ -53,7 +53,8 @@ const BYTE UNSDLViewport::MouseButtonMap[6] =
 };
 
 //
-// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map.
+// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map. Back and Start are the keyboard's Escape and Enter, in play
+// and in the menus: Escape opens and closes UWindow (the console takes it before any binding), Enter confirms.
 //
 const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
@@ -61,9 +62,9 @@ const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 	/* BUTTON_B             */ IK_Joy2,
 	/* BUTTON_X             */ IK_Joy3,
 	/* BUTTON_Y             */ IK_Joy4,
-	/* BUTTON_BACK          */ IK_Joy5,
+	/* BUTTON_BACK          */ IK_Escape,
 	/* BUTTON_GUIDE         */ IK_Joy6,
-	/* BUTTON_START         */ IK_Joy7,
+	/* BUTTON_START         */ IK_Enter,
 	/* BUTTON_LEFTSTICK     */ IK_Joy8,
 	/* BUTTON_RIGHTSTICK    */ IK_Joy9,
 	/* BUTTON_LEFTSHOULDER  */ IK_Joy10,
@@ -72,28 +73,6 @@ const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 	/* BUTTON_DPAD_DOWN     */ IK_JoyPovDown,
 	/* BUTTON_DPAD_LEFT     */ IK_JoyPovLeft,
 	/* BUTTON_DPAD_RIGHT    */ IK_JoyPovRight,
-};
-
-//
-// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map for UI controls.
-//
-const BYTE UNSDLViewport::JoyButtonMapUI[SDL_CONTROLLER_BUTTON_MAX] =
-{
-	/* BUTTON_A             */ IK_Enter,
-	/* BUTTON_B             */ IK_Escape,
-	/* BUTTON_X             */ IK_N,
-	/* BUTTON_Y             */ IK_Y,
-	/* BUTTON_BACK          */ IK_Escape,
-	/* BUTTON_GUIDE         */ IK_Escape,
-	/* BUTTON_START         */ IK_Escape,
-	/* BUTTON_LEFTSTICK     */ IK_Joy8,
-	/* BUTTON_RIGHTSTICK    */ IK_Joy9,
-	/* BUTTON_LEFTSHOULDER  */ IK_Joy10,
-	/* BUTTON_RIGHTSHOULDER */ IK_Joy11,
-	/* BUTTON_DPAD_UP       */ IK_Up,
-	/* BUTTON_DPAD_DOWN     */ IK_Down,
-	/* BUTTON_DPAD_LEFT     */ IK_Left,
-	/* BUTTON_DPAD_RIGHT    */ IK_Right,
 };
 
 //
@@ -1356,13 +1335,7 @@ UBOOL UNSDLViewport::TickInput()
 				break;
 			case SDL_CONTROLLERBUTTONDOWN:
 			case SDL_CONTROLLERBUTTONUP:
-				{
-					// HACK: Swap to alternate bindings when in menus, but not when waiting for keypress in the keybind menu.
-					// Note: GetMainFrame() is Unreal 1 specific, disabled for UT99
-					const UBOOL bIsInUI = 0; // Console && ((UObject*)Console)->GetMainFrame() && ...
-					const BYTE* JoyMap = bIsInUI ? JoyButtonMapUI : JoyButtonMap;
-					PadKey( JoyMap[Ev.cbutton.button], ( Ev.type == SDL_CONTROLLERBUTTONDOWN ) ? IST_Press : IST_Release );
-				}
+				PadKey( JoyButtonMap[Ev.cbutton.button], ( Ev.type == SDL_CONTROLLERBUTTONDOWN ) ? IST_Press : IST_Release );
 				break;
 			case SDL_CONTROLLERAXISMOTION:
 				// The sticks and triggers are read from the pad's state every tick (below), not from these.

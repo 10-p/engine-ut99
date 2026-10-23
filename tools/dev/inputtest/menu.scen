@@ -1,0 +1,44 @@
+# The pad's Back and Start are the keyboard's Escape and Enter: each Back press below is followed by the same
+# press of the keyboard's Escape, and the probes after them must agree. Start a map, e.g.
+# 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
+waitlog up for play
+sleep 3
+pad attach
+sleep 1
+probe play
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-back-1
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-back-2
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-back-3
+pad button back 1
+pad button back 0
+sleep 1
+probe pad-back-4
+key Escape 1
+key Escape 0
+sleep 1
+probe key-escape-1
+key Escape 1
+key Escape 0
+sleep 1
+probe key-escape-2
+key Escape 1
+key Escape 0
+sleep 1
+probe key-escape-3
+key Escape 1
+key Escape 0
+sleep 1
+probe key-escape-4
+pad button start 1
+pad button start 0
+sleep 0.5
+probe pad-start

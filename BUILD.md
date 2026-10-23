@@ -141,7 +141,11 @@ system and the network transport at run time.
   closes the pad at once (`NSDLClient: game pads on|off (UseJoystick)`); the first pad connected is used, with
   hot-plug (`NSDLClient: game pad connected: <name>`). Sticks and triggers are read from the pad's state every
   tick. On the web the press that made the browser list the pad is read from `navigator.getGamepads()` at the
-  connect and given to the game as a tap. `Config/System/web/DefUser.ini` carries Unreal 1's pad layout.
+  connect and given to the game as a tap. The pad's Back is the Escape key and Start the Enter key, in play and in
+  the menus (Escape opens and closes UWindow); the other buttons are the `Joy` keys, and
+  `Config/System/web/DefUser.ini` binds them to Unreal 1's pad layout. The stick scales `ScaleXYZ`/`ScaleRUV` default
+  to Unreal 1's 100/100, which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and
+  Android inis set 200/500 for `DefUser.ini`'s speed 1.
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:

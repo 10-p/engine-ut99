@@ -61,7 +61,6 @@ private:
 	static BYTE KeyMap[SDL_NUM_SCANCODES]; // SDL_Scancode -> EInputKey map
 	static const BYTE MouseButtonMap[6]; // SDL_BUTTON_ -> EInputKey map
 	static const BYTE JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX]; // SDL_GameControllerButton -> EInputKey map
-	static const BYTE JoyButtonMapUI[SDL_CONTROLLER_BUTTON_MAX];  // SDL_GameControllerButton -> EInputKey map for UI
 	static const BYTE JoyAxisMap[SDL_CONTROLLER_AXIS_MAX]; // SDL_GameControllerAxis -> EInputKey map
 	static const FLOAT JoyAxisDefaultScale[SDL_CONTROLLER_AXIS_MAX];
 	static const SWORD JoyAxisPressThreshold = 8192;
