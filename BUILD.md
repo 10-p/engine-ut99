@@ -153,10 +153,11 @@ system and the network transport at run time.
   a drop-down list opens) or, for the controls that take it (pull-down menus, editable boxes, message boxes), Enter,
   the D-pad is the arrow keys, an arrow the focused control does not use moving the focus to the next (down, right) or
   the previous (up, left) control that takes it (`GPadMenuKeys` in `NSDLViewport.cpp`; in an open drop-down list the
-  D-pad selects, A and Start pick, Back and B close it), and the keys bound to `Fire` and `AltFire` click left and
-  right (`GPadCursorClicks`); a key-binding page waiting for a key gets the pad's own keys, Back aside. The mouse's
-  own motion takes the cursor back, and with it every pad key is itself again (`NSDLClient: the menu cursor follows
-  the pad|mouse`).
+  D-pad selects, scrolling the row into view, A and Start pick, Back and B close it; a message box takes A as its Yes
+  or OK button and Back and B as its Cancel or No button, a box with OK alone keeping Escape), and the keys bound to
+  `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding page waiting for a key gets the pad's
+  own keys, Back aside. The mouse's own motion takes the cursor back, and with it every pad key is itself again
+  (`NSDLClient: the menu cursor follows the pad|mouse`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:

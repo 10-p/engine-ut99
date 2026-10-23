@@ -83,8 +83,8 @@ pad button dpup 0
 sleep 0.3
 probe focus-back
 # The texture detail drop-down: A opens it, the D-pad selects in it and A picks: first Medium (up to the top, High,
-# then down one), then High, which UT99 asks to confirm in a message box. Its buttons take no keyboard focus and it
-# takes no Enter: the cursor and A answer it, or B closes it as the keyboard's Escape does (the value stays Medium).
+# then down one), then High, which UT99 asks to confirm in a message box: B answers No (the value stays Medium),
+# and the next time A answers Yes.
 pad button dpdown 1
 pad button dpdown 0
 sleep 0.3
@@ -118,7 +118,21 @@ probe picked-high
 pad button b 1
 pad button b 0
 sleep 0.5
-probe box-closed
+probe b-answers-no
+pad button a 1
+pad button a 0
+sleep 0.3
+pad button dpup 1
+pad button dpup 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 0.5
+probe picked-high-again
+pad button a 1
+pad button a 0
+sleep 0.5
+probe a-answers-yes
 # B closes the window, Back the menus.
 pad button b 1
 pad button b 0
@@ -142,3 +156,178 @@ pad button a 1
 pad button a 0
 sleep 0.5
 probe a-click
+pad button back 1
+pad button back 0
+sleep 0.3
+pad button back 1
+pad button back 0
+sleep 1
+probe closed
+# A long drop-down, the practice session's map list: the D-pad selects far down it and the list scrolls to keep the
+# selected row shown; B closes it, and the window.
+pad button start 1
+pad button start 0
+sleep 1
+mouse 620 460
+sleep 0.3
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.2
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 1.5
+probe practice-session
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.2
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe map-combo
+pad button a 1
+pad button a 0
+sleep 0.3
+probe map-list
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe map-list-down-25
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+pad button dpup 1
+pad button dpup 0
+sleep 0.3
+probe map-list-up-20
+pad button b 1
+pad button b 0
+sleep 0.3
+probe map-list-closed
+pad button b 1
+pad button b 0
+sleep 0.5
+pad button back 1
+pad button back 0
+sleep 1
+probe closed-again
+# The Quit box (Yes/No, Escape No, Enter Yes), the cursor off the menus: B answers No and play goes on; then A
+# answers Yes and the game quits.
+pad button start 1
+pad button start 0
+sleep 1
+mouse 620 460
+sleep 0.3
+pad button dpup 1
+pad button dpup 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 0.5
+probe quit-box
+pad button b 1
+pad button b 0
+sleep 0.5
+probe quit-no
+pad button back 1
+pad button back 0
+sleep 1
+pad button start 1
+pad button start 0
+sleep 1
+mouse 620 460
+sleep 0.3
+pad button dpup 1
+pad button dpup 0
+sleep 0.2
+pad button a 1
+pad button a 0
+sleep 0.5
+pad button a 1
+pad button a 0
+sleep 3

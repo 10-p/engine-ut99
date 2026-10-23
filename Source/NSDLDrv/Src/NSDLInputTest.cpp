@@ -295,10 +295,26 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 	FStateFrame* Frame = Console ? Console->GetStateFrame() : NULL;
 	UObject* Root = GetObjectProp( Console, TEXT("Root") );
 	SDL_GameController* Pad = Viewport->Client->GetController();
+	// An open drop-down list: the selected row, the first row shown and how many rows it shows.
+	UObject* List = GetObjectProp( Root, TEXT("KeyFocusWindow") );
+	INT Row = -1, Rows = 0;
+	UBOOL IsList = 0;
+	for( UClass* C = List ? List->GetClass() : NULL; C && !IsList; C = C->GetSuperClass() )
+		IsList = appStricmp( C->GetName(), TEXT("UWindowComboList") ) == 0;
+	if( IsList )
+	{
+		UObject* Selected = GetObjectProp( List, TEXT("Selected") );
+		INT i = 0;
+		for( UObject* I = GetObjectProp( GetObjectProp( List, TEXT("Items") ), TEXT("Next") ); I; I = GetObjectProp( I, TEXT("Next") ), i++ )
+			if( I == Selected )
+				Row = i;
+		Rows = i;
+	}
+	UObject* ScrollBar = IsList ? GetObjectProp( List, TEXT("VertSB") ) : NULL;
 	debugf
 	(
 		NAME_Log,
-		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s checked=%i list=%i value=[%s] relative=%i oscursor=%i padcursor=%i pad=%s"),
+		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s checked=%i list=%i value=[%s] row=%i/%i top=%.0f shown=%.0f relative=%i oscursor=%i padcursor=%i pad=%s"),
 		Tag,
 		Actor ? Actor->ViewRotation.Yaw : 0,
 		Actor ? Actor->ViewRotation.Pitch : 0,
@@ -315,6 +331,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 		GetBoolProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("bChecked") ),
 		GetBoolProp( GetObjectProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("ParentWindow") ), TEXT("bListVisible") ),
 		*GetStrProp( GetObjectProp( Root, TEXT("KeyFocusWindow") ), TEXT("Value") ),
+		Row, Rows, GetFloatProp( ScrollBar, TEXT("Pos") ), GetFloatProp( ScrollBar, TEXT("MaxVisible") ),
 		(INT)SDL_GetRelativeMouseMode(),
 		SDL_ShowCursor( SDL_QUERY ),
 		(INT)Viewport->PadCursor,

@@ -1191,7 +1191,8 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 // The menus' keys on the pad while it has their cursor: Back and B go back, Start and A confirm (A clicks instead:
 // under the cursor shown when that is on a control, else the focused control when that takes a click), the D-pad
 // is the arrow keys (an arrow the focused control does not use moves the focus as Tab does: down and right to the
-// next control, up and left to the previous one). An open drop-down list takes them as ComboListKey says.
+// next control, up and left to the previous one). A message box takes A and the way back as MessageBoxAnswer says,
+// an open drop-down list the others as ComboListKey says.
 //
 static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
 {
@@ -1358,8 +1359,8 @@ static UObject* MoveFocus( UObject* Root, UBOOL Next )
 
 //
 // The keys of an open drop-down list (UWindowComboList, the focus while it is open), whose mouse-only items take
-// the pad's here: Up and Down select the item before or after, Enter picks the selected one (or closes the list
-// when none is), Escape closes it. Returns whether MenuKey was one of them.
+// the pad's here: Up and Down select the item before or after (scrolled into view), Enter picks the selected one (or
+// closes the list when none is), Escape closes it. Returns whether MenuKey was one of them.
 //
 static UBOOL ComboListKey( UObject* List, INT MenuKey )
 {
@@ -1371,7 +1372,20 @@ static UBOOL ComboListKey( UObject* List, INT MenuKey )
 		UObject* To = Selected ? ObjectProp( Selected, MenuKey == IK_Down ? TEXT("Next") : TEXT("Prev") )
 			: ObjectProp( Items, TEXT("Next") );
 		if( To && To != Items && SelectedProp )
+		{
 			appMemcpy( (BYTE*)List + SelectedProp->Offset, &To, sizeof(To) );
+			// The selected row in view, as the scroll bar shows a row (UWindowVScrollBar.Show).
+			FLOAT Row = 0.f;
+			for( UObject* I = ObjectProp( Items, TEXT("Next") ); I && I != To; I = ObjectProp( I, TEXT("Next") ) )
+				Row += 1.f;
+			UObject* ScrollBar = ObjectProp( List, TEXT("VertSB") );
+			if( BoolProp( ScrollBar, TEXT("bWindowVisible") ) )
+			{
+				FUWindowCall Show( ScrollBar, TEXT("Show") );
+				Show.Set( TEXT("P"), &Row, sizeof(Row) );
+				Show.Call();
+			}
+		}
 		return 1;
 	}
 	if( MenuKey == IK_Enter && Selected )
@@ -1405,21 +1419,19 @@ static UBOOL FocusTakesClick( UObject* Focus )
 }
 
 //
-// A left click at the centre of the focused control, as the mouse's would be there: UWindow's mouse down and up at
-// that point, with the root's mouse position there meanwhile (the captures read it); the cursor stays where it is.
-// Returns the control clicked, NULL when the focus takes no click.
+// A left click at the centre of a window, as the mouse's would be there: UWindow's mouse down and up at that point,
+// with the root's mouse position there meanwhile (the captures read it); the cursor stays where it is.
 //
-static UObject* ClickFocus( UObject* Root )
+static UBOOL ClickWindow( UObject* Root, UObject* Window )
 {
-	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
 	FLOAT* RootX = FloatProp( Root, TEXT("MouseX") );
 	FLOAT* RootY = FloatProp( Root, TEXT("MouseY") );
-	FLOAT* Width = FloatProp( Focus, TEXT("WinWidth") );
-	FLOAT* Height = FloatProp( Focus, TEXT("WinHeight") );
-	if( !FocusTakesClick( Focus ) || !RootX || !RootY || !Width || !Height )
-		return NULL;
+	FLOAT* Width = FloatProp( Window, TEXT("WinWidth") );
+	FLOAT* Height = FloatProp( Window, TEXT("WinHeight") );
+	if( !RootX || !RootY || !Width || !Height )
+		return 0;
 	FLOAT X = *Width / 2.f, Y = *Height / 2.f;
-	for( UObject* W = Focus; W && W != Root; W = ObjectProp( W, TEXT("ParentWindow") ) )
+	for( UObject* W = Window; W && W != Root; W = ObjectProp( W, TEXT("ParentWindow") ) )
 	{
 		FLOAT* Left = FloatProp( W, TEXT("WinLeft") );
 		FLOAT* Top = FloatProp( W, TEXT("WinTop") );
@@ -1441,7 +1453,33 @@ static UObject* ClickFocus( UObject* Root )
 	}
 	*RootX = SavedX;
 	*RootY = SavedY;
-	return Focus;
+	return 1;
+}
+
+//
+// A click on the focused control when it takes one (FocusTakesClick). Returns the control, or NULL.
+//
+static UObject* ClickFocus( UObject* Root )
+{
+	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
+	return FocusTakesClick( Focus ) && ClickWindow( Root, Focus ) ? Focus : NULL;
+}
+
+//
+// A message box on top (UWindowMessageBox, modal) answers the pad's A with its affirmative button (Yes, else OK)
+// and the pad's way back with its negative one (Cancel, else No; a box with OK alone keeps Escape's answer).
+// Returns the button clicked, or NULL.
+//
+static UObject* MessageBoxAnswer( UObject* Root, UBOOL Affirmative )
+{
+	UObject* Box = ObjectProp( Root, TEXT("ActiveWindow") );
+	if( !IsAClassNamed( Box, TEXT("UWindowMessageBox") ) )
+		return NULL;
+	UObject* Client = ObjectProp( Box, TEXT("ClientArea") );
+	UObject* Button = Affirmative ? ObjectProp( Client, TEXT("YesButton") ) : ObjectProp( Client, TEXT("CancelButton") );
+	if( !Button )
+		Button = Affirmative ? ObjectProp( Client, TEXT("OKButton") ) : ObjectProp( Client, TEXT("NoButton") );
+	return Button && ClickWindow( Root, Button ) ? Button : NULL;
 }
 
 //
@@ -1486,6 +1524,13 @@ INT UNSDLViewport::PadMenuKey( INT Key, UBOOL HadCursor )
 	UObject* Root = ObjectProp( (UObject*)Console, TEXT("Root") );
 	if( Key == IK_Joy1 && HadCursor && ControlUnderCursor( Root ) )
 		return IK_LeftMouse;
+	if( Key == IK_Joy1 || MenuKey == IK_Escape )
+		if( UObject* Answer = MessageBoxAnswer( Root, Key == IK_Joy1 ) )
+		{
+			if( InputTest )
+				debugf( NAME_Log, TEXT("NSDLInputTest: key %s answers the message box with %s"), Input->GetKeyName( (EInputKey)Key ), Answer->GetName() );
+			return 0;
+		}
 	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
 	if( IsAClassNamed( Focus, TEXT("UWindowComboList") ) && ComboListKey( Focus, MenuKey ) )
 	{
