@@ -145,9 +145,14 @@ system and the network transport at run time.
   pad layout: Back (`Joy5`) shows the scores, Start (`Joy7`) opens UWindow with `MenuCmd 0 -1` (UT99 has no menu for
   `ShowMenu`, which would only pause the game). The stick scales `ScaleXYZ`/`ScaleRUV` default to Unreal 1's 100/100,
   which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and Android inis set 200/500 for
-  `DefUser.ini`'s speed 1. While UWindow shows its cursor, any pad press or a stick pushed out of its dead zone gives
-  the cursor to the pad and hides the system pointer, and that press already acts as below. While the pad has the
-  cursor, and only then, the left stick moves it (linear from the dead zone's edge, across the viewport's width in
+  `DefUser.ini`'s speed 1. In play the left stick is the move stick: its dead zone (`DeadZoneXYZ`, 0.1) is radial, so
+  every direction between the axes keeps both of its parts, and a tilt out of it but below `PadWalkTilt` (0.5 of the
+  stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
+  `bRun` (the Walking key writes the whole byte; the stick sets its bit again the next tick), and the moves a client
+  sends to its server carry `bRun`. The right stick keeps a dead zone per axis (`DeadZoneRUV`). While UWindow shows
+  its cursor, any pad press or a stick pushed out of its dead zone gives the cursor to the pad and hides the system
+  pointer, and that press already acts as below. While the pad has the cursor, and only then, the left stick moves it
+  (linear from the dead zone's edge, across the viewport's width in
   `PadCursorSeconds` at full tilt: 3), Back and B are Escape, Start is Enter, A is a left click under the cursor shown
   when that is on a control, else a click at the centre of the focused control (a button presses, a checkbox toggles,
   a drop-down list opens) or, for the controls that take it (pull-down menus, editable boxes, message boxes), Enter,

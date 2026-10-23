@@ -82,7 +82,9 @@ private:
 	INT DisplayIndex;
 	SDL_Rect DisplaySize;
 	SWORD JoyAxis[SDL_CONTROLLER_AXIS_MAX];
+	SWORD MoveStick[2];	// the left stick's X and Y before any dead zone: the move stick (TickMoveStick)
 	void UpdatePadAxis( INT Axis, INT NewValue );	// one stick or trigger value, read from the pad's state
+	void TickMoveStick( FLOAT DeltaTime );
 	void ReleasePad();	// every pad key up and the axes zeroed (the pad went, or UseJoystick went off)
 	BYTE PadKeySent[IK_MAX];	// for each pad key held, the engine key its press sent (its release sends the same)
 	void PadKey( INT Key, EInputAction Action );	// a pad button's or trigger's press or release
@@ -133,6 +135,7 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 	UBOOL InvertY;
 	UBOOL InvertV;
 	FLOAT PadCursorSeconds;	// seconds for the pad's left stick at full tilt to take the menu cursor across the viewport
+	FLOAT PadWalkTilt;	// the move stick out of its dead zone but tilted less than this (0..1) walks; 0: never
 	FLOAT ScaleXYZ;
 	FLOAT ScaleRUV;
 	FLOAT DeadZoneXYZ;
