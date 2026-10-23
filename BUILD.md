@@ -308,7 +308,7 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 | `tools/dev/layout-sweep.gdb` | every script property of every native class (and script struct) against the same-named C++ member; run under `ucc-bin make` and the client |
 | `tools/dev/census/` | a coverage census of which engine functions ever ran (`census.py`, `gcovdump.c`, the scripted player session `play.sh`) and a cross-width layout oracle (`exports.sh`) |
 | `tools/test/U64Test/` | an UnrealScript fixture for the 64-bit port: VM checks (`U64Mutator`), compile-only declarations (`U64Decl`), a benchmark (`U64Bench`) |
-| `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` | runs the native build under Xvfb with the input test channel (`-INPUTTEST=<file>`, `Source/NSDLDrv/Src/NSDLInputTest.h`: a virtual SDL pad that takes the pad's place, mouse motion, console commands, state probes, per-tick view watches) and feeds it a scenario (`turn.scen`); `rate.py` fits the turn rate and the speed from the log |
+| `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` | runs the native build under Xvfb with the input test channel (`-INPUTTEST=<file>`, `Source/NSDLDrv/Src/NSDLInputTest.h`: a virtual SDL pad that takes the pad's place, mouse motion, console commands, state probes, per-tick view watches) and feeds it a scenario (`turn.scen`; `move.scen`: the move stick's speed against tilt and its directions); `rate.py` fits the turn rate and the speed, and gives the move direction and the walking share, from the log |
 | `tools/web-smoke.mjs` | serves a web artifact to headless Chromium; it sends no COOP/COEP headers and sets no `Module.UE`, so it reports the abort of the threaded build (the frontend's E2E is the web gate) |
 
 ```bash

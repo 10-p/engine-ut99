@@ -15,8 +15,10 @@
 	  exec <console command>                run on the viewport
 	  probe <tag>                           one "NSDLInputTest: probe <tag> ..." state line
 	  watch <ticks> <tag>                   one "NSDLInputTest: watch <tag> <i> <seconds> <yaw> <pitch> <speed>
-	                                        <cursor x> <cursor y>" line per input tick, for <ticks> ticks (speed: the
-	                                        horizontal one; cursor: the absolute mouse position, viewport pixels)
+	                                        <cursor x> <cursor y> <x> <y> <vx> <vy> <ax> <ay> <walking>" line per
+	                                        input tick, for <ticks> ticks (speed: the horizontal one; cursor: the
+	                                        absolute mouse position, viewport pixels; x, y: the location; v, a: the
+	                                        velocity and the acceleration; walking: bIsWalking)
 	  log <text>                            a marker line
 	While the channel is open every key the pad sends to the engine and every mouse motion SDL reports are logged
 	("NSDLInputTest: key ...", "NSDLInputTest: motion ...").
