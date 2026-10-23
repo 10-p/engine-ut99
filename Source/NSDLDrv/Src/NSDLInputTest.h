@@ -18,7 +18,8 @@
 	                                        <cursor x> <cursor y>" line per input tick, for <ticks> ticks (speed: the
 	                                        horizontal one; cursor: the absolute mouse position, viewport pixels)
 	  log <text>                            a marker line
-	While the channel is open every key the pad sends to the engine is logged ("NSDLInputTest: key ...").
+	While the channel is open every key the pad sends to the engine and every mouse motion SDL reports are logged
+	("NSDLInputTest: key ...", "NSDLInputTest: motion ...").
 	Without the switch nothing here runs.
 =============================================================================*/
 

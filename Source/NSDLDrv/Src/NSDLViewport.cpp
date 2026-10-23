@@ -205,6 +205,7 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 	appMemzero( PadKeySent, sizeof(PadKeySent) );
 	PadCursor = 0;
 	PadCursorX = PadCursorY = 0.f;
+	PadStickOut[0] = PadStickOut[1] = 0;
 	InputTest = NULL;
 	FString InputTestFile;
 	if( Parse( appCmdLine(), TEXT("INPUTTEST="), InputTestFile ) )
@@ -1158,7 +1159,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	{
 		if( Sent )
 			return;
-		Sent = PadCursor ? PadCursorClick( Key ) : Key;
+		Sent = bShowWindowsMouse ? PadCursorClick( Key ) : Key;
 		PadKeySent[Key] = Sent;
 	}
 	else
@@ -1170,6 +1171,9 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	if( InputTest )
 		debugf( NAME_Log, TEXT("NSDLInputTest: key %s %s"), Input->GetKeyName( (EInputKey)Sent ), Action == IST_Press ? TEXT("press") : TEXT("release") );
 	CauseInputEvent( Sent, Action );
+	// A press while UWindow shows its cursor, the one that opened it included, gives the cursor to the pad.
+	if( Action == IST_Press && bShowWindowsMouse )
+		SetPadCursor( 1 );
 	unguard;
 }
 
@@ -1179,7 +1183,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 
 //
 // The mouse buttons the menu cursor clicks with: a pad key bound to one of these commands clicks its button while
-// the pad drives the cursor.
+// UWindow shows its cursor.
 //
 static const struct { const TCHAR* Command; BYTE Button; } GPadCursorClicks[] =
 {
@@ -1256,18 +1260,34 @@ void UNSDLViewport::SetPadCursor( UBOOL On )
 }
 
 //
-// While UWindow shows its cursor, the left stick moves it: linear from the dead zone's edge to full tilt, at
-// PadCursorSpeed viewport widths a second, with no acceleration. It reaches UWindow as the mouse's absolute
-// motion does: the position, and the deltas UWindow counts on a viewport without a system pointer.
+// While UWindow shows its cursor, a stick pushed out of its dead zone gives the cursor to the pad (a stick held out
+// since does not take it back from the mouse), and while the pad has it the left stick moves it: linear from the
+// dead zone's edge to full tilt, at PadCursorSpeed viewport widths a second, with no acceleration. It reaches
+// UWindow as the mouse's absolute motion does: the position, and the deltas UWindow counts on a viewport without
+// a system pointer.
 //
 void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 {
 	guard(UNSDLViewport::TickPadCursor);
+	UBOOL Pushed = 0;
+	for( INT s = 0; s < 2; s++ )
+	{
+		const UBOOL Out = s == 0
+			? ( JoyAxis[SDL_CONTROLLER_AXIS_LEFTX] || JoyAxis[SDL_CONTROLLER_AXIS_LEFTY] )
+			: ( JoyAxis[SDL_CONTROLLER_AXIS_RIGHTX] || JoyAxis[SDL_CONTROLLER_AXIS_RIGHTY] );
+		if( Out && !PadStickOut[s] )
+			Pushed = 1;
+		PadStickOut[s] = Out;
+	}
 	if( !bShowWindowsMouse )
 	{
 		SetPadCursor( 0 );
 		return;
 	}
+	if( Pushed )
+		SetPadCursor( 1 );
+	if( !PadCursor )
+		return;
 	const FLOAT DeadZone = Clamp( Client->DeadZoneXYZ, 0.f, 0.99f );
 	const INT Axes[2] = { SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY };
 	FLOAT Tilt[2];
@@ -1278,7 +1298,6 @@ void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 	}
 	if( Tilt[0] == 0.f && Tilt[1] == 0.f )
 		return;
-	SetPadCursor( 1 );
 	const FLOAT Step = Client->PadCursorSpeed * SizeX * DeltaTime;
 	const FLOAT X = Clamp( PadCursorX + Tilt[0] * Step, 0.f, (FLOAT)Max( SizeX - 1, 0 ) );
 	const FLOAT Y = Clamp( PadCursorY + Tilt[1] * Step, 0.f, (FLOAT)Max( SizeY - 1, 0 ) );
@@ -1463,7 +1482,12 @@ UBOOL UNSDLViewport::TickInput()
 				// The sticks and triggers are read from the pad's state every tick (below), not from these.
 				break;
 			case SDL_MOUSEMOTION:
-				SetPadCursor( 0 );
+				if( InputTest )
+					debugf( NAME_Log, TEXT("NSDLInputTest: motion %i,%i rel %i,%i"), Ev.motion.x, Ev.motion.y, Ev.motion.xrel, Ev.motion.yrel );
+				// The mouse's own motion takes the menu cursor back from the pad, a touch's too; the motion SDL
+				// reports in place when it releases the capture moves nothing and leaves it.
+				if( Ev.motion.xrel || Ev.motion.yrel || Ev.motion.which == SDL_TOUCH_MOUSEID )
+					SetPadCursor( 0 );
 				if( !SDL_GetRelativeMouseMode() )
 				{
 					// Absolute (menu / cursor-visible) mode. MousePosition feeds WindowsMouseX/Y, which UWindow reads on

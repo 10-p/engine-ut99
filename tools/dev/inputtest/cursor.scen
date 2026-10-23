@@ -1,12 +1,14 @@
-# The menu cursor on the pad: while UWindow shows its cursor the left stick moves it (linear from the dead zone's
-# edge, a third of the viewport's width a second at full tilt) and the keys bound to Fire and AltFire click left and right; the
-# mouse's own motion takes it back. Positions are for a 640x480 viewport at GUIScale 1 with DefUser.ini's layout
-# (Fire on the right trigger and shoulder); start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'. The
-# Controls page step binds Joy13 in the run tree's User.ini; the last line puts Fire back on it.
+# The menu cursor on the pad: while UWindow shows its cursor any pad press or stick push gives it to the pad (the
+# system pointer is hidden), the left stick moves it (linear from the dead zone's edge, a third of the viewport's
+# width a second at full tilt) and the keys bound to Fire and AltFire click left and right; the mouse's own motion
+# takes it back. Positions are for a 640x480 viewport at GUIScale 1 with DefUser.ini's layout (Fire on the right
+# trigger and shoulder); start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'. The Controls page step binds
+# Joy13 in the run tree's User.ini; the last line puts Fire back on it.
 waitlog up for play
 sleep 3
 pad attach
 sleep 1
+# Back opens the menus, and the press gives the cursor to the pad.
 pad button back 1
 pad button back 0
 sleep 1
@@ -34,10 +36,27 @@ pad axis leftx 0
 mouse 320 300
 sleep 0.3
 probe mouse-took-over
-# AltFire (the left trigger) right-clicks once the stick has the cursor.
-pad axis lefty 6000
-sleep 0.05
-pad axis lefty 0
+# Any button takes the cursor back (Y does nothing in the menus), and so does the right stick.
+pad button y 1
+pad button y 0
+sleep 0.3
+probe y-pressed
+mouse 300 300
+sleep 0.3
+pad axis rightx 20000
+sleep 0.2
+pad axis rightx 0
+sleep 0.2
+probe right-stick-pushed
+# A stick held out when the mouse takes over does not take the cursor back until it is pushed again.
+pad axis leftx 32767
+sleep 0.2
+mouse 320 300
+sleep 0.5
+probe stick-held-mouse-moved
+pad axis leftx 0
+sleep 0.2
+# AltFire (the left trigger) right-clicks.
 pad axis lefttrigger 32767
 sleep 0.1
 pad axis lefttrigger 0
@@ -46,9 +65,6 @@ sleep 0.3
 # (Preferences) and Start (Enter) runs it.
 mouse 100 5
 sleep 0.1
-pad axis leftx 6000
-sleep 0.05
-pad axis leftx 0
 pad axis righttrigger 32767
 sleep 0.1
 pad axis righttrigger 0
@@ -66,18 +82,12 @@ probe start-ran-it
 # The Controls page: Fire clicks a binding, which then waits for a key; the right trigger is bound as itself.
 mouse 320 58
 sleep 0.1
-pad axis leftx 6000
-sleep 0.05
-pad axis leftx 0
 pad axis righttrigger 32767
 sleep 0.1
 pad axis righttrigger 0
 sleep 0.3
 mouse 340 200
 sleep 0.1
-pad axis leftx 6000
-sleep 0.05
-pad axis leftx 0
 pad axis righttrigger 32767
 sleep 0.1
 pad axis righttrigger 0
@@ -103,9 +113,6 @@ sleep 0.5
 probe window-closed
 mouse 320 300
 sleep 0.1
-pad axis leftx 6000
-sleep 0.05
-pad axis leftx 0
 pad button rightshoulder 1
 sleep 0.1
 pad button rightshoulder 0
