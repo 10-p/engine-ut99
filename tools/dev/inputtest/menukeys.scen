@@ -1,8 +1,8 @@
-# The pad's menu keys: while UWindow shows its cursor A is Enter, B Escape and the D-pad the arrow keys; in play they
-# are the pad's Joy keys. The run through the menus: Back opens them with the Game menu dropped down, Right twice
-# goes to Options, Down to Preferences, A runs it, B closes its window (no menu is dropped down after it, so Left
-# moves nothing) and Back closes the menus; the keyboard's Escape, Right, Down, Return and Left give the same states.
-# Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
+# The pad's menu keys, which hold only while the menus are up and the pad has their cursor: Back and B are Escape,
+# Start is Enter, A is Enter (a left click when the cursor shown is on a control), the D-pad is the arrow keys and an
+# arrow the focused control does not use moves the focus as Tab does (down and right to the next control, up and
+# left to the previous one). In play the buttons are their Joy keys and their bindings (DefUser.ini: Back shows the
+# scores, Start opens the menus). Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
 waitlog up for play
 sleep 3
 pad attach
@@ -13,40 +13,73 @@ pad button b 1
 pad button b 0
 pad button dpup 1
 pad button dpup 0
-sleep 0.5
-probe play
-# The cursor out of the menus' way, then Back opens them with the Game menu dropped down.
-mouse 400 400
-sleep 0.2
 pad button back 1
 pad button back 0
+sleep 0.5
+probe play
+# Start's binding opens the menus with the Game menu dropped down; the mouse then takes the cursor out of the way.
+pad button start 1
+pad button start 0
 sleep 1
-probe pad-menu
+probe menus
+mouse 400 400
+sleep 0.3
+probe mouse-has-it
+# A press takes the cursor back and acts: Right twice goes to Options, Down to Preferences, and A, with the cursor
+# on no control, is Enter and runs it.
 pad button dpright 1
 pad button dpright 0
 sleep 0.3
-probe pad-right-1
+probe right-1
 pad button dpright 1
 pad button dpright 0
 sleep 0.3
-probe pad-right-2
+probe right-2
 pad button dpdown 1
 pad button dpdown 0
 sleep 0.3
-probe pad-down
+probe down
 pad button a 1
 pad button a 0
 sleep 1
-probe pad-a
+probe a-enter
+# In the Preferences window the D-pad's down and up move the focus from control to control.
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe focus-1
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe focus-2
+pad button dpdown 1
+pad button dpdown 0
+sleep 0.3
+probe focus-3
+pad button dpup 1
+pad button dpup 0
+sleep 0.3
+probe focus-back
+# B closes the window, Back the menus.
 pad button b 1
 pad button b 0
 sleep 0.5
-probe pad-b
-pad button dpleft 1
-pad button dpleft 0
-sleep 0.3
-probe pad-left
+probe b
 pad button back 1
 pad button back 0
 sleep 1
-probe pad-closed
+probe back
+# A with the cursor shown on a control clicks it: the cursor on Options in the menu bar drops its menu down.
+pad button start 1
+pad button start 0
+sleep 1
+mouse 100 5
+sleep 0.2
+pad axis leftx 6000
+sleep 0.05
+pad axis leftx 0
+sleep 0.3
+pad button a 1
+pad button a 0
+sleep 0.5
+probe a-click

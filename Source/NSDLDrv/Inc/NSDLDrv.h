@@ -87,15 +87,15 @@ private:
 	BYTE PadKeySent[IK_MAX];	// for each pad key held, the engine key its press sent (its release sends the same)
 	void PadKey( INT Key, EInputAction Action );	// a pad button's or trigger's press or release
 	FNSDLInputTest* InputTest;	// the input test channel (-INPUTTEST=), NULL without it
-	// The menus on the pad: while UWindow shows its cursor any pad press or stick push gives it to the pad, the left
-	// stick moves it, A and Start, B and the D-pad are Enter, Escape and the arrows and the keys bound to Fire and
-	// AltFire click; the mouse's own motion takes the cursor back.
+	// The menus on the pad: while UWindow shows its cursor any pad press or stick push gives it to the pad, and while
+	// the pad has it the left stick moves it and some pad keys are the menus' keys (PadMenuKey); the mouse's own
+	// motion takes the cursor back, and with it the pad keys are themselves again.
 	UBOOL PadCursor;
 	FLOAT PadCursorX, PadCursorY;	// in viewport pixels
 	UBOOL PadStickOut[2];	// whether the left and the right stick were out of their dead zones last tick
 	void TickPadCursor( FLOAT DeltaTime );
 	void SetPadCursor( UBOOL On );
-	INT PadMenuKey( INT Key );	// the key pad key Key raises in the menus
+	INT PadMenuKey( INT Key, UBOOL HadCursor );	// the key pad key Key raises in the menus, 0 for a focus move
 	friend class FNSDLInputTest;
 	UBOOL QuitRequested;
 	DOUBLE InputUpdateTime;	// DOUBLE: see TickInput

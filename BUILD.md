@@ -141,17 +141,19 @@ system and the network transport at run time.
   the pad at once (`NSDLClient: game pads on|off (UseJoystick)`); the first pad connected is used, with hot-plug
   (`NSDLClient: game pad connected: <name>`). Sticks and triggers are read from the pad's state every tick. On the web
   the press that made the browser list the pad is read from `navigator.getGamepads()` at the connect and given to the
-  game as a tap. The pad's Back is the Escape key in play and in the menus (Escape opens and closes UWindow), and
-  Start is Escape in play and Enter in the menus; in play the other buttons are the `Joy` keys, and
-  `Config/System/web/DefUser.ini` binds them to Unreal 1's pad layout. The stick scales `ScaleXYZ`/`ScaleRUV` default
-  to Unreal 1's 100/100, which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and
-  Android inis set 200/500 for `DefUser.ini`'s speed 1. While UWindow shows its cursor, any pad press or a stick
-  pushed out of its dead zone gives the cursor to the pad and hides the system pointer; the left stick moves it
-  (linear from the dead zone's edge, across the viewport's width in `PadCursorSeconds` at full tilt: 3), A, B and the
-  D-pad are the Enter, Escape and arrow keys (`GPadMenuKeys` in `NSDLViewport.cpp`; Start's Escape in play is
-  `GPadPlayKeys`), and the keys bound to `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding
-  page waiting for a key gets the pad's own keys. The mouse's own motion takes the cursor back (`NSDLClient: the menu
-  cursor follows the pad|mouse`).
+  game as a tap. The pad's buttons are the `Joy` keys, and `Config/System/web/DefUser.ini` binds them to Unreal 1's
+  pad layout: Back (`Joy5`) shows the scores, Start (`Joy7`) opens UWindow with `MenuCmd 0 -1` (UT99 has no menu for
+  `ShowMenu`, which would only pause the game). The stick scales `ScaleXYZ`/`ScaleRUV` default to Unreal 1's 100/100,
+  which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and Android inis set 200/500 for
+  `DefUser.ini`'s speed 1. While UWindow shows its cursor, any pad press or a stick pushed out of its dead zone gives
+  the cursor to the pad and hides the system pointer, and that press already acts as below. While the pad has the
+  cursor, and only then, the left stick moves it (linear from the dead zone's edge, across the viewport's width in
+  `PadCursorSeconds` at full tilt: 3), Back and B are Escape, Start is Enter, A is Enter or, when the cursor shown is
+  on a control, a left click, the D-pad is the arrow keys, an arrow the focused control does not use moving the focus
+  to the next (down, right) or the previous (up, left) control that takes it (`GPadMenuKeys` in `NSDLViewport.cpp`),
+  and the keys bound to `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding page waiting for
+  a key gets the pad's own keys, Back aside. The mouse's own motion takes the cursor back, and with it every pad key
+  is itself again (`NSDLClient: the menu cursor follows the pad|mouse`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:
@@ -247,8 +249,8 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
 
 Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; in the
-menus its left stick moves the cursor, its fire buttons click and A, B and the D-pad are Enter, Escape and the
-arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
+menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
+Enter, Escape and the arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
 `Source/NSDLDrv/Src/NSDLAndroid.cpp`. The system's Back key is Escape.
 

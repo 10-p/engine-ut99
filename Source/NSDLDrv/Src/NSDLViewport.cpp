@@ -53,9 +53,8 @@ const BYTE UNSDLViewport::MouseButtonMap[6] =
 };
 
 //
-// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map. Back is the keyboard's Escape, in play and in the menus: it
-// opens and closes UWindow (the console takes it before any binding). Start is Escape in play and Enter in the
-// menus (PadKey).
+// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map: the pad's Joy keys, which the bindings give their actions.
+// While the pad has the menus' cursor, PadMenuKey stands the menus' keys in for some of them.
 //
 const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
@@ -63,7 +62,7 @@ const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 	/* BUTTON_B             */ IK_Joy2,
 	/* BUTTON_X             */ IK_Joy3,
 	/* BUTTON_Y             */ IK_Joy4,
-	/* BUTTON_BACK          */ IK_Escape,
+	/* BUTTON_BACK          */ IK_Joy5,
 	/* BUTTON_GUIDE         */ IK_Joy6,
 	/* BUTTON_START         */ IK_Joy7,
 	/* BUTTON_LEFTSTICK     */ IK_Joy8,
@@ -1147,24 +1146,9 @@ void UNSDLViewport::ReleasePad()
 }
 
 //
-// The keys the pad raises in play that are not its own: Start opens the menus, as Escape does.
-//
-static const struct { BYTE PadKey; BYTE PlayKey; } GPadPlayKeys[] =
-{
-	{ IK_Joy7, IK_Escape },	// Start
-};
-
-static INT PadPlayKey( INT Key )
-{
-	for( INT i = 0; i < ARRAY_COUNT(GPadPlayKeys); i++ )
-		if( GPadPlayKeys[i].PadKey == Key )
-			return GPadPlayKeys[i].PlayKey;
-	return Key;
-}
-
-//
-// A pad key's press or release, as the play key or, while UWindow shows its cursor, the menus' key it stands for.
-// A press already held is ignored, and a release sends the engine key the press sent.
+// A pad key's press or release. While UWindow shows its cursor a press takes the cursor for the pad and raises the
+// menus' key the pad key stands for there; anywhere else, and while the mouse has the cursor, the pad key is
+// itself. A press already held is ignored, and a release sends the engine key the press sent.
 //
 void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 {
@@ -1176,8 +1160,13 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	{
 		if( Sent )
 			return;
-		Sent = bShowWindowsMouse ? PadMenuKey( Key ) : PadPlayKey( Key );
+		const UBOOL HadCursor = PadCursor;
+		if( bShowWindowsMouse )
+			SetPadCursor( 1 );
+		Sent = PadCursor ? PadMenuKey( Key, HadCursor ) : Key;
 		PadKeySent[Key] = Sent;
+		if( !Sent )
+			return;
 	}
 	else
 	{
@@ -1188,7 +1177,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	if( InputTest )
 		debugf( NAME_Log, TEXT("NSDLInputTest: key %s %s"), Input->GetKeyName( (EInputKey)Sent ), Action == IST_Press ? TEXT("press") : TEXT("release") );
 	CauseInputEvent( Sent, Action );
-	// A press while UWindow shows its cursor, the one that opened it included, gives the cursor to the pad.
+	// A press that brought UWindow up gives the cursor to the pad too.
 	if( Action == IST_Press && bShowWindowsMouse )
 		SetPadCursor( 1 );
 	unguard;
@@ -1199,11 +1188,13 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 -----------------------------------------------------------------------------*/
 
 //
-// The menus' keys on the pad while UWindow shows its cursor: A and Start confirm, B goes back, the D-pad is the
-// arrow keys.
+// The menus' keys on the pad while it has their cursor: Back and B go back, Start and A confirm (A clicks instead
+// when the cursor shown is on a control), the D-pad is the arrow keys (an arrow the focused control does not use
+// moves the focus as Tab does: down and right to the next control, up and left to the previous one).
 //
 static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
 {
+	{ IK_Joy5,        IK_Escape },	// Back
 	{ IK_Joy7,        IK_Enter  },	// Start
 	{ IK_Joy1,        IK_Enter  },	// A
 	{ IK_Joy2,        IK_Escape },	// B
@@ -1224,19 +1215,112 @@ static const struct { const TCHAR* Command; BYTE Button; } GPadCursorClicks[] =
 };
 
 //
+// UWindow's windows are script objects of other packages, read here by property and class name.
+//
+static UObject* ObjectProp( UObject* Obj, const TCHAR* Name )
+{
+	UObjectProperty* P = Obj ? FindField<UObjectProperty>( Obj->GetClass(), Name ) : NULL;
+	UObject* Value = NULL;
+	if( P )
+		appMemcpy( &Value, (BYTE*)Obj + P->Offset, sizeof(Value) );
+	return Value;
+}
+
+static UBOOL BoolProp( UObject* Obj, const TCHAR* Name )
+{
+	UBoolProperty* P = Obj ? FindField<UBoolProperty>( Obj->GetClass(), Name ) : NULL;
+	return P && ( *(DWORD*)((BYTE*)Obj + P->Offset) & P->BitMask );
+}
+
+static UBOOL IsAClassNamed( UObject* Obj, const TCHAR* Name )
+{
+	for( UClass* C = Obj ? Obj->GetClass() : NULL; C; C = C->GetSuperClass() )
+		if( appStricmp( C->GetName(), Name ) == 0 )
+			return 1;
+	return 0;
+}
+
+//
 // Whether a UWindow window and every window it sits in are shown.
 //
 static UBOOL WindowShown( UObject* Window )
 {
 	for( INT Depth = 0; Window && Depth < 64; Depth++ )
 	{
-		UBoolProperty* Visible = FindField<UBoolProperty>( Window->GetClass(), TEXT("bWindowVisible") );
-		UObjectProperty* Parent = FindField<UObjectProperty>( Window->GetClass(), TEXT("ParentWindow") );
-		if( !Visible || !Parent || !( *(DWORD*)((BYTE*)Window + Visible->Offset) & Visible->BitMask ) )
+		if( !BoolProp( Window, TEXT("bWindowVisible") ) )
 			return 0;
-		appMemcpy( &Window, (BYTE*)Window + Parent->Offset, sizeof(Window) );
+		Window = ObjectProp( Window, TEXT("ParentWindow") );
 	}
 	return 1;
+}
+
+//
+// Whether the window under UWindow's cursor is a control a click acts on (labels are not).
+//
+static UBOOL ControlUnderCursor( UObject* Root )
+{
+	UObject* Window = ObjectProp( Root, TEXT("MouseWindow") );
+	if( IsAClassNamed( Window, TEXT("UWindowDialogControl") ) )
+		return !IsAClassNamed( Window, TEXT("UWindowLabelControl") );
+	return IsAClassNamed( Window, TEXT("UWindowTabControlTabArea") ) || IsAClassNamed( Window, TEXT("UWindowGrid") )
+		|| IsAClassNamed( Window, TEXT("UWindowVScrollBar") ) || IsAClassNamed( Window, TEXT("UWindowHScrollBar") );
+}
+
+//
+// Whether the window with the keyboard focus acts on arrow key Key (its KeyDown uses it).
+//
+static UBOOL FocusUsesArrow( UObject* Root, INT Key )
+{
+	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
+	const UBOOL Across = Key == IK_Left || Key == IK_Right;
+	if( IsAClassNamed( Focus, TEXT("UWindowPulldownMenu") ) )
+		return 1;
+	if( IsAClassNamed( Focus, TEXT("UWindowMenuBar") ) || IsAClassNamed( Focus, TEXT("UWindowHSliderControl") ) )
+		return Across;
+	if( IsAClassNamed( Focus, TEXT("UWindowGrid") ) )
+		return !Across;
+	if( IsAClassNamed( Focus, TEXT("UWindowEditBox") ) )
+		return BoolProp( Focus, TEXT("bCanEdit") ) && ( Across || BoolProp( Focus, TEXT("bHistory") ) );
+	return 0;
+}
+
+//
+// Moves the keyboard focus to the next or the previous control of the focused control's tab ring that is shown and
+// takes the focus (a label does not), as UWindowDialogControl's Tab does (ActivateWindow); a dialog with no focused
+// control starts at its first control. Returns the control focused, NULL when there is none to move to.
+//
+static UObject* MoveFocus( UObject* Root, UBOOL Next )
+{
+	const TCHAR* Link = Next ? TEXT("TabNext") : TEXT("TabPrev");
+	UObject* Focus = ObjectProp( Root, TEXT("KeyFocusWindow") );
+	UObject* From = Focus;
+	while( From && !ObjectProp( From, Link ) )
+		From = ObjectProp( From, TEXT("ParentWindow") );
+	UObject* To = NULL;
+	if( From )
+		To = ObjectProp( From, Link );
+	else
+		for( UObject* Client = Focus; Client && !To; Client = ObjectProp( Client, TEXT("ParentWindow") ) )
+			if( UObject* Last = ObjectProp( Client, TEXT("TabLast") ) )
+				To = Next ? ObjectProp( Last, TEXT("TabNext") ) : Last;
+	// Past the controls hidden or without the focus: no further than the control it starts from, or once round.
+	UObject* Start = To;
+	for( INT i = 0; To && To != From && i < 256; i++ )
+	{
+		if( BoolProp( To, TEXT("bWindowVisible") ) && BoolProp( To, TEXT("bAcceptsFocus") ) )
+			break;
+		To = ObjectProp( To, Link );
+		if( To == Start )
+			To = NULL;
+	}
+	if( To == From )
+		return NULL;
+	UFunction* Activate = To ? To->FindFunction( FName( TEXT("ActivateWindow"), FNAME_Find ) ) : NULL;
+	struct { INT Depth; BITFIELD bTransientNoDeactivate; } Parms = { 0, 0 };
+	if( !Activate || Activate->ParmsSize != sizeof(Parms) )
+		return NULL;
+	To->ProcessEvent( Activate, &Parms );
+	return To;
 }
 
 //
@@ -1249,21 +1333,22 @@ static UBOOL KeyBinderPolling()
 	for( INT i = 0; i < ARRAY_COUNT(Binders); i++ )
 	{
 		UClass* Class = FindObject<UClass>( ANY_PACKAGE, Binders[i] );
-		UBoolProperty* Polling = Class ? FindField<UBoolProperty>( Class, TEXT("bPolling") ) : NULL;
-		if( !Polling )
+		if( !Class )
 			continue;
 		for( TObjectIterator<UObject> It; It; ++It )
-			if( It->IsA( Class ) && ( *(DWORD*)((BYTE*)*It + Polling->Offset) & Polling->BitMask ) && WindowShown( *It ) )
+			if( It->IsA( Class ) && BoolProp( *It, TEXT("bPolling") ) && WindowShown( *It ) )
 				return 1;
 	}
 	return 0;
 }
 
 //
-// The key a pad key raises while UWindow shows its cursor: the menus' key of GPadMenuKeys, else the mouse button
-// of GPadCursorClicks its binding names, else itself. A key-binding page waiting for a key gets the pad's own.
+// The key a pad key raises while the pad has the menus' cursor: the menus' key of GPadMenuKeys, else the mouse
+// button of GPadCursorClicks its binding names, else itself; 0 when it moved the focus instead. A key-binding page
+// waiting for a key gets the pad's own keys, but for Back, which closes it as the keyboard's Escape does.
+// HadCursor: the cursor was the pad's, so shown, before this press.
 //
-INT UNSDLViewport::PadMenuKey( INT Key )
+INT UNSDLViewport::PadMenuKey( INT Key, UBOOL HadCursor )
 {
 	guard(UNSDLViewport::PadMenuKey);
 	if( !Input || Key <= 0 || Key >= IK_MAX )
@@ -1275,7 +1360,19 @@ INT UNSDLViewport::PadMenuKey( INT Key )
 	for( INT i = 0; i < ARRAY_COUNT(GPadCursorClicks) && !MenuKey; i++ )
 		if( appStricmp( *Input->Bindings[Key], GPadCursorClicks[i].Command ) == 0 )
 			MenuKey = GPadCursorClicks[i].Button;
-	return MenuKey && !KeyBinderPolling() ? MenuKey : Key;
+	if( !MenuKey || ( Key != IK_Joy5 && KeyBinderPolling() ) )
+		return Key;
+	UObject* Root = ObjectProp( (UObject*)Console, TEXT("Root") );
+	if( Key == IK_Joy1 && HadCursor && ControlUnderCursor( Root ) )
+		return IK_LeftMouse;
+	if( ( MenuKey == IK_Up || MenuKey == IK_Down || MenuKey == IK_Left || MenuKey == IK_Right ) && !FocusUsesArrow( Root, MenuKey ) )
+		if( UObject* Focused = MoveFocus( Root, MenuKey == IK_Down || MenuKey == IK_Right ) )
+		{
+			if( InputTest )
+				debugf( NAME_Log, TEXT("NSDLInputTest: key %s moves the focus to %s"), Input->GetKeyName( (EInputKey)Key ), Focused->GetName() );
+			return 0;
+		}
+	return MenuKey;
 	unguard;
 }
 

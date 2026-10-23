@@ -8,9 +8,9 @@ waitlog up for play
 sleep 3
 pad attach
 sleep 1
-# Back opens the menus, and the press gives the cursor to the pad.
-pad button back 1
-pad button back 0
+# Start opens the menus (its binding), and the press gives the cursor to the pad.
+pad button start 1
+pad button start 0
 sleep 1
 probe menu
 mouse 0 240

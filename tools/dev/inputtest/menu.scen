@@ -1,11 +1,20 @@
-# The pad's Back is the keyboard's Escape: each Back press below is followed by the same press of the keyboard's
-# Escape, and the probes after them must agree. Start is Enter in the menus and Escape in play, where it opens them.
-# Start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
+# The pad's Back and Start. In play they are Joy5 and Joy7 with DefUser.ini's bindings: Back shows the scores, Start
+# opens the menus. While the menus are up and the pad has their cursor, Back is Escape (the probes after a Back and
+# after the keyboard's Escape must agree) and Start is Enter. Start a map, e.g.
+# 'DM-Deck16][?Game=Botpack.DeathMatchPlus'.
 waitlog up for play
 sleep 3
 pad attach
 sleep 1
 probe play
+pad button back 1
+pad button back 0
+sleep 0.5
+probe back-in-play
+pad button start 1
+pad button start 0
+sleep 1
+probe start-in-play
 pad button back 1
 pad button back 0
 sleep 1
@@ -14,14 +23,10 @@ pad button back 1
 pad button back 0
 sleep 1
 probe pad-back-2
-pad button back 1
-pad button back 0
+pad button start 1
+pad button start 0
 sleep 1
-probe pad-back-3
-pad button back 1
-pad button back 0
-sleep 1
-probe pad-back-4
+probe start-again
 key Escape 1
 key Escape 0
 sleep 1
@@ -34,19 +39,7 @@ key Escape 1
 key Escape 0
 sleep 1
 probe key-escape-3
-key Escape 1
-key Escape 0
-sleep 1
-probe key-escape-4
 pad button start 1
 pad button start 0
 sleep 0.5
-probe pad-start
-pad button back 1
-pad button back 0
-sleep 1
-probe closed
-pad button start 1
-pad button start 0
-sleep 1
-probe start-in-play
+probe pad-start-in-menus
