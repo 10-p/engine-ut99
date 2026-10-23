@@ -88,8 +88,8 @@ private:
 	void PadKey( INT Key, EInputAction Action );	// a pad button's or trigger's press or release
 	FNSDLInputTest* InputTest;	// the input test channel (-INPUTTEST=), NULL without it
 	// The menus on the pad: while UWindow shows its cursor any pad press or stick push gives it to the pad, the left
-	// stick moves it, A, B and the D-pad are Enter, Escape and the arrows and the keys bound to Fire and AltFire
-	// click; the mouse's own motion takes the cursor back.
+	// stick moves it, A and Start, B and the D-pad are Enter, Escape and the arrows and the keys bound to Fire and
+	// AltFire click; the mouse's own motion takes the cursor back.
 	UBOOL PadCursor;
 	FLOAT PadCursorX, PadCursorY;	// in viewport pixels
 	UBOOL PadStickOut[2];	// whether the left and the right stick were out of their dead zones last tick

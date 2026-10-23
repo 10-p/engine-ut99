@@ -53,8 +53,9 @@ const BYTE UNSDLViewport::MouseButtonMap[6] =
 };
 
 //
-// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map. Back and Start are the keyboard's Escape and Enter, in play
-// and in the menus: Escape opens and closes UWindow (the console takes it before any binding), Enter confirms.
+// SDL_CONTROLLER_BUTTON_ -> EInputKey translation map. Back is the keyboard's Escape, in play and in the menus: it
+// opens and closes UWindow (the console takes it before any binding). Start is Escape in play and Enter in the
+// menus (PadKey).
 //
 const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 {
@@ -64,7 +65,7 @@ const BYTE UNSDLViewport::JoyButtonMap[SDL_CONTROLLER_BUTTON_MAX] =
 	/* BUTTON_Y             */ IK_Joy4,
 	/* BUTTON_BACK          */ IK_Escape,
 	/* BUTTON_GUIDE         */ IK_Joy6,
-	/* BUTTON_START         */ IK_Enter,
+	/* BUTTON_START         */ IK_Joy7,
 	/* BUTTON_LEFTSTICK     */ IK_Joy8,
 	/* BUTTON_RIGHTSTICK    */ IK_Joy9,
 	/* BUTTON_LEFTSHOULDER  */ IK_Joy10,
@@ -1146,8 +1147,24 @@ void UNSDLViewport::ReleasePad()
 }
 
 //
-// A pad key's press or release. A press already held is ignored, and a release sends the engine key the press
-// sent.
+// The keys the pad raises in play that are not its own: Start opens the menus, as Escape does.
+//
+static const struct { BYTE PadKey; BYTE PlayKey; } GPadPlayKeys[] =
+{
+	{ IK_Joy7, IK_Escape },	// Start
+};
+
+static INT PadPlayKey( INT Key )
+{
+	for( INT i = 0; i < ARRAY_COUNT(GPadPlayKeys); i++ )
+		if( GPadPlayKeys[i].PadKey == Key )
+			return GPadPlayKeys[i].PlayKey;
+	return Key;
+}
+
+//
+// A pad key's press or release, as the play key or, while UWindow shows its cursor, the menus' key it stands for.
+// A press already held is ignored, and a release sends the engine key the press sent.
 //
 void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 {
@@ -1159,7 +1176,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	{
 		if( Sent )
 			return;
-		Sent = bShowWindowsMouse ? PadMenuKey( Key ) : Key;
+		Sent = bShowWindowsMouse ? PadMenuKey( Key ) : PadPlayKey( Key );
 		PadKeySent[Key] = Sent;
 	}
 	else
@@ -1182,10 +1199,12 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 -----------------------------------------------------------------------------*/
 
 //
-// The menus' keys on the pad while UWindow shows its cursor: A confirms, B goes back, the D-pad is the arrow keys.
+// The menus' keys on the pad while UWindow shows its cursor: A and Start confirm, B goes back, the D-pad is the
+// arrow keys.
 //
 static const struct { BYTE PadKey; BYTE MenuKey; } GPadMenuKeys[] =
 {
+	{ IK_Joy7,        IK_Enter  },	// Start
 	{ IK_Joy1,        IK_Enter  },	// A
 	{ IK_Joy2,        IK_Escape },	// B
 	{ IK_JoyPovUp,    IK_Up     },

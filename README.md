@@ -7,7 +7,7 @@ Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details,
 ## Changes from the original source
 
 * **WebAssembly build:** every package in one static wasm that runs on a browser worker thread, with WebGL 2, a file system served by the host page, a frame loop that returns to the browser every frame, and load errors that fail soft.
-* **SDL2 client driver (NSDLDrv):** the window and input client on every target: a resizable window at the real drawable size, pointer capture in play and an absolute cursor in menus, game pads with hot-plug (Back and Start as Escape and Enter; in the menus A, B and the D-pad as Enter, Escape and the arrows, the left stick and the fire buttons as the mouse).
+* **SDL2 client driver (NSDLDrv):** the window and input client on every target: a resizable window at the real drawable size, pointer capture in play and an absolute cursor in menus, game pads with hot-plug (Back as Escape, Start as Escape in play and Enter in the menus; in the menus A, B and the D-pad as Enter, Escape and the arrows, the left stick and the fire buttons as the mouse).
 * **OpenGL ES renderer (NOpenGLESDrv):** a GLES2 device on WebGL 2 and native GL, with antialiasing on the web, anisotropic filtering and the Brightness setting.
 * **OpenGL renderers (XOpenGLDrv, UTGLR):** OldUnreal's XOpenGLDrv (the default) and Chris Dohnal's UTGLR, fetched from their forks and built on every target (UTGLR through gl4es on the web).
 * **Software renderer (SoftDrv):** Epic's v400 rasterizer through its portable C paths, with volumetric fog on surfaces and meshes, optional bilinear filtering and 2D lines on every compiler.
