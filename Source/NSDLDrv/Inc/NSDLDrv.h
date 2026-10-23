@@ -87,6 +87,13 @@ private:
 	BYTE PadKeySent[IK_MAX];	// for each pad key held, the engine key its press sent (its release sends the same)
 	void PadKey( INT Key, EInputAction Action );	// a pad button's or trigger's press or release
 	FNSDLInputTest* InputTest;	// the input test channel (-INPUTTEST=), NULL without it
+	// The menu cursor on the pad: while UWindow shows its cursor the left stick moves it and the keys bound to
+	// Fire and AltFire click; the mouse's own motion takes the cursor back.
+	UBOOL PadCursor;
+	FLOAT PadCursorX, PadCursorY;	// in viewport pixels
+	void TickPadCursor( FLOAT DeltaTime );
+	void SetPadCursor( UBOOL On );
+	INT PadCursorClick( INT Key );	// the mouse button pad key Key clicks with, or Key
 	friend class FNSDLInputTest;
 	UBOOL QuitRequested;
 	DOUBLE InputUpdateTime;	// DOUBLE: see TickInput
@@ -123,6 +130,7 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 	UBOOL UseJoystick;
 	UBOOL InvertY;
 	UBOOL InvertV;
+	FLOAT PadCursorSpeed;	// the menu cursor's speed on the pad's left stick at full tilt, in viewport heights a second
 	FLOAT ScaleXYZ;
 	FLOAT ScaleRUV;
 	FLOAT DeadZoneXYZ;

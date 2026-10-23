@@ -85,8 +85,9 @@ void FNSDLInputTest::Tick( UNSDLViewport* Viewport )
 	if( WatchLeft > 0 )
 	{
 		APlayerPawn* Actor = Viewport->Actor;
-		debugf( NAME_Log, TEXT("NSDLInputTest: watch %s %i %.4f %i %i %.1f"), *WatchTag, WatchIndex++, appSeconds(),
-			Actor ? Actor->ViewRotation.Yaw : 0, Actor ? Actor->ViewRotation.Pitch : 0, Actor ? Actor->Velocity.Size2D() : 0.f );
+		debugf( NAME_Log, TEXT("NSDLInputTest: watch %s %i %.4f %i %i %.1f %.1f %.1f"), *WatchTag, WatchIndex++, appSeconds(),
+			Actor ? Actor->ViewRotation.Yaw : 0, Actor ? Actor->ViewRotation.Pitch : 0, Actor ? Actor->Velocity.Size2D() : 0.f,
+			Viewport->WindowsMouseX, Viewport->WindowsMouseY );
 		WatchLeft--;
 	}
 	for( ;; )
@@ -285,7 +286,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 	debugf
 	(
 		NAME_Log,
-		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s relative=%i oscursor=%i pad=%s"),
+		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s relative=%i oscursor=%i padcursor=%i pad=%s"),
 		Tag,
 		Actor ? Actor->ViewRotation.Yaw : 0,
 		Actor ? Actor->ViewRotation.Pitch : 0,
@@ -298,6 +299,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 		ClassNameOf( GetObjectProp( Root, TEXT("ActiveWindow") ) ),
 		(INT)SDL_GetRelativeMouseMode(),
 		SDL_ShowCursor( SDL_QUERY ),
+		(INT)Viewport->PadCursor,
 		Pad && SDL_GameControllerName( Pad ) ? appFromAnsi( SDL_GameControllerName( Pad ) ) : TEXT("None")
 	);
 	unguard;

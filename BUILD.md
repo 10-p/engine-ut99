@@ -145,7 +145,11 @@ system and the network transport at run time.
   the menus (Escape opens and closes UWindow); the other buttons are the `Joy` keys, and
   `Config/System/web/DefUser.ini` binds them to Unreal 1's pad layout. The stick scales `ScaleXYZ`/`ScaleRUV` default
   to Unreal 1's 100/100, which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and
-  Android inis set 200/500 for `DefUser.ini`'s speed 1.
+  Android inis set 200/500 for `DefUser.ini`'s speed 1. While UWindow shows its cursor the left stick moves it
+  (linear from the dead zone's edge, `PadCursorSpeed` viewport heights a second at full tilt: 1), the keys bound to
+  `Fire` and `AltFire` click left and right (one table, `GPadCursorClicks` in `NSDLViewport.cpp`; not while a
+  key-binding page waits for a key, which gets the pad's own key) and the system pointer is hidden; the mouse's own
+  motion takes the cursor back (`NSDLClient: the menu cursor follows the pad|mouse`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:
@@ -240,8 +244,8 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   for, with the copy as the alternative, only when the game is started from there. Shared storage is a FUSE
   mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
 
-Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`); touch
-as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
+Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; in the
+menus its left stick moves the cursor and its fire buttons click); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
 `Source/NSDLDrv/Src/NSDLAndroid.cpp`. The system's Back key is Escape.
 

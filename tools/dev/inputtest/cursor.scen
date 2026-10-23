@@ -1,0 +1,127 @@
+# The menu cursor on the pad: while UWindow shows its cursor the left stick moves it (linear from the dead zone's
+# edge, a viewport height a second at full tilt) and the keys bound to Fire and AltFire click left and right; the
+# mouse's own motion takes it back. Positions are for a 640x480 viewport at GUIScale 1 with DefUser.ini's layout
+# (Fire on the right trigger and shoulder); start a map, e.g. 'DM-Deck16][?Game=Botpack.DeathMatchPlus'. The
+# Controls page step binds Joy13 in the run tree's User.ini; the last line puts Fire back on it.
+waitlog up for play
+sleep 3
+pad attach
+sleep 1
+pad button back 1
+pad button back 0
+sleep 1
+probe menu
+mouse 0 240
+sleep 0.3
+probe mouse-at-left
+pad axis leftx 32767
+sleep 0.2
+watch 40 cursor-full
+sleep 0.6
+pad axis leftx 0
+sleep 0.2
+probe after-full
+pad axis leftx -16384
+sleep 0.2
+watch 40 cursor-half
+sleep 0.6
+pad axis leftx 0
+sleep 0.2
+pad axis leftx 3000
+sleep 0.5
+probe inside-dead-zone
+pad axis leftx 0
+mouse 320 300
+sleep 0.3
+probe mouse-took-over
+# AltFire (the left trigger) right-clicks once the stick has the cursor.
+pad axis lefty 6000
+sleep 0.05
+pad axis lefty 0
+pad axis lefttrigger 32767
+sleep 0.1
+pad axis lefttrigger 0
+sleep 0.3
+# Fire (the right trigger) clicks Options on the menu bar; the stick puts the cursor on its first item
+# (Preferences) and Start (Enter) runs it.
+mouse 100 5
+sleep 0.1
+pad axis leftx 6000
+sleep 0.05
+pad axis leftx 0
+pad axis righttrigger 32767
+sleep 0.1
+pad axis righttrigger 0
+sleep 0.3
+probe options-menu
+pad axis lefty 32767
+sleep 0.04
+pad axis lefty 0
+sleep 0.3
+probe on-preferences
+pad button start 1
+pad button start 0
+sleep 1
+probe start-ran-it
+# The Controls page: Fire clicks a binding, which then waits for a key; the right trigger is bound as itself.
+mouse 320 58
+sleep 0.1
+pad axis leftx 6000
+sleep 0.05
+pad axis leftx 0
+pad axis righttrigger 32767
+sleep 0.1
+pad axis righttrigger 0
+sleep 0.3
+mouse 340 200
+sleep 0.1
+pad axis leftx 6000
+sleep 0.05
+pad axis leftx 0
+pad axis righttrigger 32767
+sleep 0.1
+pad axis righttrigger 0
+sleep 0.3
+probe binding-waits
+pad axis righttrigger 32767
+sleep 0.1
+pad axis righttrigger 0
+sleep 0.3
+log keybinding Joy13 follows
+exec keybinding Joy13
+sleep 0.3
+# The binding is made, and the right trigger is no longer Fire; the right shoulder (Fire) clicks the binding again.
+pad button rightshoulder 1
+sleep 0.1
+pad button rightshoulder 0
+sleep 0.3
+probe waits-again
+# A binding left waiting when Back closes its window takes nothing: the right shoulder clicks.
+pad button back 1
+pad button back 0
+sleep 0.5
+probe window-closed
+mouse 320 300
+sleep 0.1
+pad axis leftx 6000
+sleep 0.05
+pad axis leftx 0
+pad button rightshoulder 1
+sleep 0.1
+pad button rightshoulder 0
+sleep 0.3
+# Back closes the menus; in play the left stick walks and the right shoulder is Joy11 again.
+pad button back 1
+pad button back 0
+sleep 1
+probe play
+pad axis leftx 32767
+sleep 0.5
+probe walking
+pad axis leftx 0
+pad button rightshoulder 1
+sleep 0.1
+pad button rightshoulder 0
+sleep 0.3
+exec set input Joy13 Fire
+sleep 0.3

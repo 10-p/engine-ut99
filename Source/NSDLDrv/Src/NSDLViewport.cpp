@@ -203,6 +203,8 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 	HoldCount = 0;
 
 	appMemzero( PadKeySent, sizeof(PadKeySent) );
+	PadCursor = 0;
+	PadCursorX = PadCursorY = 0.f;
 	InputTest = NULL;
 	FString InputTestFile;
 	if( Parse( appCmdLine(), TEXT("INPUTTEST="), InputTestFile ) )
@@ -1156,7 +1158,7 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	{
 		if( Sent )
 			return;
-		Sent = Key;
+		Sent = PadCursor ? PadCursorClick( Key ) : Key;
 		PadKeySent[Key] = Sent;
 	}
 	else
@@ -1168,6 +1170,126 @@ void UNSDLViewport::PadKey( INT Key, EInputAction Action )
 	if( InputTest )
 		debugf( NAME_Log, TEXT("NSDLInputTest: key %s %s"), Input->GetKeyName( (EInputKey)Sent ), Action == IST_Press ? TEXT("press") : TEXT("release") );
 	CauseInputEvent( Sent, Action );
+	unguard;
+}
+
+/*-----------------------------------------------------------------------------
+	The menu cursor on the pad.
+-----------------------------------------------------------------------------*/
+
+//
+// The mouse buttons the menu cursor clicks with: a pad key bound to one of these commands clicks its button while
+// the pad drives the cursor.
+//
+static const struct { const TCHAR* Command; BYTE Button; } GPadCursorClicks[] =
+{
+	{ TEXT("Fire"),    IK_LeftMouse  },
+	{ TEXT("AltFire"), IK_RightMouse },
+};
+
+//
+// Whether a UWindow window and every window it sits in are shown.
+//
+static UBOOL WindowShown( UObject* Window )
+{
+	for( INT Depth = 0; Window && Depth < 64; Depth++ )
+	{
+		UBoolProperty* Visible = FindField<UBoolProperty>( Window->GetClass(), TEXT("bWindowVisible") );
+		UObjectProperty* Parent = FindField<UObjectProperty>( Window->GetClass(), TEXT("ParentWindow") );
+		if( !Visible || !Parent || !( *(DWORD*)((BYTE*)Window + Visible->Offset) & Visible->BitMask ) )
+			return 0;
+		appMemcpy( &Window, (BYTE*)Window + Parent->Offset, sizeof(Window) );
+	}
+	return 1;
+}
+
+//
+// Whether a key-binding page of the menus is on screen and waits for a key (its bPolling): the pad's keys then
+// reach it as themselves, so that they can be bound.
+//
+static UBOOL KeyBinderPolling()
+{
+	static const TCHAR* Binders[] = { TEXT("UMenuCustomizeClientWindow"), TEXT("SpeechBinderCW") };
+	for( INT i = 0; i < ARRAY_COUNT(Binders); i++ )
+	{
+		UClass* Class = FindObject<UClass>( ANY_PACKAGE, Binders[i] );
+		UBoolProperty* Polling = Class ? FindField<UBoolProperty>( Class, TEXT("bPolling") ) : NULL;
+		if( !Polling )
+			continue;
+		for( TObjectIterator<UObject> It; It; ++It )
+			if( It->IsA( Class ) && ( *(DWORD*)((BYTE*)*It + Polling->Offset) & Polling->BitMask ) && WindowShown( *It ) )
+				return 1;
+	}
+	return 0;
+}
+
+INT UNSDLViewport::PadCursorClick( INT Key )
+{
+	guard(UNSDLViewport::PadCursorClick);
+	if( !Input || Key <= 0 || Key >= IK_MAX )
+		return Key;
+	for( INT i = 0; i < ARRAY_COUNT(GPadCursorClicks); i++ )
+		if( appStricmp( *Input->Bindings[Key], GPadCursorClicks[i].Command ) == 0 )
+			return KeyBinderPolling() ? Key : GPadCursorClicks[i].Button;
+	return Key;
+	unguard;
+}
+
+//
+// The pad takes the menu cursor where the mouse left it, and gives it back to the mouse. The system's pointer,
+// which stays where the mouse left it, is hidden meanwhile.
+//
+void UNSDLViewport::SetPadCursor( UBOOL On )
+{
+	guard(UNSDLViewport::SetPadCursor);
+	if( !On == !PadCursor )
+		return;
+	PadCursor = On;
+	if( On )
+	{
+		PadCursorX = WindowsMouseX;
+		PadCursorY = WindowsMouseY;
+	}
+	SDL_ShowCursor( On ? SDL_DISABLE : SDL_ENABLE );
+	debugf( NAME_Log, TEXT("NSDLClient: the menu cursor follows the %s"), On ? TEXT("pad") : TEXT("mouse") );
+	unguard;
+}
+
+//
+// While UWindow shows its cursor, the left stick moves it: linear from the dead zone's edge to full tilt, at
+// PadCursorSpeed viewport heights a second, with no acceleration. It reaches UWindow as the mouse's absolute
+// motion does: the position, and the deltas UWindow counts on a viewport without a system pointer.
+//
+void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
+{
+	guard(UNSDLViewport::TickPadCursor);
+	if( !bShowWindowsMouse )
+	{
+		SetPadCursor( 0 );
+		return;
+	}
+	const FLOAT DeadZone = Clamp( Client->DeadZoneXYZ, 0.f, 0.99f );
+	const INT Axes[2] = { SDL_CONTROLLER_AXIS_LEFTX, SDL_CONTROLLER_AXIS_LEFTY };
+	FLOAT Tilt[2];
+	for( INT i = 0; i < 2; i++ )
+	{
+		const FLOAT Value = Clamp( JoyAxis[Axes[i]] / 32767.f, -1.f, 1.f );
+		Tilt[i] = Abs( Value ) > DeadZone ? ( Value - ( Value > 0.f ? DeadZone : -DeadZone ) ) / ( 1.f - DeadZone ) : 0.f;
+	}
+	if( Tilt[0] == 0.f && Tilt[1] == 0.f )
+		return;
+	SetPadCursor( 1 );
+	const FLOAT Step = Client->PadCursorSpeed * SizeY * DeltaTime;
+	const FLOAT X = Clamp( PadCursorX + Tilt[0] * Step, 0.f, (FLOAT)Max( SizeX - 1, 0 ) );
+	const FLOAT Y = Clamp( PadCursorY + Tilt[1] * Step, 0.f, (FLOAT)Max( SizeY - 1, 0 ) );
+	const FLOAT DX = X - PadCursorX, DY = Y - PadCursorY;
+	PadCursorX = X;
+	PadCursorY = Y;
+	Client->Engine->MousePosition( this, 0, X, Y );
+	if( DX != 0.f )
+		CauseInputEvent( IK_MouseX, IST_Axis, DX );
+	if( DY != 0.f )
+		CauseInputEvent( IK_MouseY, IST_Axis, -DY );
 	unguard;
 }
 
@@ -1341,6 +1463,7 @@ UBOOL UNSDLViewport::TickInput()
 				// The sticks and triggers are read from the pad's state every tick (below), not from these.
 				break;
 			case SDL_MOUSEMOTION:
+				SetPadCursor( 0 );
 				if( !SDL_GetRelativeMouseMode() )
 				{
 					// Absolute (menu / cursor-visible) mode. MousePosition feeds WindowsMouseX/Y, which UWindow reads on
@@ -1411,11 +1534,16 @@ UBOOL UNSDLViewport::TickInput()
 		for( INT a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++ )
 			UpdatePadAxis( a, SDL_GameControllerGetAxis( GC, (SDL_GameControllerAxis)a ) );
 
-	// Constantly hammer the input system with axis events for axes that are not zero.
+	TickPadCursor( DeltaTime );
+
+	// Constantly hammer the input system with axis events for axes that are not zero (the left stick's go to the
+	// menu cursor while it has it).
 	for ( INT i = 0; i < SDL_CONTROLLER_AXIS_MAX; ++i )
 	{
 		const BYTE Key = JoyAxisMap[i];
 		const SWORD Value = JoyAxis[i];
+		if ( PadCursor && ( i == SDL_CONTROLLER_AXIS_LEFTX || i == SDL_CONTROLLER_AXIS_LEFTY ) )
+			continue;
 		if ( Value && Key && Key >= IK_JoyX )
 		{
 			const FLOAT FltValue = Clamp( Value / 32767.f, -1.f, 1.f );

@@ -14,8 +14,9 @@
 	  key <sdl key name> <0|1>              one keyboard key down or up (Escape, Return, A ...), pushed into SDL's queue
 	  exec <console command>                run on the viewport
 	  probe <tag>                           one "NSDLInputTest: probe <tag> ..." state line
-	  watch <ticks> <tag>                   one "NSDLInputTest: watch <tag> <i> <seconds> <yaw> <pitch> <speed>"
-	                                        line per input tick, for <ticks> ticks (speed: the horizontal one)
+	  watch <ticks> <tag>                   one "NSDLInputTest: watch <tag> <i> <seconds> <yaw> <pitch> <speed>
+	                                        <cursor x> <cursor y>" line per input tick, for <ticks> ticks (speed: the
+	                                        horizontal one; cursor: the absolute mouse position, viewport pixels)
 	  log <text>                            a marker line
 	While the channel is open every key the pad sends to the engine is logged ("NSDLInputTest: key ...").
 	Without the switch nothing here runs.
