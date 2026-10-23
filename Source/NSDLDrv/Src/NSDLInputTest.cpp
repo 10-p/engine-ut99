@@ -221,6 +221,28 @@ UBOOL FNSDLInputTest::Execute( UNSDLViewport* Viewport, const TCHAR* Line )
 			debugf( NAME_Log, TEXT("NSDLInputTest: mouse: SDL_PushEvent failed: %s"), appFromAnsi(SDL_GetError()) );
 		return 1;
 	}
+	else if( ParseCommand(&Cmd,TEXT("KEY")) )
+	{
+		FString Name;
+		ParseToken( Cmd, Name, 0 );
+		const SDL_Scancode Code = SDL_GetScancodeFromName( TCHAR_TO_ANSI(*Name) );
+		if( Code==SDL_SCANCODE_UNKNOWN )
+		{
+			debugf( NAME_Log, TEXT("NSDLInputTest: key: no SDL key named %s"), *Name );
+			return 0;
+		}
+		SDL_Event Ev;
+		SDL_zero( Ev );
+		Ev.type                = appAtoi( Cmd ) ? SDL_KEYDOWN : SDL_KEYUP;
+		Ev.key.timestamp       = SDL_GetTicks();
+		Ev.key.windowID        = Viewport->hWnd ? SDL_GetWindowID( Viewport->hWnd ) : 0;
+		Ev.key.state           = appAtoi( Cmd ) ? SDL_PRESSED : SDL_RELEASED;
+		Ev.key.keysym.scancode = Code;
+		Ev.key.keysym.sym      = SDL_GetKeyFromScancode( Code );
+		if( SDL_PushEvent( &Ev ) < 0 )
+			debugf( NAME_Log, TEXT("NSDLInputTest: key: SDL_PushEvent failed: %s"), appFromAnsi(SDL_GetError()) );
+		return 1;
+	}
 	else if( ParseCommand(&Cmd,TEXT("EXEC")) )
 	{
 		Viewport->Exec( Cmd, *GLog );

@@ -11,6 +11,7 @@
 	                                        lefttrigger righttrigger: 0..32767
 	  mouse <x> <y>                         one absolute mouse motion to viewport pixel (x, y), pushed into
 	                                        SDL's queue, so the viewport's own event handling is the real path
+	  key <sdl key name> <0|1>              one keyboard key down or up (Escape, Return, A ...), pushed into SDL's queue
 	  exec <console command>                run on the viewport
 	  probe <tag>                           one "NSDLInputTest: probe <tag> ..." state line
 	  watch <ticks> <tag>                   one "NSDLInputTest: watch <tag> <i> <seconds> <yaw> <pitch> <speed>"
