@@ -171,7 +171,8 @@ static void KickDiscovery()
 	GLastDiscoveryAt  = Now;
 	GDiscoveryPending = 1;
 	ue_net_discover_servers( "" );   // "" = this browser's room; "*" would mean every room on the signalling server
-	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery started") );
+	if( GUfrontLog )
+		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery started") );
 }
 
 /**
@@ -229,11 +230,13 @@ static void PumpDiscovery()
 		if( S.Ping      <= 0 )  S.Ping = 1;
 		if( !S.Name.Len() )     S.Name = Room;
 		const FString Host = WebRTCLan_HostForRoom( *S.Room );   // also reserves the room's index
-		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] '%s' room=%s map=%s %i/%i %ims -> %s"),
-			*S.Name, *S.Room, *S.Map, S.Players, S.MaxPlayers, S.Ping, *Host );
+		if( GUfrontLog )
+			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] '%s' room=%s map=%s %i/%i %ims -> %s"),
+				*S.Name, *S.Room, *S.Map, S.Players, S.MaxPlayers, S.Ping, *Host );
 		new( GServers )FLanServer( S );
 	}
-	debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery done: %i server(s)"), GServers.Num() );
+	if( GUfrontLog )
+		debugf( NAME_DevNet, TEXT("[WebRTC-LAN] discovery done: %i server(s)"), GServers.Num() );
 }
 
 /*-----------------------------------------------------------------------------
@@ -426,8 +429,9 @@ UBOOL WebRTCLan_NextReply( const void* LinkId, DWORD* OutAddr, INT* OutPort, FSt
 		if( Now2 - L->LastPendingLog > 5.0 )
 		{
 			L->LastPendingLog = Now2;
-			debugf( NAME_DevNet, TEXT("[WebRTC-LAN] sweep pending: discovery %s, %i server(s) known"),
-				GDiscoveryPending ? TEXT("in flight") : TEXT("idle"), GServers.Num() );
+			if( GUfrontLog )
+				debugf( NAME_DevNet, TEXT("[WebRTC-LAN] sweep pending: discovery %s, %i server(s) known"),
+					GDiscoveryPending ? TEXT("in flight") : TEXT("idle"), GServers.Num() );
 		}
 		if( GServers.Num() > 0 )
 		{

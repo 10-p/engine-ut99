@@ -133,7 +133,12 @@ system and the network transport at run time.
 - **Frame cap.** `[Engine.Engine] FrameRateCap` (120; 0 or less is uncapped) when the engine sets no max tick rate;
   `ULevel::Tick` clamps a step to 0.001..0.40 s.
 - **AutoFOV.** `[ufront.AutoFOV]` `AutoFOV` (0 off, 1 Hor+, 2 Adaptive: the default), `ReferenceAspect`, `WeaponScale`,
-  `AutoFOVUI`, `UIScale`: an aspect-correct field of view and HUD scale, logged as `[AutoFOV]` / `[AutoFOVUI]`.
+  `AutoFOVUI`, `UIScale`: an aspect-correct field of view and HUD scale, logged with `-UFRONTLOG` as `[AutoFOV]` /
+  `[AutoFOVUI]`.
+- **`-UFRONTLOG`.** Also logs the port's diagnostic and repeated lines (`GUfrontLog`): the `[AutoFOV]` and
+  `[AutoFOVUI]` lines, the `[webmouse]` capture and `the menu cursor follows` hand-overs, the `[WebRTC-LAN]` discovery
+  rounds and the first reverb zone. The tests pass it; a player's log leaves them out. Status lines, warnings, errors
+  and console-command answers are always logged.
 - **Console commands.** `FLUSHCONFIG` writes the config cache to disk; `WHEREAMI` and `TELEPORT <x> <y> <z> [<yaw>
   [<pitch>]]` (standalone and listen host; a client needs `[Engine.GameEngine] AllowNetCheats=True`, a test setting);
   `FPSLOG <seconds>` or `[Engine.GameEngine] FpsLogSeconds` for an `FPS:` line per interval.
@@ -157,7 +162,7 @@ system and the network transport at run time.
   as its Yes or OK button and Back and B as its Cancel or No button, a box with OK alone keeping Escape), and the keys
   bound to `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding page waiting for a key gets
   the pad's own keys, Back aside. The mouse's own motion takes the cursor back, and with it every pad key is itself
-  again (`NSDLClient: the menu cursor follows the pad|mouse`).
+  again (`NSDLClient: the menu cursor follows the pad|mouse` with `-UFRONTLOG`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:

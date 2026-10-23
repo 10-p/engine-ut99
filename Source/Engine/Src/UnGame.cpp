@@ -1575,8 +1575,9 @@ void UGameEngine::Tick( FLOAT DeltaSeconds )
 		INT Want = ( WV && GLevel && WV->Actor && !Menu ) ? 1 : 0;
 		if( WV && ( Want != CaptureState || Menu != MenuState ) )
 		{
-			debugf( TEXT("[webmouse] relative-capture=%i menu=%i (bShowMenu=%i bShowWinMouse=%i)"),
-				Want, Menu, WV->Actor ? (INT)WV->Actor->bShowMenu : -1, (INT)WV->bShowWindowsMouse );
+			if( GUfrontLog )
+				debugf( TEXT("[webmouse] relative-capture=%i menu=%i (bShowMenu=%i bShowWinMouse=%i)"),
+					Want, Menu, WV->Actor ? (INT)WV->Actor->bShowMenu : -1, (INT)WV->bShowWindowsMouse );
 			if( Want != CaptureState )
 			{
 				WV->SetMouseCapture( Want, Want, 0 );

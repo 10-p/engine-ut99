@@ -1575,7 +1575,8 @@ void UNSDLViewport::SetPadCursor( UBOOL On )
 		PadCursorY = WindowsMouseY;
 	}
 	SDL_ShowCursor( On ? SDL_DISABLE : SDL_ENABLE );
-	debugf( NAME_Log, TEXT("NSDLClient: the menu cursor follows the %s"), On ? TEXT("pad") : TEXT("mouse") );
+	if( GUfrontLog )
+		debugf( NAME_Log, TEXT("NSDLClient: the menu cursor follows the %s"), On ? TEXT("pad") : TEXT("mouse") );
 	unguard;
 }
 

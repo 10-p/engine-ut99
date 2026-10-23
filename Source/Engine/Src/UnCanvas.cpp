@@ -606,8 +606,9 @@ void UCanvas::execDrawActor( FFrame& Stack, RESULT_DECL )
 				Offset -= Pawn->WalkBob;
 				Dist = Offset.Size();
 			}
-			debugf( NAME_Log, TEXT("[AutoFOV] weapon viewport=%ix%i placeFov=%f drawFov=%f dist=%f"),
-				Viewport->SizeX, Viewport->SizeY, SavedWeaponFov, WeaponFov, Dist );
+			if( GUfrontLog )
+				debugf( NAME_Log, TEXT("[AutoFOV] weapon viewport=%ix%i placeFov=%f drawFov=%f dist=%f"),
+					Viewport->SizeX, Viewport->SizeY, SavedWeaponFov, WeaponFov, Dist );
 		}
 	}
 	if( bWeaponFovPass )
