@@ -44,6 +44,9 @@ Revision history:
 	#include <errno.h>
 	#include <pthread.h>
 	#include <fcntl.h>
+	#ifndef PLATFORM_DREAMCAST
+		#include <poll.h>
+	#endif
 #endif
 
 #include "Engine.h"
