@@ -22,6 +22,9 @@ extern UBOOL GNoGC;
 extern UBOOL GCheckConflicts;
 extern UBOOL GExitPurge;
 
+// UnScriptOverride.cpp: binds a listed script function to its C++.
+extern UBOOL BindScriptOverride( UFunction* Function );
+
 /*-----------------------------------------------------------------------------
 	Includes.
 -----------------------------------------------------------------------------*/
