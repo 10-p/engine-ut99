@@ -261,7 +261,9 @@ Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad l
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
 Enter, Escape and the arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
-`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The system's Back key is Escape.
+`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The move stick tilts fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is
+held, in the drag's direction, with a dead zone of `MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the
+held point follows the finger (`GameActivity.java`). It never walks. The system's Back key is Escape.
 
 A travel URL can be passed from adb; the launcher's countdown then starts the game without a touch:
 
