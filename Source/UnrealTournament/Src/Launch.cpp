@@ -811,8 +811,18 @@ int main( int argc, char* argv[] )
 	// the game's own.
 	appStrcpy( GModule, "UnrealTournament" );
 #elif !defined(PLATFORM_DREAMCAST)
-	// Set module name.
-	appStrcpy( GModule, argv[0] );
+	// Set module name: the file name of argv[0] without ".exe", bounded (GModule holds 32 characters), so the log is
+	// UnrealTournament.log however the game is started, by a relative, an absolute or a Windows path.
+	{
+		const char* Base = argv[0];
+		for( const char* P=argv[0]; *P; P++ )
+			if( *P=='/' || *P=='\\' || *P==':' )
+				Base = P+1;
+		appStrncpy( GModule, Base, ARRAY_COUNT(GModule) );
+		INT Len = appStrlen( GModule );
+		if( Len>4 && appStricmp( GModule+Len-4, TEXT(".exe") )==0 )
+			GModule[Len-4] = 0;
+	}
 
 	// Set the package name.
 	appStrcpy( THIS_PACKAGE, appPackage() );	
