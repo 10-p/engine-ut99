@@ -150,9 +150,14 @@ system and the network transport at run time.
   pad layout: Back (`Joy5`) shows the scores, Start (`Joy7`) opens UWindow with `MenuCmd 0 -1` (UT99 has no menu for
   `ShowMenu`, which would only pause the game). The stick scales `ScaleXYZ`/`ScaleRUV` default to Unreal 1's 100/100,
   which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and Android inis set 200/500 for
-  `DefUser.ini`'s speed 1. While UWindow shows its cursor, any pad press or a stick pushed out of its dead zone gives
-  the cursor to the pad and hides the system pointer, and that press already acts as below. While the pad has the
-  cursor, and only then, the left stick moves it (linear from the dead zone's edge, across the viewport's width in
+  `DefUser.ini`'s speed 1. In play the left stick is the move stick: its dead zone (`DeadZoneXYZ`, 0.1) is radial, so
+  every direction between the axes keeps both of its parts, and a tilt out of it but below `PadWalkTilt` (0.5 of the
+  stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
+  `bRun` (the Walking key writes the whole byte; the stick sets its bit again the next tick), and the moves a client
+  sends to its server carry `bRun`. The right stick keeps a dead zone per axis (`DeadZoneRUV`). While UWindow shows
+  its cursor, any pad press or a stick pushed out of its dead zone gives the cursor to the pad and hides the system
+  pointer, and that press already acts as below. While the pad has the cursor, and only then, the left stick moves it
+  (linear from the dead zone's edge, across the viewport's width in
   `PadCursorSeconds` at full tilt: 3), Back and B are Escape, Start is Enter, A is a left click under the cursor shown
   when that is on a control, else a click at the centre of the focused control (a button presses, a checkbox toggles,
   a drop-down list opens) or, for the controls that take it (pull-down menus, editable boxes, message boxes), Enter,
@@ -275,7 +280,9 @@ Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad l
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
 Enter, Escape and the arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
-`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The system's Back key is Escape.
+`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The move stick tilts fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is
+held, in the drag's direction, with a dead zone of `MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the
+held point follows the finger (`GameActivity.java`). It never walks. The system's Back key is Escape.
 
 A travel URL can be passed from adb; the launcher's countdown then starts the game without a touch:
 
@@ -327,7 +334,7 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 | `tools/dev/layout-sweep.gdb` | every script property of every native class (and script struct) against the same-named C++ member; run under `ucc-bin make` and the client |
 | `tools/dev/census/` | a coverage census of which engine functions ever ran (`census.py`, `gcovdump.c`, the scripted player session `play.sh`) and a cross-width layout oracle (`exports.sh`) |
 | `tools/test/U64Test/` | an UnrealScript fixture for the 64-bit port: VM checks (`U64Mutator`), compile-only declarations (`U64Decl`), a benchmark (`U64Bench`) |
-| `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` | runs the native build under Xvfb with the input test channel (`-INPUTTEST=<file>`, `Source/NSDLDrv/Src/NSDLInputTest.h`: a virtual SDL pad that takes the pad's place, mouse motion, console commands, state probes, per-tick view watches) and feeds it a scenario (`turn.scen`); `rate.py` fits the turn rate and the speed from the log |
+| `tools/dev/inputtest/run.sh <run-tree> <scenario> <out-dir> [<args>]` | runs the native build under Xvfb with the input test channel (`-INPUTTEST=<file>`, `Source/NSDLDrv/Src/NSDLInputTest.h`: a virtual SDL pad that takes the pad's place, mouse motion, console commands, state probes, per-tick view watches) and feeds it a scenario (`turn.scen`; `move.scen`: the move stick's speed against tilt and its directions); `rate.py` fits the turn rate and the speed, and gives the move direction and the walking share, from the log |
 | `tools/web-smoke.mjs` | serves a web artifact to headless Chromium; it sends no COOP/COEP headers and sets no `Module.UE`, so it reports the abort of the threaded build (the frontend's E2E is the web gate) |
 
 ```bash

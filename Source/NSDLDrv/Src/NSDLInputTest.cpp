@@ -97,9 +97,13 @@ void FNSDLInputTest::Tick( UNSDLViewport* Viewport )
 	if( WatchLeft > 0 )
 	{
 		APlayerPawn* Actor = Viewport->Actor;
-		debugf( NAME_Log, TEXT("NSDLInputTest: watch %s %i %.4f %i %i %.1f %.1f %.1f"), *WatchTag, WatchIndex++, appSeconds(),
+		const FVector Zero( 0.f, 0.f, 0.f );
+		const FVector& L = Actor ? Actor->Location : Zero;
+		const FVector& V = Actor ? Actor->Velocity : Zero;
+		const FVector& A = Actor ? Actor->Acceleration : Zero;
+		debugf( NAME_Log, TEXT("NSDLInputTest: watch %s %i %.4f %i %i %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %.1f %i"), *WatchTag, WatchIndex++, appSeconds(),
 			Actor ? Actor->ViewRotation.Yaw : 0, Actor ? Actor->ViewRotation.Pitch : 0, Actor ? Actor->Velocity.Size2D() : 0.f,
-			Viewport->WindowsMouseX, Viewport->WindowsMouseY );
+			Viewport->WindowsMouseX, Viewport->WindowsMouseY, L.X, L.Y, V.X, V.Y, A.X, A.Y, Actor ? (INT)Actor->bIsWalking : 0 );
 		WatchLeft--;
 	}
 	for( ;; )

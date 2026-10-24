@@ -224,8 +224,6 @@ public class GameActivity extends SDLActivity {
         }
     }
 
-    private static float clamp(float v, float lo, float hi) { return v < lo ? lo : (v > hi ? hi : v); }
-
     /**
      * Full-screen touch controls. The left half is a move stick where the finger lands, the right half
      * drag-look, and round buttons give Fire, Alt Fire, Jump, Crouch, Next Weapon and Menu. A second free
@@ -246,6 +244,11 @@ public class GameActivity extends SDLActivity {
         private int rightFireAssistCount = 0;
 
         private enum TouchRole { LEFT_STICK, RIGHT_LOOK, RIGHT_FIRE_ASSIST, FIRE, ALTFIRE, JUMP, CROUCH, NEXT, MENU }
+
+        // The move stick: full tilt this far from the held point (dp, the same on every screen), nothing within the
+        // dead zone (a resting finger); past full tilt the held point follows the finger.
+        private static final float MOVE_FULL_TILT_DP = 12f;
+        private static final float MOVE_DEAD_ZONE_DP = 3f;
 
         Ut99TouchOverlayView(GameActivity activity) {
             super(activity);
@@ -363,11 +366,24 @@ public class GameActivity extends SDLActivity {
             return dx * dx + dy * dy <= r * r;
         }
 
-        private float analogValue(float delta, float radius, float dead, float scale) {
-            float v = clamp(delta / radius, -1f, 1f);
-            if (Math.abs(v) < dead) return 0f;
-            v = (v > 0f ? (v - dead) : (v + dead)) / (1f - dead);
-            return clamp(v * scale, -1f, 1f);
+        /** The move stick's axes: the drag's direction, its tilt from the dead zone's edge to full tilt. */
+        private void moveStick(float x, float y, boolean down) {
+            float density = getResources().getDisplayMetrics().density;
+            float full = MOVE_FULL_TILT_DP * density, dead = MOVE_DEAD_ZONE_DP * density;
+            float dx = x - leftBaseX, dy = y - leftBaseY, len = (float) Math.hypot(dx, dy);
+            if (len > full) {
+                float k = (len - full) / len;
+                leftBaseX += dx * k;
+                leftBaseY += dy * k;
+                dx -= dx * k;
+                dy -= dy * k;
+                len = full;
+            }
+            float m = down && len > dead ? (len - dead) / (full - dead) : 0f;
+            lx = m > 0f ? dx / len * m : 0f;
+            ly = m > 0f ? dy / len * m : 0f;
+            nativeTouchAxis(0, lx);
+            nativeTouchAxis(1, ly);
         }
 
         @Override public boolean onTouchEvent(MotionEvent event) {
@@ -417,14 +433,9 @@ public class GameActivity extends SDLActivity {
         private void removeRightFireAssist() { if (rightFireAssistCount > 0) rightFireAssistCount--; syncFire(); }
 
         private void updateRole(TouchRole role, float x, float y, boolean down) {
-            float s = Math.min(getWidth(), getHeight());
-            float moveRadius = Math.max(112f, s * 0.145f);
             switch (role) {
                 case LEFT_STICK:
-                    lx = down ? analogValue(x - leftBaseX, moveRadius, 0.08f, 1.0f) : 0f;
-                    ly = down ? analogValue(y - leftBaseY, moveRadius, 0.08f, 1.0f) : 0f;
-                    nativeTouchAxis(0, lx);
-                    nativeTouchAxis(1, ly);
+                    moveStick(x, y, down);
                     break;
                 case RIGHT_LOOK:
                     if (down) {

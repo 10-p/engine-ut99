@@ -19,7 +19,7 @@ IMPLEMENT_CLASS( UNSDLClient );
 void UNSDLClient::StaticConstructor()
 {
 	guard(UNSDLClient::StaticConstructor);
-	// The driver's ten config options (v400's IMPLEMENT_CLASS calls StaticConstructor once per class).
+	// The driver's eleven config options (v400's IMPLEMENT_CLASS calls StaticConstructor once per class).
 	new(GetClass(), "DefaultDisplay",    RF_Public)UIntProperty(CPP_PROPERTY(DefaultDisplay),     "Display",  CPF_Config );
 	new(GetClass(), "StartupFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), "Display",  CPF_Config );
 	new(GetClass(), "UseJoystick",       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       "Joystick", CPF_Config );
@@ -30,6 +30,7 @@ void UNSDLClient::StaticConstructor()
 	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
 	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
 	new(GetClass(), "PadCursorSeconds",  RF_Public)UFloatProperty(CPP_PROPERTY(PadCursorSeconds), "Joystick", CPF_Config );
+	new(GetClass(), "PadWalkTilt",       RF_Public)UFloatProperty(CPP_PROPERTY(PadWalkTilt),      "Joystick", CPF_Config );
 
 	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
 	// [NSDLDrv.NSDLClient] section a zero would mean no decals, a black picture and a 0x0 window. They match the
@@ -56,7 +57,7 @@ void UNSDLClient::StaticConstructor()
 	TextureLODSet[1]    = 0;   // TextureDetail = High
 	TextureLODSet[2]    = 0;   // SkinDetail    = High
 
-	// This driver's own ten. The stick scales are Unreal 1's: an ini without this section is a retail one, and
+	// This driver's own eleven. The stick scales are Unreal 1's: an ini without this section is a retail one, and
 	// its User.ini's pad bindings (speed 2 and 5.9) turn at Unreal 1's rate with them (web: 200/500 with speed 1).
 	DefaultDisplay      = 0;
 	StartupFullscreen   = 0;
@@ -68,6 +69,7 @@ void UNSDLClient::StaticConstructor()
 	InvertY             = 0;
 	InvertV             = 0;
 	PadCursorSeconds    = 3.0f;	// across the viewport's width at full tilt
+	PadWalkTilt         = 0.5f;	// the move stick walks below half its travel
 
 	unguard;
 }
