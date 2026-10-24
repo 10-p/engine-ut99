@@ -138,6 +138,10 @@ static const FScriptOverride GScriptOverrides[] =
 	{ TEXT("UTMenu"), TEXT("UTLadderStub"), TEXT("SetupWinParams"), 316, 0x8659E580,
 	  CheckLadderWinParams, (Native)&UScriptOverrides::execLadderWinParams,
 	  TEXT("the ladder windows take the largest 4:3 box that fits the menus, at most 1024x768") },
+	// UT99 v436's retail UTMenu.u.
+	{ TEXT("UTMenu"), TEXT("UTLadderStub"), TEXT("SetupWinParams"), 317, 0x70B532AC,
+	  CheckLadderWinParams, (Native)&UScriptOverrides::execLadderWinParams,
+	  TEXT("the ladder windows take the largest 4:3 box that fits the menus, at most 1024x768") },
 };
 
 // The function's export as stored in its package file, read from the file (the linker's own reader is left alone).
