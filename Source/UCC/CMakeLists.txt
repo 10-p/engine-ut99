@@ -8,8 +8,13 @@ set(SRC_FILES
 
 add_executable(${PROJECT_NAME} ${SRC_FILES})
 
-# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin).
-set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin)
+# Retail parity: the binary is `ucc-bin` (classic Linux UT ships a `ucc` wrapper script over ucc-bin), and `ucc.exe`
+# on Windows, the name the game's own UCC.exe has and the menus' dedicated-server relaunch starts.
+if(WIN32)
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc)
+else()
+  set_target_properties(${PROJECT_NAME} PROPERTIES OUTPUT_NAME ucc-bin)
+endif()
 
 target_include_directories(${PROJECT_NAME}
   PRIVATE

@@ -141,11 +141,11 @@ jobs:
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
           test -f build-windows/UnrealTournament/OpenAL32.dll
 
-      # ucc-bin.exe, the console tool, needs no DLL beside it: system DLLs only.
-      - name: Assert ucc-bin.exe imports nothing but system DLLs
+      # ucc.exe, the console tool, needs no DLL beside it: system DLLs only.
+      - name: Assert ucc.exe imports nothing but system DLLs
         run: |
           set -euo pipefail
-          imports=$(i686-w64-mingw32-objdump -p build-windows/UCC/ucc-bin.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
+          imports=$(i686-w64-mingw32-objdump -p build-windows/UCC/ucc.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
           bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
@@ -156,7 +156,7 @@ jobs:
           path: |
             build-windows/UnrealTournament/UnrealTournament.exe
             build-windows/UnrealTournament/OpenAL32.dll
-            build-windows/UCC/ucc-bin.exe
+            build-windows/UCC/ucc.exe
           if-no-files-found: error
           # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
           # newest build stays downloadable through the `latest` job at the end of this file.

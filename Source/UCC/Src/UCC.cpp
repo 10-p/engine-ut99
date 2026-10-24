@@ -93,7 +93,7 @@ int main( int argc, char* argv[] )
 		#if !_MSC_VER
 		// Set module name.
 		// The file name of argv[0] without ".exe", bounded (GModule holds 32 characters): the log is ucc-bin.log
-		// however ucc is started, by a relative, an absolute or a Windows path.
+		// (ucc.log for ucc.exe) however ucc is started, by a relative, an absolute or a Windows path.
 		{
 			const char* Base = argv[0];
 			for( const char* P=argv[0]; *P; P++ )
