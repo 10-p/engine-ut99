@@ -151,8 +151,8 @@ system and the network transport at run time.
   `ShowMenu`, which would only pause the game). The stick scales `ScaleXYZ`/`ScaleRUV` default to Unreal 1's 100/100,
   which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and Android inis set 200/500 for
   `DefUser.ini`'s speed 1. In play the left stick is the move stick: its dead zone (`DeadZoneXYZ`, 0.1) is radial, so
-  every direction between the axes keeps both of its parts, and a tilt out of it but below `PadWalkTilt` (0.5 of the
-  stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
+  every direction between the axes keeps both of its parts, and a tilt out of it but below
+  `[NSDLDrv.NSDLClient] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
   `bRun` (the Walking key writes the whole byte; the stick sets its bit again the next tick), and the moves a client
   sends to its server carry `bRun`. The right stick keeps a dead zone per axis (`DeadZoneRUV`). While UWindow shows
   its cursor, any pad press or a stick pushed out of its dead zone gives the cursor to the pad and hides the system
@@ -281,9 +281,11 @@ Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad l
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
 Enter, Escape and the arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
-`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The move stick tilts fully `MOVE_FULL_TILT_DP` (12 dp) from where the finger is
-held, in the drag's direction, with a dead zone of `MOVE_DEAD_ZONE_DP` (3 dp) for a resting finger; past full tilt the
-held point follows the finger (`GameActivity.java`). It never walks. The system's Back key is Escape.
+`Source/NSDLDrv/Src/NSDLAndroid.cpp`. The move stick moves in the drag's direction and tilts fully as the launcher's
+"Touch move stick" settings say: full speed at a drag of 12 dp from where the finger is held (4 to 60) and a dead
+zone of 3 dp for a resting finger (0 to 10, always below full speed), saved with the launcher's other settings and
+handed to the game when it starts (`GameActivity.EXTRA_MOVE_FULL_TILT_DP`, `EXTRA_MOVE_DEAD_ZONE_DP`); past full tilt
+the held point follows the finger. It never walks. The system's Back key is Escape.
 
 A travel URL can be passed from adb; the launcher's countdown then starts the game without a touch:
 
