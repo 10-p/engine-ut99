@@ -187,7 +187,8 @@ system and the network transport at run time.
   creation, the ladders, the save slots, the manager, the objectives): Epic's box (1024x768, else the root's height at
   4:3) where it fits UWindow's root, else the largest 4:3 box that fits, so the whole window shows with the 2x menus on
   a wide screen (a 1170x540 root at 2340x1080) or the 1x menus at 1280x720.
-- **Signals.** On POSIX targets SIGTERM, SIGHUP and SIGINT request a clean exit; a second one is reported and ignored.
+- **Signals.** On POSIX targets SIGTERM, SIGHUP and SIGINT request a clean exit; on Windows the console's Ctrl-C,
+  Ctrl-Break and close do (a dedicated server under `ucc-bin.exe`). A second one is reported and ignored.
 - **Logging.** Every log line is echoed to stdout (the browser console on the web); `Init: Language: <ext>` names the
   localization in use.
 
@@ -309,7 +310,8 @@ The platform layer is chosen by compiler: MSVC gets `Core/Src/UnVcWin32.cpp`, ev
 `PLATFORM_WIN32` (IpDrv on `__WINSOCK__`/`__BSD_SOCKETS__`), not on the compiler. The 32-bit build compiles every
 source with `-fpack-struct=4` (MinGW aligns doubles to 8; UE1 assumes `/Zp4`); the 64-bit one leaves the Win64 API's
 structs alone and relies on the script-mirrored headers' own `#pragma pack(push,4)`. `ABrush`'s bitfield pad is skipped
-under MinGW's MS bitfields.
+under MinGW's MS bitfields. At 64 bits a WinSock `SOCKET` is 8 bytes: `InternetLink`'s script `int Socket` holds it
+truncated and `AInternetLink::GetSocket()` reads it back sign-extended (a WinSock handle has 32 significant bits).
 
 Checking without Windows, with `wine` and `Xvfb`; SoftDrv and NullDrv need no GPU:
 
@@ -322,6 +324,10 @@ WINEPREFIX=<prefix> wineserver -k
 
 Copy the `.exe` into the run tree's `System/` (the engine takes its base directory from the binary's path) and copy
 the assets rather than symlinking them (`cp -rL`): under wine a symlinked package is a `FileNotFound`.
+
+`ucc-bin.exe` is the console tool, with the system DLLs only: it reads its arguments and writes `ucc-bin.log` as
+`ucc-bin` does on Linux (`wine ucc-bin.exe help`, `wine ucc-bin.exe server "DM-Deck16][?game=Botpack.DeathMatchPlus"`),
+and a SIGINT to the wine process reaches it as Ctrl-C.
 
 ## Test tools
 

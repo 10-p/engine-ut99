@@ -92,7 +92,18 @@ int main( int argc, char* argv[] )
 
 		#if !_MSC_VER
 		// Set module name.
-		appStrcpy( GModule, argv[0] );
+		// The file name of argv[0] without ".exe", bounded (GModule holds 32 characters): the log is ucc-bin.log
+		// however ucc is started, by a relative, an absolute or a Windows path.
+		{
+			const char* Base = argv[0];
+			for( const char* P=argv[0]; *P; P++ )
+				if( *P=='/' || *P=='\\' || *P==':' )
+					Base = P+1;
+			appStrncpy( GModule, Base, ARRAY_COUNT(GModule) );
+			INT Len = appStrlen( GModule );
+			if( Len>4 && appStricmp( GModule+Len-4, TEXT(".exe") )==0 )
+				GModule[Len-4] = 0;
+		}
 		#endif
 		
 		// Parse command line.
@@ -100,7 +111,9 @@ int main( int argc, char* argv[] )
 		TCHAR CmdLine[4096], *CmdLinePtr=CmdLine;
 		*CmdLinePtr = 0;
 		UBOOL CmdLineCut = 0;
-		#if WIN32
+		// Every build but MSVC passes the arguments after the commandlet's name (argv[1]), which is what `ucc help`
+		// and the commandlets parse; MSVC keeps Epic's whole command line.
+		#if _MSC_VER
 			ANSICHAR* Ch = GetCommandLineA();
 			while( *Ch && *Ch!=' ' )
 				Ch++;

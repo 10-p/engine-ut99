@@ -106,7 +106,7 @@ void ATcpLink::execBindPort( FFrame& Stack, RESULT_DECL )
 			else Stack.Logf( TEXT("BindPort: socket failed") );
 			if( HasSocket() )
 				closesocket(GetSocket());
-			GetSocket()=INVALID_SOCKET;
+			Socket=INVALID_SOCKET;
 		}
 		else Stack.Logf( TEXT("BindPort: already bound") );
 	}

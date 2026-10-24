@@ -870,6 +870,38 @@ static void InstallExitSignalHandlers()
 	sigaction( SIGHUP,  &Action, NULL );
 	sigaction( SIGINT,  &Action, NULL );
 }
+#elif defined(PLATFORM_WIN32)
+//
+// The console's Ctrl-C, Ctrl-Break and close request a clean exit, as the exit signals do elsewhere. The handler
+// runs on a thread of its own; a further event is reported and ignored.
+//
+static volatile LONG GExitSignals = 0;
+
+static BOOL WINAPI HandleConsoleCtrl( DWORD CtrlType )
+{
+	const char* Name;
+	if( CtrlType == CTRL_C_EVENT )
+		Name = "Signal: Ctrl-C";
+	else if( CtrlType == CTRL_BREAK_EVENT )
+		Name = "Signal: Ctrl-Break";
+	else if( CtrlType == CTRL_CLOSE_EVENT )
+		Name = "Signal: console closed";
+	else
+		return FALSE;
+	if( InterlockedIncrement( &GExitSignals ) == 1 )
+	{
+		printf( "%s: requesting exit.\n", Name );
+		GIsRequestingExit = 1;
+	}
+	else printf( "%s: exit already requested; this one is ignored.\n", Name );
+	fflush( stdout );
+	return TRUE;
+}
+
+static void InstallExitSignalHandlers()
+{
+	SetConsoleCtrlHandler( HandleConsoleCtrl, TRUE );
+}
 #endif
 
 //
@@ -930,7 +962,7 @@ void appPlatformInit()
 	GProcessorCount = sysconf( _SC_NPROCESSORS_ONLN );
 #endif // PLATFORM_
 
-#if !defined(PLATFORM_WIN32) && !defined(PLATFORM_DREAMCAST)
+#if !defined(PLATFORM_DREAMCAST)
 	InstallExitSignalHandlers();
 #endif
 	unguard;
