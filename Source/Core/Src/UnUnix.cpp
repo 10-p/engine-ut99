@@ -160,7 +160,7 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		if (pid != 0)
 		{
 			appSleep(3);
-			INT error = execl("./ucc", "ucc", "server", Arg0, (char*)NULL );
+			INT error = execl("./ucc-bin", "ucc-bin", "server", Arg0, (char*)NULL );
 			if (error == -1)
 				appErrorf( TEXT("Failed to launch process.") );
 		} else {
