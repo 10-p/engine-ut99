@@ -1528,6 +1528,8 @@ void UFunction::Bind()
 		// Use UnrealScript processing function.
 		check(iNative==0);
 		Func = &UObject::ProcessInternal;
+		// A listed script function that is exactly the listed one runs as C++ instead (UnScriptOverride.cpp).
+		BindScriptOverride( this );
 	}
 	else if( iNative != 0 )
 	{

@@ -2,6 +2,7 @@ package com.ut99.android;
 
 import android.app.Activity;
 import android.app.AlertDialog;
+import android.content.Context;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -25,6 +26,7 @@ import java.util.ArrayList;
 import java.util.Arrays;
 
 import org.libsdl.app.SDLActivity;
+import org.libsdl.app.SDLSurface;
 
 /**
  * The game: SDL's activity, in the ":game" process (the engine starts once per process, so the process
@@ -54,8 +56,8 @@ public class GameActivity extends SDLActivity {
 
     /**
      * The frame's size as a multiple of the screen's (the launcher's resolution scale), from 0.1 to 1; 0 or absent
-     * is the screen's size. The surface's buffer takes that size, SDL reports it as the window, and Android scales
-     * the buffer to the screen.
+     * is the screen's size. The surface's buffer takes that size, SDL reports it as the window, Android scales the
+     * buffer to the screen, and touches reach SDL in the buffer's pixels ({@link FrameSurface}).
      */
     static final String EXTRA_RENDER_SCALE = "com.ut99.android.RENDER_SCALE";
     static final float RENDER_SCALE_MIN = 0.1f, RENDER_SCALE_MAX = 1f;
@@ -121,6 +123,12 @@ public class GameActivity extends SDLActivity {
         } catch (Throwable t) {
             Log.e(TAG, "could not add the touch controls", t);
         }
+    }
+
+    /** SDL's surface, whose pointer events SDL reads in the buffer's pixels at every resolution scale. */
+    @Override
+    protected SDLSurface createSDLSurface(Context context) {
+        return new FrameSurface(context);
     }
 
     /** Sizes SDL's surface buffer to the scaled frame before the surface is created; at scale 1 it stays the screen's. */

@@ -1497,11 +1497,10 @@ void UObject::BindPackage( UPackage* Pkg )
 	guard(UPackage::BindPackage);
 	if( !Pkg->DllHandle && !Pkg->GetOuter() && !Pkg->AttemptedBind )
 	{
-		TCHAR PathName[256];
-		appSprintf( PathName, TEXT("%s%s"), appBaseDir(), Pkg->GetName() );
+		FString PathName = FString(appBaseDir()) + Pkg->GetName();	// a path of any length
 		Pkg->AttemptedBind  = 1;
 		GObjNoRegister      = 0;
-		Pkg->DllHandle      = appGetDllHandle( PathName );
+		Pkg->DllHandle      = appGetDllHandle( *PathName );
 		GObjNoRegister      = 1;
 		if( Pkg->DllHandle )
 		{
@@ -3607,25 +3606,20 @@ void UObject::CacheDrivers( UBOOL ForceRefresh )
 		GObjDrivers.Empty();
 		{for( INT i=0; i<GSys->Paths.Num(); i++ )
 		{
-			TCHAR Filename[256];
-			appSprintf( Filename, TEXT("%s%s"), appBaseDir(), *GSys->Paths(i) );
-			TCHAR* Tmp = appStrstr( Filename, TEXT("*.") );
-			if( Tmp )
+			// The .int files of the path entry's folder, under the base directory (paths as strings, of any length).
+			INT Wildcard = GSys->Paths(i).InStr( TEXT("*.") );
+			if( Wildcard >= 0 )
 			{
-				appSprintf( Tmp, TEXT("*.int") );
-				TArray<FString> Files = GFileManager->FindFiles( Filename, 1, 0 );
+				FString Spec = FString(appBaseDir()) + GSys->Paths(i).Left(Wildcard) + TEXT("*.int");
+				TArray<FString> Files = GFileManager->FindFiles( *Spec, 1, 0 );
 				UfrontSortLikeNTFS( Files );	// Windows' order, on every file system
 				for( INT j=0; j<Files.Num(); j++ )
 				{
-					appSprintf( Tmp, TEXT("%s%s"), appBaseDir(), *Files(j) );
-					TCHAR* End = Tmp + appStrlen( Tmp ) - 4;
-					appSprintf( End, TEXT(".%s"), UObject::GetLanguage() );
-					UBOOL Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), Tmp );
+					// Each file is read from the base directory, in the language's localization first.
+					FString Stem = FString(appBaseDir()) + Files(j).Left( Files(j).Len() - 4 );
+					UBOOL Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), *(Stem + TEXT(".") + UObject::GetLanguage()) );
 					if( !Success )
-					{
-						appSprintf( End, TEXT(".int") );
-						Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), Tmp );
-					}
+						Success = GConfig->GetSection( TEXT("Public"), Buffer, ARRAY_COUNT(Buffer), *(Stem + TEXT(".int")) );
 					if( Success )
 					{
 						TCHAR* Next;

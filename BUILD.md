@@ -173,6 +173,15 @@ system and the network transport at run time.
   everything, the Files/Directories flags honoured; `Core/Inc/FFileManagerLinux.h`). `ucc make` saves are
   deterministic: `SavePackage` sorts names, imports and exports with a stable merge sort, and `CacheDrivers` reads
   the `.int` files in NTFS order (`Core/Src/UnObj.cpp`).
+- **Script overrides.** A script function listed in `GScriptOverrides` (`Core/Src/UnScriptOverride.cpp`) runs as C++
+  in place of its UnrealScript. When its package loads, `UFunction::Bind` binds it as a native, as for a script
+  `native` function, if it is exactly the listed one: its export in the package file has the listed size and CRC, and
+  its parameters are the ones the C++ reads. The editor and `ucc` keep the script, and so does a mod's or another
+  release's version of the function. The log says which: `ufront: <function> runs as C++: ...` or `... keeps its
+  script: ...`. The one entry is UTMenu's `UTLadderStub.SetupWinParams`, which places every ladder window (character
+  creation, the ladders, the save slots, the manager, the objectives): Epic's box (1024x768, else the root's height at
+  4:3) where it fits UWindow's root, else the largest 4:3 box that fits, so the whole window shows with the 2x menus on
+  a wide screen (a 1170x540 root at 2340x1080) or the 1x menus at 1280x720.
 - **Signals.** On POSIX targets SIGTERM, SIGHUP and SIGINT request a clean exit; a second one is reported and ignored.
 - **Logging.** Every log line is echoed to stdout (the browser console on the web); `Init: Language: <ext>` names the
   localization in use.
@@ -256,6 +265,11 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   permission; `/sdcard/UT99` or `UT99` at the top of an SD card needs All files access, which the launcher asks
   for, with the copy as the alternative, only when the game is started from there. Shared storage is a FUSE
   mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
+- The launcher's resolution scale (a slider from 0.25 to 1 and a field that takes 0.1 to 1; 1, the screen's own
+  resolution, by default) sizes SDL's surface buffer (`GameActivity.applyRenderScale`, `SurfaceHolder.setFixedSize`),
+  which Android scales to the screen; the engine sees the scaled size as its window. SDL's surface view
+  (`FrameSurface`) scales every touch and mouse position from the screen to that buffer before SDL reads it, so a
+  tap lands where it is drawn at every scale.
 
 Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; in the
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are

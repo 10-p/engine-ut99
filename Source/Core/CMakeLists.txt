@@ -10,6 +10,7 @@ set(SRC_FILES
   "Src/UnMath.cpp"
   "Src/UnCoreNet.cpp"
   "Src/UnClass.cpp"
+  "Src/UnScriptOverride.cpp"
   "Src/UnCache.cpp"
   "Src/UnBits.cpp"
   "Src/UnAnsi.cpp"

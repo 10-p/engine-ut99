@@ -21,6 +21,7 @@ Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details,
 * **GCC and Clang support:** the engine compiles with GCC, Clang, Emscripten and MinGW-w64, with the native class layouts matching the script packages.
 * **Save games:** saving and loading work on case-sensitive file systems and in nested save folders.
 * **Languages:** the language is `[Engine.Engine] Language`, and localization files are found case-insensitively.
+* **Ladder windows fit the menus:** the single-player ladder's windows show whole at every aspect ratio and menu size, through a C++ version of `UTLadderStub.SetupWinParams` that replaces Epic's own function only (BUILD.md, Script overrides).
 * Editor UI is not supported.
 
 ## Building
