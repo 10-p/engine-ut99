@@ -781,8 +781,17 @@ UBOOL UNSDLViewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 	else
 	{
 		// Windowed resize.
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 		SetClientSize( NewX, NewY, 1 );
 		EndFullscreen();
+#else
+		SetClientSize( NewX, NewY, 0 );
+		EndFullscreen();
+		// The profile keeps the window's size as the windowed one (MakeFullscreen keeps the fullscreen one).
+		Client->WindowedViewportX = SizeX;
+		Client->WindowedViewportY = SizeY;
+		Client->SaveConfig();
+#endif
 	}
 
 	// Update color depth if requested (render devices read this).
@@ -1906,6 +1915,15 @@ UBOOL UNSDLViewport::TickInput()
 					const INT NewX = Align( Ev.window.data1, 4 ), NewY = Ev.window.data2;
 					if( NewX != SizeX || NewY != SizeY )
 						SetClientSize( NewX, NewY, false );
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+					// A window resized from outside keeps its size in the profile as the windowed one.
+					if( !IsFullscreen() && ( Client->WindowedViewportX != SizeX || Client->WindowedViewportY != SizeY ) )
+					{
+						Client->WindowedViewportX = SizeX;
+						Client->WindowedViewportY = SizeY;
+						Client->SaveConfig();
+					}
+#endif
 #endif
 				}
 				break;
@@ -1968,10 +1986,23 @@ UBOOL UNSDLViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		// Toggle fullscreen.
 		// Note: FullscreenViewport tracking removed - Unreal 1 specific
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
+		Client->EndFullscreen();
+		if( !(Actor->ShowFlags & SHOW_ChildWindow) )
+			Client->TryRenderDevice( this, "ini:Engine.Engine.GameRenderDevice", 1 );
+#else
 		if( IsFullscreen() )
 			Client->EndFullscreen();
 		else if( !(Actor->ShowFlags & SHOW_ChildWindow) )
+		{
 			Client->TryRenderDevice( this, "ini:Engine.Engine.GameRenderDevice", 1 );
+			// A game device that fails falls back to the windowed device, fullscreen and then in a window.
+			if( !RenDev )
+				Client->TryRenderDevice( this, "ini:Engine.Engine.WindowedRenderDevice", 1 );
+			if( !RenDev )
+				Client->TryRenderDevice( this, "ini:Engine.Engine.WindowedRenderDevice", 0 );
+		}
+#endif
 		return 1;
 	}
 	else if( ParseCommand(&Cmd, TEXT("GetCurrentRes")) )
@@ -1984,8 +2015,14 @@ UBOOL UNSDLViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 		INT X=appAtoi(Cmd), Y=appAtoi(appStrchr(Cmd,TEXT('x')) ? appStrchr(Cmd,TEXT('x'))+1 : appStrchr(Cmd,TEXT('X')) ? appStrchr(Cmd,TEXT('X'))+1 : TEXT(""));
 		if( X && Y )
 		{
+#if defined(__EMSCRIPTEN__) || defined(__ANDROID__)
 			// Note: FullscreenViewport tracking removed - Unreal 1 specific
 			MakeFullscreen( X, Y, 1 );
+#else
+			// The render device takes the size in the current mode, windowed or fullscreen; if it cannot, fullscreen ends.
+			if( RenDev && !RenDev->SetRes( X, Y, ColorBytes, IsFullscreen() ) )
+				EndFullscreen();
+#endif
 		}
 		return 1;
 	}

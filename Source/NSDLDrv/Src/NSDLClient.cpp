@@ -437,10 +437,24 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 		Viewport->RenDev = ConstructObject<URenderDevice>( RenderClass );
 		if( Engine->Audio && !GIsEditor )
 			Engine->Audio->SetViewport( NULL );
-		if( Viewport->RenDev->Init( Viewport, Viewport->SizeX, Viewport->SizeY, Viewport->ColorBytes, Fullscreen ) )
+		INT NewX = Viewport->SizeX, NewY = Viewport->SizeY;
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+		// Fullscreen opens at the profile's fullscreen size.
+		if( Fullscreen && FullscreenViewportX > 0 && FullscreenViewportY > 0 )
+		{
+			NewX = FullscreenViewportX;
+			NewY = FullscreenViewportY;
+		}
+#endif
+		if( Viewport->RenDev->Init( Viewport, NewX, NewY, Viewport->ColorBytes, Fullscreen ) )
 		{
 			Viewport->Actor->GetLevel()->DetailChange( Viewport->RenDev->HighDetailActors );
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+			// The devices that go fullscreen themselves (through ResizeViewport) are left there; the others are made so.
+			if( Fullscreen && !SDLViewport->IsFullscreen() )
+#else
 			if( Fullscreen )
+#endif
 				SDLViewport->MakeFullscreen( FullscreenViewportX, FullscreenViewportY, 1 );
 		}
 		else
