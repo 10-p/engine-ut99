@@ -265,13 +265,7 @@ class DLL_EXPORT_CLASS UTcpNetDriver : public UNetDriver
 		{
 			// Get data, if any.
 			clock(RecvCycles);
-			fd_set ReadSet;
-			FD_ZERO( &ReadSet );
-			FD_SET( Socket, &ReadSet );
-			TIMEVAL Wait;
-			Wait.tv_sec=0;
-			Wait.tv_usec=0;
-			INT Result=select(Socket+1,&ReadSet,NULL,NULL,&Wait);
+			INT Result=SocketReady( Socket, SOCKET_Readable, 0 );
 			if( Result==0 || Result==SOCKET_ERROR )
 				break;
 			INT FromSize = sizeof(FromAddr);
