@@ -20,7 +20,7 @@ All presets are in `Source/CMakePresets.json`; run `cmake --preset …` from `So
 | `android-arm64` | `build-android-arm64-client/UnrealTournament/libUT99.so` + `_deps/sdl2-build/libSDL2.so`, `libut99_android_bridge.so` | the game as one shared library for Android arm64 (API 30, shared libc++; needs `ANDROID_NDK_HOME`): the configuration the Gradle project in `Android/` builds into the APK |
 | `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` | a headless `ucc-bin` for Android arm64 (bionic, API 24, static libc++; needs `ANDROID_NDK_HOME`) |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the same for armeabi-v7a |
-| `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` + `OpenAL32.dll`, `build-windows/UCC/ucc-bin.exe` | 32-bit Windows, MinGW-w64 (cross or MSYS2) |
+| `windows` | `build-windows/UnrealTournament/UnrealTournament.exe` + `OpenAL32.dll`, `build-windows/UCC/ucc.exe` | 32-bit Windows, MinGW-w64 (cross or MSYS2) |
 | `windows64` | the same in `build-windows64/` | 64-bit Windows, MinGW-w64 (x86_64), the shipped 32-bit `.u` unchanged |
 | `wasm` | `build-wasm/SDLLaunch/` | web, the development build: -O2 with DWARF and assertions |
 | `wasm-debug` | `build-wasm-debug/SDLLaunch/` | web at -O0, for a bug the optimiser is suspected of |
@@ -188,7 +188,7 @@ system and the network transport at run time.
   4:3) where it fits UWindow's root, else the largest 4:3 box that fits, so the whole window shows with the 2x menus on
   a wide screen (a 1170x540 root at 2340x1080) or the 1x menus at 1280x720.
 - **Signals.** On POSIX targets SIGTERM, SIGHUP and SIGINT request a clean exit; on Windows the console's Ctrl-C,
-  Ctrl-Break and close do (a dedicated server under `ucc-bin.exe`). A second one is reported and ignored.
+  Ctrl-Break and close do (a dedicated server under `ucc.exe`). A second one is reported and ignored.
 - **Logging.** Every log line is echoed to stdout (the browser console on the web); `Init: Language: <ext>` names the
   localization in use.
 
@@ -327,9 +327,9 @@ WINEPREFIX=<prefix> wineserver -k
 Copy the `.exe` into the run tree's `System/` (the engine takes its base directory from the binary's path) and copy
 the assets rather than symlinking them (`cp -rL`): under wine a symlinked package is a `FileNotFound`.
 
-`ucc-bin.exe` is the console tool, with the system DLLs only: it reads its arguments and writes `ucc-bin.log` as
-`ucc-bin` does on Linux (`wine ucc-bin.exe help`, `wine ucc-bin.exe server "DM-Deck16][?game=Botpack.DeathMatchPlus"`),
-and a SIGINT to the wine process reaches it as Ctrl-C.
+`ucc.exe` is the console tool, the retail UCC's name, with the system DLLs only: it reads its arguments as `ucc-bin`
+does on Linux and writes `ucc.log` (`wine ucc.exe help`, `wine ucc.exe server "DM-Deck16][?game=Botpack.DeathMatchPlus"`),
+the menus' dedicated-server relaunch starts it, and a SIGINT to the wine process reaches it as Ctrl-C.
 
 ## Test tools
 
