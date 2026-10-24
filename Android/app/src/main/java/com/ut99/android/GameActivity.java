@@ -3,6 +3,7 @@ package com.ut99.android;
 import android.app.Activity;
 import android.app.AlertDialog;
 import android.content.Context;
+import android.content.Intent;
 import android.graphics.Bitmap;
 import android.graphics.BitmapFactory;
 import android.graphics.Canvas;
@@ -24,6 +25,7 @@ import java.io.File;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Locale;
 
 import org.libsdl.app.SDLActivity;
 import org.libsdl.app.SDLSurface;
@@ -61,6 +63,24 @@ public class GameActivity extends SDLActivity {
      */
     static final String EXTRA_RENDER_SCALE = "com.ut99.android.RENDER_SCALE";
     static final float RENDER_SCALE_MIN = 0.1f, RENDER_SCALE_MAX = 1f;
+
+    /**
+     * The touch move stick (the launcher's settings), in dp: full tilt at this drag from where the finger is held,
+     * 4 to 60, and the dead zone for a resting finger, 0 to 10 and below full tilt. Absent: the defaults.
+     */
+    static final String EXTRA_MOVE_FULL_TILT_DP = "com.ut99.android.MOVE_FULL_TILT_DP";
+    static final String EXTRA_MOVE_DEAD_ZONE_DP = "com.ut99.android.MOVE_DEAD_ZONE_DP";
+    static final float MOVE_FULL_TILT_DP = 12f, MOVE_FULL_TILT_MIN_DP = 4f, MOVE_FULL_TILT_MAX_DP = 60f;
+    static final float MOVE_DEAD_ZONE_DP = 3f, MOVE_DEAD_ZONE_MAX_DP = 10f;
+
+    static float moveFullTilt(float dp) {
+        return Math.max(MOVE_FULL_TILT_MIN_DP, Math.min(MOVE_FULL_TILT_MAX_DP, dp));
+    }
+
+    /** The dead zone in its range, and at least 1 dp below full tilt. */
+    static float moveDeadZone(float dp, float fullTiltDp) {
+        return Math.max(0f, Math.min(Math.min(MOVE_DEAD_ZONE_MAX_DP, fullTiltDp - 1f), dp));
+    }
 
     private AlertDialog exitDialog;
 
@@ -247,12 +267,16 @@ public class GameActivity extends SDLActivity {
 
         // The move stick: full tilt this far from the held point (dp, the same on every screen), nothing within the
         // dead zone (a resting finger); past full tilt the held point follows the finger.
-        private static final float MOVE_FULL_TILT_DP = 12f;
-        private static final float MOVE_DEAD_ZONE_DP = 3f;
+        private final float moveFullTiltDp, moveDeadZoneDp;
 
         Ut99TouchOverlayView(GameActivity activity) {
             super(activity);
             this.activity = activity;
+            Intent in = activity.getIntent();
+            moveFullTiltDp = moveFullTilt(in != null ? in.getFloatExtra(EXTRA_MOVE_FULL_TILT_DP, MOVE_FULL_TILT_DP) : MOVE_FULL_TILT_DP);
+            moveDeadZoneDp = moveDeadZone(in != null ? in.getFloatExtra(EXTRA_MOVE_DEAD_ZONE_DP, MOVE_DEAD_ZONE_DP) : MOVE_DEAD_ZONE_DP,
+                    moveFullTiltDp);
+            Log.i(TAG, String.format(Locale.US, "touch move stick: full tilt %.1f dp, dead zone %.1f dp", moveFullTiltDp, moveDeadZoneDp));
             setWillNotDraw(false);
             setFocusable(false);
             iconFire = loadIcon("touch_overlay/fire.png");
@@ -369,7 +393,7 @@ public class GameActivity extends SDLActivity {
         /** The move stick's axes: the drag's direction, its tilt from the dead zone's edge to full tilt. */
         private void moveStick(float x, float y, boolean down) {
             float density = getResources().getDisplayMetrics().density;
-            float full = MOVE_FULL_TILT_DP * density, dead = MOVE_DEAD_ZONE_DP * density;
+            float full = moveFullTiltDp * density, dead = moveDeadZoneDp * density;
             float dx = x - leftBaseX, dy = y - leftBaseY, len = (float) Math.hypot(dx, dy);
             if (len > full) {
                 float k = (len - full) / len;
