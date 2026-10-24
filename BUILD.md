@@ -138,8 +138,9 @@ system and the network transport at run time.
 - **`-UFRONTLOG`.** Also logs the port's diagnostic and repeated lines (`GUfrontLog`): the `[AutoFOV]` and
   `[AutoFOVUI]` lines, the `[webmouse]` capture and `the menu cursor follows` hand-overs, the `[WebRTC-LAN]` discovery
   rounds, the first reverb zone, and the device information of every render device after the process's first (a
-  fullscreen switch re-creates it): XOpenGLDrv's extension list, capability lines and shader-compile messages, UTGLR's
-  `GL_EXTENSIONS` and `Device supports` lines. The tests pass it; a player's log leaves them out. Status lines, warnings, errors
+  fullscreen switch re-creates it): the GL strings, XOpenGLDrv's extension list, capability lines, VSync state,
+  flushes and shader-compile messages, UTGLR's `GL_EXTENSIONS`, `Device supports` lines and buffer and texture
+  limits. The tests pass it; a player's log leaves them out. Status lines, warnings, errors
   and console-command answers are always logged.
 - **Console commands.** `FLUSHCONFIG` writes the config cache to disk; `WHEREAMI` and `TELEPORT <x> <y> <z> [<yaw>
   [<pitch>]]` (standalone and listen host; a client needs `[Engine.GameEngine] AllowNetCheats=True`, a test setting);
