@@ -61,5 +61,5 @@ if game > /dev/null; then
     game > /dev/null && { echo "did not exit: SIGTERM"; stopgame; }
 fi
 wait 2>/dev/null
-BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]|ERROR: AddressSanitizer|runtime error:'
+BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]'
 echo "exit: $(grep -aoE 'COMMAND_EXIT_CODE="[0-9]+"' "$LOG")  crash markers: $(grep -caE "$BAD" "$LOG")"

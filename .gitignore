@@ -17,6 +17,5 @@ __smoke.html
 /build-soft/
 # The 64-bit trees, and a script package compiled from tools/test (a build product)
 /build-native64/
-/build-native64-asan/
 /build-android-*/
 *.u

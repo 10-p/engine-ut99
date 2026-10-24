@@ -16,7 +16,6 @@ All presets are in `Source/CMakePresets.json`; run `cmake --preset …` from `So
 |---|---|---|
 | `native` | `build-native/UnrealTournament/UnrealTournament` + `libopenal.so.1`, `build-native/UCC/ucc-bin` | 32-bit Linux, one static binary (needs a 32-bit SDL2) |
 | `native64` | `build-native64/…` | the same at x86_64 (LP64); needs the amd64 SDL2 development files (Debian `libsdl2-dev:amd64`, Arch `sdl2-compat`) |
-| `native64-asan` | `build-native64-asan/…` | `native64` with AddressSanitizer; run with `ASAN_OPTIONS=alloc_dealloc_mismatch=0:verify_asan_link_order=0` (the second because `stdbuf` preloads a library) |
 | `android-arm64` | `build-android-arm64-client/UnrealTournament/libUT99.so` + `_deps/sdl2-build/libSDL2.so`, `libut99_android_bridge.so` | the game as one shared library for Android arm64 (API 30, shared libc++; needs `ANDROID_NDK_HOME`): the configuration the Gradle project in `Android/` builds into the APK |
 | `android-arm64-ucc` | `build-android-arm64/UCC/ucc-bin` | a headless `ucc-bin` for Android arm64 (bionic, API 24, static libc++; needs `ANDROID_NDK_HOME`) |
 | `android-armv7-ucc` | `build-android-armv7/UCC/ucc-bin` | the same for armeabi-v7a |
@@ -197,7 +196,7 @@ system and the network transport at run time.
 
 ## 64-bit (LP64)
 
-`native64`, `native64-asan` and the `android-*` presets build a 64-bit engine that runs the retail 32-bit `.u`
+`native64` and the `android-*` presets build a 64-bit engine that runs the retail 32-bit `.u`
 packages unchanged. `PLATFORM_64BITS` comes from the compiler (`Core/Inc/Core.h`).
 
 - Script object references are 4-byte object indices in memory (`UObject::GetScriptObject` / `GetScriptRef`;
@@ -341,7 +340,7 @@ the menus' dedicated-server relaunch starts it, and a SIGINT to the wine process
 | `tools/dev/mkrun-ut99.sh <build-dir> <run-dir> [<extra-maps-dir>]` | assembles a run tree from a native build and an asset install (default `<work folder>/assets/ut99-assets`, `$UT99_ASSETS_DIR`; native inis from `<work folder>/native-runtrees/ut99`, `$UT99_REF_RUNTREE`) |
 | `tools/dev/run-template.sh` | the run tree's `run.sh`: starts the game on a chosen renderer (`./run.sh soft DM-Barricade`) |
 | `UT99_RUN=<run-tree> tools/dev/shot.sh <Map.unr> <out.png>` | runs the native build under Xvfb and grabs a frame (`UT99_DEV`, `UT99_RES`, `UT99_DISP`) |
-| `tools/dev/botmatch.sh <server-tree> <seconds> [<client-tree>] [<map>]` | a headless bot match with a joined client; counts kills and sanitizer reports |
+| `tools/dev/botmatch.sh <server-tree> <seconds> [<client-tree>] [<map>]` | a headless bot match with a joined client; counts kills and crash markers |
 | `tools/dev/layout-sweep.gdb` | every script property of every native class (and script struct) against the same-named C++ member; run under `ucc-bin make` and the client |
 | `tools/dev/census/` | a coverage census of which engine functions ever ran (`census.py`, `gcovdump.c`, the scripted player session `play.sh`) and a cross-width layout oracle (`exports.sh`) |
 | `tools/test/U64Test/` | an UnrealScript fixture for the 64-bit port: VM checks (`U64Mutator`), compile-only declarations (`U64Decl`), a benchmark (`U64Bench`) |

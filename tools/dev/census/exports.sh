@@ -7,7 +7,7 @@ set -u
 TREE=$1; OUT=$2
 rm -rf "$OUT"; mkdir -p "$OUT"/{level,polys,classes,pcx,bmp,wav,music}
 cd "$TREE/System"
-BAD='appError|Critical: |Assertion failed|SIGSEGV|General protection|ERROR: AddressSanitizer'
+BAD='appError|Critical: |Assertion failed|SIGSEGV|General protection'
 run() { local name=$1; shift; timeout 600 ./ucc-bin "$@" -nohomedir > "$OUT/$name.log" 2>&1
         echo "$name: exit=$? crash-lines=$(grep -caE "$BAD" "$OUT/$name.log")"; }
 run level   batchexport "../Maps/DM-Deck16][.unr" Level t3d "$OUT/level"

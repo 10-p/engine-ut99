@@ -10,8 +10,7 @@
 # 32-bit client joining a 64-bit server. Output lands in <server-run-tree>/botmatch/.
 #
 # `timeout xvfb-run ...` would kill the wrapper and leave the game running, so the timeout is inside;
-# stdout and the engine log are block-buffered, so every process runs under `stdbuf -oL`. A sanitizer
-# report counts as a crash marker (an ASan abort in the client otherwise looks like a player leaving).
+# stdout and the engine log are block-buffered, so every process runs under `stdbuf -oL`.
 set -eu
 SRV=$(readlink -f "${1:?usage: botmatch.sh <server-run-tree> <seconds> [<client-run-tree>] [<map>]}")
 SECS=${2:?}
@@ -58,7 +57,7 @@ wait 2>/dev/null || true
 NG=$(ls -t "$SRV"/Logs/Unreal.ngLog.* 2>/dev/null | head -1 || true)
 KILLS=0
 [ -n "$NG" ] && KILLS=$(tr -d '\000' < "$NG" | grep -ac "	kill	" || true)
-BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]|ERROR: AddressSanitizer|runtime error:'
+BAD='SIGSEGV|Signal|Assertion failed|appError|Critical|General protection|Segmentation fault|\[layout\]'
 echo "server=$(file -b "$SRV/System/ucc-bin" | cut -d, -f1-2) client=$(file -b "$CLI/System/UnrealTournament" | cut -d, -f1-2)"
 echo "last poll: $(tail -1 "$OUT/poll.txt")"
 echo "joined=$(grep -c 'Join succeeded' "$OUT/server.log") kills>=$KILLS accessed_none=$(grep -c 'Accessed None' "$OUT/server.log") warnings=$(grep -ci 'warning' "$OUT/server.log") crash_markers=$(grep -cE "$BAD" "$OUT/server.log" "$OUT/client.log" | awk -F: '{s+=$2} END{print s}')"

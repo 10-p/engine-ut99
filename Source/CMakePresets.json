@@ -38,18 +38,6 @@
       }
     },
     {
-      "name": "native64-asan",
-      "inherits": "native64",
-      "displayName": "Native x86_64 + AddressSanitizer",
-      "description": "native64 with -fsanitize=address. Run with ASAN_OPTIONS=alloc_dealloc_mismatch=0 (UE1's sized operator delete pairing is reported but benign). Put the binary in the run tree's System/ itself: the engine takes its base dir from the executable path. Builds in build-native64-asan/.",
-      "binaryDir": "${sourceDir}/../build-native64-asan",
-      "cacheVariables": {
-        "CMAKE_C_FLAGS": "-fsanitize=address -fno-omit-frame-pointer",
-        "CMAKE_CXX_FLAGS": "-fsanitize=address -fno-omit-frame-pointer",
-        "CMAKE_EXE_LINKER_FLAGS": "-fsanitize=address"
-      }
-    },
-    {
       "name": "android-arm64",
       "displayName": "Android arm64 -- the game as libUT99.so",
       "description": "The playable client as one shared library for arm64-v8a (SDL2 fetched and built shared beside it, openal-soft and libxmp static, XOpenGLDrv on GLES 3, NOpenGLESDrv on GLES 2, SoftDrv, NullDrv): the same configure the Gradle project in Android/ runs, for a build without the APK. Needs ANDROID_NDK_HOME. Builds in build-android-arm64-client/.",
@@ -162,7 +150,6 @@
   "buildPresets": [
     { "name": "native", "configurePreset": "native" },
     { "name": "native64", "configurePreset": "native64" },
-    { "name": "native64-asan", "configurePreset": "native64-asan" },
     { "name": "android-arm64", "configurePreset": "android-arm64" },
     { "name": "android-arm64-ucc", "configurePreset": "android-arm64-ucc" },
     { "name": "android-armv7-ucc", "configurePreset": "android-armv7-ucc" },
