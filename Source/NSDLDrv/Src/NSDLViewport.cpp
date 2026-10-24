@@ -1968,8 +1968,9 @@ UBOOL UNSDLViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 	{
 		// Toggle fullscreen.
 		// Note: FullscreenViewport tracking removed - Unreal 1 specific
-		Client->EndFullscreen();
-		if( !(Actor->ShowFlags & SHOW_ChildWindow) )
+		if( IsFullscreen() )
+			Client->EndFullscreen();
+		else if( !(Actor->ShowFlags & SHOW_ChildWindow) )
 			Client->TryRenderDevice( this, "ini:Engine.Engine.GameRenderDevice", 1 );
 		return 1;
 	}
