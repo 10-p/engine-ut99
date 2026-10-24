@@ -216,11 +216,7 @@ void UHTTPDownload::Tick()
 	case HTTP_Connecting:
 	{
 		// Check for writability: a writable socket means the connection attempt succeeded.
-		fd_set SocketSet;
-		TIMEVAL SelectTime = {0,0};
-		FD_ZERO( &SocketSet );
-		FD_SET( ServerSocket, &SocketSet );
-		INT Ready = select( ServerSocket+1, NULL, &SocketSet, NULL, &SelectTime );
+		INT Ready = SocketReady( ServerSocket, SOCKET_Writable, 0 );
 		if( Ready == SOCKET_ERROR )
 		{
 			debugf( NAME_DevNet, TEXT("HTTPDownload: select() failed") );
