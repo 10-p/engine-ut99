@@ -205,6 +205,7 @@ UNSDLViewport::UNSDLViewport( ULevel* InLevel, UNSDLClient* InClient )
 	appMemzero( PadKeySent, sizeof(PadKeySent) );
 	PadCursor = 0;
 	PadCursorX = PadCursorY = 0.f;
+	MenusFollowPointer = 0;
 	PadStickOut[0] = PadStickOut[1] = 0;
 	InputTest = NULL;
 	FString InputTestFile;
@@ -799,9 +800,10 @@ UBOOL UNSDLViewport::ResizeViewport( DWORD NewBlitFlags, INT InNewX, INT InNewY,
 
 	// The absolute Windows-mouse path on windowed viewports, as the stock WinViewport sets it: UWindow's
 	// WindowConsole.RenderUWindow then puts its cursor at WindowsMouseX/Y, which MousePosition fills from
-	// absolute SDL motion. UGameEngine::Tick releases relative mode while a menu is up, so absolute motion
-	// arrives there.
-	bWindowsMouseAvailable = !(NewBlitFlags & BLIT_Fullscreen);
+	// absolute SDL motion, and the system pointer draws it. UGameEngine::Tick releases relative mode while a menu
+	// is up, so absolute motion arrives there. While the pad has the cursor UWindow draws its own (SetPadCursor).
+	MenusFollowPointer = !(NewBlitFlags & BLIT_Fullscreen);
+	bWindowsMouseAvailable = MenusFollowPointer && !PadCursor;
 
 	// Update audio.
 	if( SavedViewport && SavedViewport!=Client->Engine->Audio->GetViewport() )
@@ -1264,6 +1266,38 @@ static FLOAT* FloatProp( UObject* Obj, const TCHAR* Name )
 }
 
 //
+// UWindow's own cursor, the one it draws where the viewport has no system pointer for it: WindowConsole's MouseX/Y,
+// in its root window's units, drawn at the root's GUIScale. Viewport pixels here; false while there is no root.
+//
+struct FUWindowCursor
+{
+	FLOAT* X;
+	FLOAT* Y;
+	FLOAT* Scale;
+	FUWindowCursor( UObject* Console )
+	:	X( FloatProp( Console, TEXT("MouseX") ) )
+	,	Y( FloatProp( Console, TEXT("MouseY") ) )
+	,	Scale( FloatProp( ObjectProp( Console, TEXT("Root") ), TEXT("GUIScale") ) )
+	{}
+	UBOOL Get( FLOAT& OutX, FLOAT& OutY ) const
+	{
+		if( !X || !Y || !Scale || *Scale <= 0.f )
+			return 0;
+		OutX = *X * *Scale;
+		OutY = *Y * *Scale;
+		return 1;
+	}
+	UBOOL Set( FLOAT InX, FLOAT InY )
+	{
+		if( !X || !Y || !Scale || *Scale <= 0.f )
+			return 0;
+		*X = InX / *Scale;
+		*Y = InY / *Scale;
+		return 1;
+	}
+};
+
+//
 // A call of a script function of a UWindow window, its parameters set by name (the others zero, None or False).
 //
 struct FUWindowCall
@@ -1575,8 +1609,8 @@ INT UNSDLViewport::PadMenuKey( INT Key, UBOOL HadCursor )
 }
 
 //
-// The pad takes the menu cursor where the mouse left it, and gives it back to the mouse. The system's pointer,
-// which stays where the mouse left it, is hidden meanwhile.
+// The pad takes the menu cursor where UWindow shows it, and gives it back to the mouse. Meanwhile UWindow draws its
+// own cursor, as on a viewport without a system pointer, and the system pointer is hidden where the mouse left it.
 //
 void UNSDLViewport::SetPadCursor( UBOOL On )
 {
@@ -1588,7 +1622,10 @@ void UNSDLViewport::SetPadCursor( UBOOL On )
 	{
 		PadCursorX = WindowsMouseX;
 		PadCursorY = WindowsMouseY;
+		if( !bWindowsMouseAvailable )
+			FUWindowCursor( (UObject*)Console ).Get( PadCursorX, PadCursorY );
 	}
+	bWindowsMouseAvailable = MenusFollowPointer && !On;
 	SDL_ShowCursor( On ? SDL_DISABLE : SDL_ENABLE );
 	if( GUfrontLog )
 		debugf( NAME_Log, TEXT("NSDLClient: the menu cursor follows the %s"), On ? TEXT("pad") : TEXT("mouse") );
@@ -1598,9 +1635,8 @@ void UNSDLViewport::SetPadCursor( UBOOL On )
 //
 // While UWindow shows its cursor, a stick pushed out of its dead zone gives the cursor to the pad (a stick held out
 // since does not take it back from the mouse), and while the pad has it the left stick moves it: linear from the
-// dead zone's edge to full tilt, across the viewport's width in PadCursorSeconds, with no acceleration. It reaches
-// UWindow as the mouse's absolute motion does: the position, and the deltas UWindow counts on a viewport without
-// a system pointer.
+// dead zone's edge to full tilt, across the viewport's width in PadCursorSeconds, with no acceleration. It sets
+// UWindow's cursor every tick (the root window that scales it can appear after the take) and the mouse position.
 //
 void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 {
@@ -1632,19 +1668,11 @@ void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 		const FLOAT Value = Clamp( JoyAxis[Axes[i]] / 32767.f, -1.f, 1.f );
 		Tilt[i] = Abs( Value ) > DeadZone ? ( Value - ( Value > 0.f ? DeadZone : -DeadZone ) ) / ( 1.f - DeadZone ) : 0.f;
 	}
-	if( Tilt[0] == 0.f && Tilt[1] == 0.f )
-		return;
 	const FLOAT Step = SizeX * DeltaTime / Max( Client->PadCursorSeconds, 0.01f );
-	const FLOAT X = Clamp( PadCursorX + Tilt[0] * Step, 0.f, (FLOAT)Max( SizeX - 1, 0 ) );
-	const FLOAT Y = Clamp( PadCursorY + Tilt[1] * Step, 0.f, (FLOAT)Max( SizeY - 1, 0 ) );
-	const FLOAT DX = X - PadCursorX, DY = Y - PadCursorY;
-	PadCursorX = X;
-	PadCursorY = Y;
-	Client->Engine->MousePosition( this, 0, X, Y );
-	if( DX != 0.f )
-		CauseInputEvent( IK_MouseX, IST_Axis, DX );
-	if( DY != 0.f )
-		CauseInputEvent( IK_MouseY, IST_Axis, -DY );
+	PadCursorX = Clamp( PadCursorX + Tilt[0] * Step, 0.f, (FLOAT)Max( SizeX - 1, 0 ) );
+	PadCursorY = Clamp( PadCursorY + Tilt[1] * Step, 0.f, (FLOAT)Max( SizeY - 1, 0 ) );
+	FUWindowCursor( (UObject*)Console ).Set( PadCursorX, PadCursorY );
+	Client->Engine->MousePosition( this, 0, PadCursorX, PadCursorY );
 	unguard;
 }
 

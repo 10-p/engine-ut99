@@ -157,10 +157,11 @@ system and the network transport at run time.
   `[NSDLDrv.NSDLClient] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
   `bRun` (the Walking key writes the whole byte; the stick sets its bit again the next tick), and the moves a client
   sends to its server carry `bRun`. The right stick keeps a dead zone per axis (`DeadZoneRUV`). While UWindow shows
-  its cursor, any pad press or a stick pushed out of its dead zone gives the cursor to the pad and hides the system
-  pointer, and that press already acts as below. While the pad has the cursor, and only then, the left stick moves it
-  (linear from the dead zone's edge, across the viewport's width in
-  `PadCursorSeconds` at full tilt: 3), Back and B are Escape, Start is Enter, A is a left click under the cursor shown
+  its cursor, any pad press or a stick pushed out of its dead zone gives the cursor to the pad, and that press already
+  acts as below. While the pad has the cursor, and only then, UWindow draws its own cursor where the pad puts it (the
+  windowed viewport's `bWindowsMouseAvailable` is off, as on a fullscreen one) and the system pointer is hidden; the
+  left stick moves it (linear from the dead zone's edge, across the viewport's width in `PadCursorSeconds` at full
+  tilt: 3), Back and B are Escape, Start is Enter, A is a left click under the cursor shown
   when that is on a control, else a click at the centre of the focused control (a button presses, a checkbox toggles,
   a drop-down list opens) or, for the controls that take it (pull-down menus, editable boxes, message boxes), Enter,
   the D-pad is the arrow keys, an arrow the focused control does not use moving the focus to the next (down, right) or
@@ -168,8 +169,9 @@ system and the network transport at run time.
   D-pad selects, scrolling the row into view, A and Start pick, Back and B close it; a message box takes A and Start
   as its Yes or OK button and Back and B as its Cancel or No button, a box with OK alone keeping Escape), and the keys
   bound to `Fire` and `AltFire` click left and right (`GPadCursorClicks`); a key-binding page waiting for a key gets
-  the pad's own keys, Back aside. The mouse's own motion takes the cursor back, and with it every pad key is itself
-  again (`NSDLClient: the menu cursor follows the pad|mouse` with `-UFRONTLOG`).
+  the pad's own keys, Back aside. The mouse's own motion (a touch's on Android) takes the cursor back, and with it a
+  windowed viewport's cursor is the system pointer again and every pad key is itself again (`NSDLClient: the menu
+  cursor follows the pad|mouse` with `-UFRONTLOG`).
 - **Antialiasing.** XOpenGLDrv multisamples in framebuffers of its own (`UseAA`). NOpenGLESDrv (`NumAASamples`)
   and UTGLR (`UseAA`, `NumAASamples`) draw into framebuffer 0; on the web each asks `ufront_backbuffer_samples` for
   a multisampled back buffer at Init and logs `GLES2: antialiasing 4x (multisampled back buffer)` / `GLES2:
