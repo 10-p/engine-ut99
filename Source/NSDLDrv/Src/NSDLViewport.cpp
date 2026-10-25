@@ -1342,7 +1342,8 @@ static UBOOL WindowShown( UObject* Window )
 }
 
 //
-// Whether the window under UWindow's cursor is a control a click acts on (labels are not).
+// Whether the window under UWindow's cursor is a control a click acts on (labels are not); a grid's rows are its
+// columns' windows.
 //
 static UBOOL ControlUnderCursor( UObject* Root )
 {
@@ -1350,6 +1351,7 @@ static UBOOL ControlUnderCursor( UObject* Root )
 	if( IsAClassNamed( Window, TEXT("UWindowDialogControl") ) )
 		return !IsAClassNamed( Window, TEXT("UWindowLabelControl") );
 	return IsAClassNamed( Window, TEXT("UWindowTabControlTabArea") ) || IsAClassNamed( Window, TEXT("UWindowGrid") )
+		|| IsAClassNamed( Window, TEXT("UWindowGridColumn") )
 		|| IsAClassNamed( Window, TEXT("UWindowVScrollBar") ) || IsAClassNamed( Window, TEXT("UWindowHScrollBar") );
 }
 
