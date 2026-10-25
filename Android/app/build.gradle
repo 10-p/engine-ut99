@@ -79,8 +79,8 @@ android {
         applicationId = ut99V436 ? 'com.ut99.android.v436' : 'com.ut99.android'
         resValue 'string', 'app_name', ut99AppName
         buildConfigField 'String', 'GAME_FOLDER', "\"${ut99GameFolder}\""
-        // Android 11: All files access, which reading the game folder in place needs.
-        minSdk = 30
+        // Android 7: All files access is asked for from Android 11, the storage permission before.
+        minSdk = 24
         targetSdk = 34
         versionCode = 10000
         versionName = '1.0.0'

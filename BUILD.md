@@ -225,7 +225,7 @@ On a phone: push the asset tree to `/data/local/tmp/ut99/` and `ucc-bin` beside 
 an installed JDK 17) whose `externalNativeBuild` points at `Source/CMakeLists.txt` (targets `UnrealTournament`,
 the game as `libUT99.so`, and `ut99_android_bridge`), built for `armeabi-v7a`, `arm64-v8a` and `x86_64`
 in one APK (x86 Chromebooks and the emulator run the last). It needs platform 36 (`compileSdk`; `targetSdk` 34,
-`minSdk` 30), build-tools 36.0.0, NDK 28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK
+`minSdk` 24), build-tools 36.0.0, NDK 28.2.13676358 and CMake 4.1.2 or newer. Ubuntu's packages install the SDK
 into `/usr/lib/android-sdk`; `local.properties` names it and the distribution's CMake:
 
 ```bash
@@ -270,9 +270,10 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   the picker first. "Copy settings and saves" writes the internal copy's `System/UnrealTournament.ini`,
   `System/User.ini` and `Save/` back to the chosen folder.
 - A UT99 folder in place: `Android/data/com.ut99.android/files/UT99` on shared storage or an SD card needs no
-  permission; `/sdcard/UT99` or `UT99` at the top of an SD card needs All files access, which the launcher asks
-  for, with the copy as the alternative, only when the game is started from there. Shared storage is a FUSE
-  mount and the engine's case-insensitive file lookup is slow there; the internal copy is the fast choice.
+  permission; `/sdcard/UT99` or `UT99` at the top of an SD card needs All files access (the storage permission
+  before Android 11), which the launcher asks for, with the copy as the alternative, only when the game is
+  started from there. Shared storage is a FUSE mount and the engine's case-insensitive file lookup is slow
+  there; the internal copy is the fast choice.
 - The launcher's resolution scale (a slider from 0.25 to 1 and a field that takes 0.1 to 1; 1, the screen's own
   resolution, by default) sizes SDL's surface buffer (`GameActivity.applyRenderScale`, `SurfaceHolder.setFixedSize`),
   which Android scales to the screen; the engine sees the scaled size as its window. SDL's surface view
