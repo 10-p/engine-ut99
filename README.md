@@ -14,15 +14,19 @@ Based on [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc). Build details,
 * **Null renderer (NullDrv):** a render device that draws nothing, for headless runs.
 * **WebRTC net driver (WebRTCDrv):** browser multiplayer over the frontend's WebRTC transport, with a synthetic LAN that makes the stock server browser work.
 * **OpenAL Soft audio (NOpenALDrv):** one openal-soft build on the web, Linux and Windows, with EFX reverb, optional HRTF and libxmp tracker music.
-* **64-bit and ARM support:** x86_64 and arm64 builds (a headless `ucc-bin` on Android) that run the retail 32-bit packages unchanged.
-* **Android build:** a Gradle project that builds the game as `libUT99.so` with SDL2, a launcher that picks the game folder, touch as the mouse in the menus and an on-screen overlay in play, game pads.
+* **64-bit and ARM support:** x86_64 and arm64 builds that run the retail 32-bit packages unchanged.
+* **Android build:** a Gradle project for Android 7.0 and later that builds the game as `libUT99.so` with SDL2, a launcher that picks the game folder, touch as the mouse in the menus and an on-screen overlay in play, game pads.
 * **Windows build:** one static MinGW-w64 executable, cross-compiled from Linux or built under MSYS2.
+* **UCC on every desktop build:** `ucc-bin` (Linux) and `ucc.exe` (Windows), 32- and 64-bit, beside the game: the dedicated server and the commandlets.
 * **Dreamcast build** (from maximqaxd/ut99dc): kept compiling, built by no preset here.
 * **GCC and Clang support:** the engine compiles with GCC, Clang, Emscripten and MinGW-w64, with the native class layouts matching the script packages.
 * **Save games:** saving and loading work on case-sensitive file systems and in nested save folders.
 * **Languages:** the language is `[Engine.Engine] Language`, and localization files are found case-insensitively.
 * **Ladder windows fit the menus:** the single-player ladder's windows show whole at every aspect ratio and menu size, through a C++ version of `UTLadderStub.SetupWinParams` that replaces Epic's own function only (BUILD.md, Script overrides).
 * Editor UI is not supported.
+
+The full list, with the medium and small changes, is in the frontend's change inventory
+(`<repo>/../unreal-frontend-arch-private/docs/14-change-inventory.md`).
 
 ## Building
 
