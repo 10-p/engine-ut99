@@ -90,10 +90,11 @@ private:
 	void PadKey( INT Key, EInputAction Action );	// a pad button's or trigger's press or release
 	FNSDLInputTest* InputTest;	// the input test channel (-INPUTTEST=), NULL without it
 	// The menus on the pad: while UWindow shows its cursor any pad press or stick push gives it to the pad, and while
-	// the pad has it the left stick moves it and some pad keys are the menus' keys (PadMenuKey); the mouse's own
-	// motion takes the cursor back, and with it the pad keys are themselves again.
+	// the pad has it UWindow draws the cursor itself, the left stick moves it and some pad keys are the menus' keys
+	// (PadMenuKey); the mouse's own motion takes the cursor back, and with it the pad keys are themselves again.
 	UBOOL PadCursor;
 	FLOAT PadCursorX, PadCursorY;	// in viewport pixels
+	UBOOL MenusFollowPointer;	// a windowed viewport: UWindow's cursor is the system pointer while the mouse has it
 	UBOOL PadStickOut[2];	// whether the left and the right stick were out of their dead zones last tick
 	void TickPadCursor( FLOAT DeltaTime );
 	void SetPadCursor( UBOOL On );

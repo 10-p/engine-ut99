@@ -318,7 +318,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 	debugf
 	(
 		NAME_Log,
-		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s checked=%i list=%i value=[%s] row=%i/%i top=%.0f shown=%.0f relative=%i oscursor=%i padcursor=%i pad=%s"),
+		TEXT("NSDLInputTest: probe %s yaw=%i pitch=%i state=%s paused=%i scores=%i showmenu=%i winmouse=%i at=%.1f,%.1f uwin=%.1f,%.1f over=%s active=%s focus=%s checked=%i list=%i value=[%s] row=%i/%i top=%.0f shown=%.0f relative=%i oscursor=%i padcursor=%i drawn=%i pad=%s"),
 		Tag,
 		Actor ? Actor->ViewRotation.Yaw : 0,
 		Actor ? Actor->ViewRotation.Pitch : 0,
@@ -339,6 +339,7 @@ void FNSDLInputTest::Probe( UNSDLViewport* Viewport, const TCHAR* Tag )
 		(INT)SDL_GetRelativeMouseMode(),
 		SDL_ShowCursor( SDL_QUERY ),
 		(INT)Viewport->PadCursor,
+		(INT)!Viewport->bWindowsMouseAvailable,
 		Pad && SDL_GameControllerName( Pad ) ? appFromAnsi( SDL_GameControllerName( Pad ) ) : TEXT("None")
 	);
 	unguard;
