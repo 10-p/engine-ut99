@@ -49,6 +49,9 @@ typedef void (AL_APIENTRY *LPALAUXILIARYEFFECTSLOTI)( ALuint, ALenum, ALint );
 #define ALC_STEREO_HRTF_SOFT 0x19B2
 #endif
 #include "xmp.h"
+#if defined(__ANDROID__)
+#include "SDL2/SDL.h"
+#endif
 
 #include "NOpenALDrvPrivate.h"
 #include "UnRender.h"
@@ -95,6 +98,46 @@ static UBOOL ResolveEfx( ALCdevice* InDevice )
 		&& Efx.GenAuxiliaryEffectSlots && Efx.DeleteAuxiliaryEffectSlots && Efx.AuxiliaryEffectSloti;
 	return Efx.Present;
 }
+
+#if defined(__ANDROID__)
+// The app in the background: SDL's event pump blocks the game thread until it returns, and the output device is
+// paused (ALC_SOFT_pause_device), so nothing plays and openal-soft's mixer thread stops. SDL sends both events
+// from that pump, on the game thread: the first just before it blocks, the second right after it wakes.
+static LPALCDEVICEPAUSESOFT  AlcDevicePause  = NULL;
+static LPALCDEVICERESUMESOFT AlcDeviceResume = NULL;
+
+static int SDLCALL PauseInBackground( void* Device, SDL_Event* Event )
+{
+	if( Event->type == SDL_APP_DIDENTERBACKGROUND )
+	{
+		AlcDevicePause( (ALCdevice*)Device );
+		debugf( TEXT("NOpenALDrv: output paused (the app is in the background)") );
+	}
+	else if( Event->type == SDL_APP_WILLENTERFOREGROUND )
+	{
+		AlcDeviceResume( (ALCdevice*)Device );
+		debugf( TEXT("NOpenALDrv: output resumed") );
+	}
+	return 1;
+}
+
+static void WatchAppBackground( ALCdevice* InDevice, UBOOL On )
+{
+	if( !On )
+	{
+		SDL_DelEventWatch( PauseInBackground, InDevice );
+		return;
+	}
+	AlcDevicePause  = alcIsExtensionPresent( InDevice, "ALC_SOFT_pause_device" ) ? (LPALCDEVICEPAUSESOFT)alcGetProcAddress( InDevice, "alcDevicePauseSOFT" ) : NULL;
+	AlcDeviceResume = AlcDevicePause ? (LPALCDEVICERESUMESOFT)alcGetProcAddress( InDevice, "alcDeviceResumeSOFT" ) : NULL;
+	if( AlcDevicePause && AlcDeviceResume )
+		SDL_AddEventWatch( PauseInBackground, InDevice );
+	else
+		debugf( NAME_Warning, TEXT("NOpenALDrv: this OpenAL cannot pause its device (no ALC_SOFT_pause_device): sound plays on in the background") );
+}
+#else
+static void WatchAppBackground( ALCdevice* InDevice, UBOOL On ) {}
+#endif
 
 
 /*-----------------------------------------------------------------------------
@@ -184,6 +227,7 @@ UBOOL UNOpenALAudioSubsystem::Init()
 	}
 
 	alcMakeContextCurrent( Ctx );
+	WatchAppBackground( Device, 1 );
 
 	// With EFX, reverb is EFX's EAX reverb; without it everything except reverb plays (the context is current,
 	// so the line below can report it).
@@ -296,6 +340,7 @@ void UNOpenALAudioSubsystem::Destroy()
 	if( Device )
 	{
 		// We might still have a device even if we haven't created a context.
+		WatchAppBackground( Device, 0 );
 		alcCloseDevice( Device );
 		Device = NULL;
 	}
@@ -332,6 +377,7 @@ void UNOpenALAudioSubsystem::ShutdownAfterError()
 	}
 	if( Device )
 	{
+		WatchAppBackground( Device, 0 );
 		alcCloseDevice( Device );
 		Device = NULL;
 	}
