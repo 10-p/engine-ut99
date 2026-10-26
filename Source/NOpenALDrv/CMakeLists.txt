@@ -76,4 +76,10 @@ target_link_libraries(${PROJECT_NAME} ${OPENAL_LIBRARY} ${LIBXMP_LIBRARY})
 
 target_link_libraries(${PROJECT_NAME} Engine Render Core)
 
+if(ANDROID)
+  # SDL's application events pause the output device while the app is in the background.
+  target_include_directories(${PROJECT_NAME} PRIVATE ${SDL2_INCLUDE_DIR})
+  target_link_libraries(${PROJECT_NAME} ${SDL2_LIBRARY})
+endif()
+
 target_compile_definitions(${PROJECT_NAME} PRIVATE NOPENALDRV_EXPORTS UPACKAGE_NAME=${PROJECT_NAME})
