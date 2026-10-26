@@ -294,7 +294,10 @@ look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that driv
 "Touch move stick" settings say: full speed at a drag of 12 dp from where the finger is held (4 to 60) and a dead
 zone of 3 dp for a resting finger (0 to 10, always below full speed), saved with the launcher's other settings and
 handed to the game when it starts (`GameActivity.EXTRA_MOVE_FULL_TILT_DP`, `EXTRA_MOVE_DEAD_ZONE_DP`); past full tilt
-the held point follows the finger. It never walks. The system's Back key is Escape.
+the held point follows the finger. It never walks. A real pad's button, or a stick, trigger or hat pushed half way
+(Android's input events, `GameActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent`), hides the overlay; a touch on
+the screen shows it again (in play that touch does nothing else; in a menu it is still the menu's mouse click). The
+system's Back key is Escape.
 
 In the background (the home screen, the recent apps, another app on top) the game is suspended. SDL's activity
 pauses on `onStop`, and its event pump then blocks the game thread until the app returns, so nothing ticks;

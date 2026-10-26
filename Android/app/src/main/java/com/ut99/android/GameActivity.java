@@ -17,6 +17,8 @@ import android.os.Bundle;
 import android.os.SystemClock;
 import android.util.Log;
 import android.util.SparseArray;
+import android.view.InputDevice;
+import android.view.KeyEvent;
 import android.view.MotionEvent;
 import android.view.View;
 import android.view.WindowManager;
@@ -112,6 +114,8 @@ public class GameActivity extends SDLActivity {
     private static final int BTN_FIRE = 0, BTN_ALTFIRE = 1, BTN_JUMP = 2, BTN_CROUCH = 3,
             BTN_NEXTWEAPON = 4, BTN_MENU = 5;
 
+    private Ut99TouchOverlayView touchControls;
+
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         // Before super.onCreate, which starts the SDL thread and with it SDL_main.
@@ -140,11 +144,45 @@ public class GameActivity extends SDLActivity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) getWindow().setDecorFitsSystemWindows(false);
 
         try {
-            addContentView(new Ut99TouchOverlayView(this), new FrameLayout.LayoutParams(
+            touchControls = new Ut99TouchOverlayView(this);
+            addContentView(touchControls, new FrameLayout.LayoutParams(
                     FrameLayout.LayoutParams.MATCH_PARENT, FrameLayout.LayoutParams.MATCH_PARENT));
         } catch (Throwable t) {
             Log.e(TAG, "could not add the touch controls", t);
         }
+    }
+
+    // A real pad's input hides the touch controls (Ut99TouchOverlayView.onRealPadInput); SDL still gets every event.
+    @Override
+    public boolean dispatchKeyEvent(KeyEvent event) {
+        if (touchControls != null && isPadPress(event)) touchControls.onRealPadInput();
+        return super.dispatchKeyEvent(event);
+    }
+
+    @Override
+    public boolean dispatchGenericMotionEvent(MotionEvent event) {
+        if (touchControls != null && isPadPush(event)) touchControls.onRealPadInput();
+        return super.dispatchGenericMotionEvent(event);
+    }
+
+    /** A game pad's button going down (a pad's own source, or a gamepad key code from any source). */
+    static boolean isPadPress(KeyEvent e) {
+        if (e.getAction() != KeyEvent.ACTION_DOWN || e.getRepeatCount() != 0) return false;
+        return e.isFromSource(InputDevice.SOURCE_GAMEPAD) || e.isFromSource(InputDevice.SOURCE_JOYSTICK)
+                || KeyEvent.isGamepadButton(e.getKeyCode());
+    }
+
+    private static final int[] PAD_AXES = {
+        MotionEvent.AXIS_X, MotionEvent.AXIS_Y, MotionEvent.AXIS_Z, MotionEvent.AXIS_RX, MotionEvent.AXIS_RY,
+        MotionEvent.AXIS_RZ, MotionEvent.AXIS_HAT_X, MotionEvent.AXIS_HAT_Y, MotionEvent.AXIS_LTRIGGER,
+        MotionEvent.AXIS_RTRIGGER, MotionEvent.AXIS_GAS, MotionEvent.AXIS_BRAKE,
+    };
+
+    /** A pad's stick, trigger or hat pushed at least half way (a resting stick's drift stays below). */
+    static boolean isPadPush(MotionEvent e) {
+        if (!e.isFromSource(InputDevice.SOURCE_JOYSTICK) || e.getActionMasked() != MotionEvent.ACTION_MOVE) return false;
+        for (int axis : PAD_AXES) if (Math.abs(e.getAxisValue(axis)) >= 0.5f) return true;
+        return false;
     }
 
     /** SDL's surface, whose pointer events SDL reads in the buffer's pixels at every resolution scale. */
@@ -250,7 +288,8 @@ public class GameActivity extends SDLActivity {
      * Full-screen touch controls. The left half is a move stick where the finger lands, the right half
      * drag-look, and round buttons give Fire, Alt Fire, Jump, Crouch, Next Weapon and Menu. A second free
      * touch on the right half fires while the first keeps aiming. While a menu is up the controls hide and
-     * every touch goes on to SDL's surface.
+     * every touch goes on to SDL's surface. A real pad's input hides them until the screen is touched: in play
+     * that touch only shows them, in a menu it is still the menu's.
      */
     private static final class Ut99TouchOverlayView extends View {
         private final GameActivity activity;
@@ -264,6 +303,8 @@ public class GameActivity extends SDLActivity {
         private float leftBaseX, leftBaseY, rightLastX, rightLastY, lx, ly;
         private boolean fireButton, altFire, jump, crouch, next, menu, fire;
         private int rightFireAssistCount = 0;
+        // Hidden by a real pad's input until the screen is touched; revealing: the touch that showed them, until it lifts.
+        private boolean padHidden = false, revealing = false;
 
         private enum TouchRole { LEFT_STICK, RIGHT_LOOK, RIGHT_FIRE_ASSIST, FIRE, ALTFIRE, JUMP, CROUCH, NEXT, MENU }
 
@@ -300,6 +341,15 @@ public class GameActivity extends SDLActivity {
             if (isVisible) postDelayed(redrawRunnable, 66L);
         }
 
+        /** A real pad's button or stick (GameActivity): the controls hide until the screen is touched. */
+        void onRealPadInput() {
+            if (padHidden) return;
+            padHidden = true;
+            releaseAll();
+            roles.clear();
+            invalidate();
+        }
+
         private Bitmap loadIcon(String assetPath) {
             try {
                 InputStream in = activity.getAssets().open(assetPath);
@@ -324,7 +374,7 @@ public class GameActivity extends SDLActivity {
         @Override protected void onDraw(Canvas canvas) {
             super.onDraw(canvas);
             refreshMenuState(false);
-            if (menuVisible || canvas == null) return;
+            if (menuVisible || padHidden || canvas == null) return;
             float w = getWidth(), h = getHeight();
             if (w <= 0 || h <= 0) return;
             float s = Math.min(w, h);
@@ -422,6 +472,21 @@ public class GameActivity extends SDLActivity {
             int action = event.getActionMasked(), index = event.getActionIndex();
             int pointerId = (index >= 0 && index < event.getPointerCount()) ? event.getPointerId(index) : -1;
             TouchRole existingRole = pointerId >= 0 ? roles.get(pointerId) : null;
+
+            if (revealing) {
+                if (action == MotionEvent.ACTION_UP || action == MotionEvent.ACTION_CANCEL) revealing = false;
+                return true;
+            }
+            if (padHidden) {
+                if (action == MotionEvent.ACTION_DOWN) {
+                    padHidden = false;
+                    invalidate();
+                    if (!active(true)) return false;
+                    revealing = true;
+                    return true;
+                }
+                return active(false);
+            }
 
             if (action == MotionEvent.ACTION_DOWN || action == MotionEvent.ACTION_POINTER_DOWN) {
                 // Each new pointer reads the menu state; in a menu the touch goes on to SDL's surface.
