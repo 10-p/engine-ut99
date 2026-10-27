@@ -1967,7 +1967,21 @@ UBOOL UNSDLViewport::TickInput()
 	// point and posts no event for it.
 	if( SDL_GameController* GC = Client->GetController() )
 		for( INT a = 0; a < SDL_CONTROLLER_AXIS_MAX; a++ )
-			UpdatePadAxis( a, SDL_GameControllerGetAxis( GC, (SDL_GameControllerAxis)a ) );
+		{
+			INT Value = SDL_GameControllerGetAxis( GC, (SDL_GameControllerAxis)a );
+#if defined(__ANDROID__)
+			// SDL's Android joystick gives the L2 and R2 keys buttons 15 and 16, which no controller mapping uses: a
+			// trigger that sends only its key is pulled all the way while the key is down.
+			if( a == SDL_CONTROLLER_AXIS_TRIGGERLEFT || a == SDL_CONTROLLER_AXIS_TRIGGERRIGHT )
+			{
+				SDL_Joystick* Joy = SDL_GameControllerGetJoystick( GC );
+				const INT Key = a == SDL_CONTROLLER_AXIS_TRIGGERLEFT ? 15 : 16;
+				if( Key < SDL_JoystickNumButtons( Joy ) && SDL_JoystickGetButton( Joy, Key ) )
+					Value = 32767;
+			}
+#endif
+			UpdatePadAxis( a, Value );
+		}
 
 	TickPadCursor( DeltaTime );
 
