@@ -286,7 +286,8 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   was started with. The game keeps the device it last started with, also under "The game's choice": a device whose
   GPU draws the default wrong is switched once.
 
-Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; in the
+Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; a trigger
+that sends only its L2 or R2 key, which SDL maps to no trigger, is pulled all the way while the key is down; in the
 menus, once the pad has the cursor, its left stick moves it, its fire buttons click and A, B and the D-pad are
 Enter, Escape and the arrows); touch as the mouse in the menus (tap to click); in play an on-screen overlay (a move stick on the left half, drag to
 look on the right, FIRE, ALTFIRE, JUMP, CROUCH, NEXT and MENU buttons) that drives the engine through
