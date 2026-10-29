@@ -55,7 +55,8 @@ import java.util.Locale;
  * anywhere else on shared storage (/sdcard/UT99, an SD card's UT99) needs All files access: starting from there
  * without it asks to allow it or to copy the game to internal storage instead. "Clear internal storage" deletes the
  * internal copy; "Copy settings and saves" writes the internal copy's inis and saves back to the chosen
- * folder. The resolution scale is the frame's size against the screen's, at most 1.
+ * folder. The resolution scale is the frame's size against the screen's, at most 1. The touch move stick's distances
+ * and gyro aiming (on or off, and its sensitivities: {@link GyroAim}) are the player's too.
  *
  * Start game launches {@link GameActivity} in its own process with these choices on the Intent; it also
  * starts by itself after a countdown that the first touch or key stops. The page is built in code (the app
@@ -72,6 +73,9 @@ public class MainActivity extends Activity {
     private static final String PREF_SCALE = "renderScale";
     private static final String PREF_MOVE_FULL_TILT = "moveFullTiltDp";
     private static final String PREF_MOVE_DEAD_ZONE = "moveDeadZoneDp";
+    private static final String PREF_GYRO_AIM = "gyroAim";
+    private static final String PREF_GYRO_YAW = "gyroYawScale";
+    private static final String PREF_GYRO_PITCH = "gyroPitchScale";
     // The scale's slider: 0.25 to 1.00 in steps of 0.05; the field also takes values down to 0.1.
     private static final float SCALE_MIN = 0.25f, SCALE_STEP = 0.05f,
             FIELD_MIN = GameActivity.RENDER_SCALE_MIN, FIELD_MAX = GameActivity.RENDER_SCALE_MAX;
@@ -223,6 +227,7 @@ public class MainActivity extends Activity {
 
         buildScaleRow(col);
         buildMoveStickRows(col);
+        buildGyroRows(col);
         buildRendererRow(col);
 
         label(col, "Choose the " + GameFolder.NAME + " folder (on the device or an SD card) and copy it to internal storage for the fastest "
@@ -367,6 +372,37 @@ public class MainActivity extends Activity {
         return GameActivity.moveDeadZone(prefs().getFloat(PREF_MOVE_DEAD_ZONE, GameActivity.MOVE_DEAD_ZONE_DP), savedMoveFullTilt());
     }
 
+    // ---- gyro aiming ----------------------------------------------------------------------------
+
+    private Switch gyroSwitch;
+
+    private void buildGyroRows(LinearLayout col) {
+        label(col, "Gyro aiming", 14f, 0xFFB8BCC2, 20);
+        gyroSwitch = new Switch(this);
+        gyroSwitch.setTextColor(0xFFECEFF3);
+        gyroSwitch.setTextSize(TypedValue.COMPLEX_UNIT_SP, 16f);
+        gyroSwitch.setChecked(prefs().getBoolean(PREF_GYRO_AIM, false));
+        gyroSwitch.setText(gyroSwitch.isChecked() ? "On" : "Off");
+        gyroSwitch.setOnCheckedChangeListener(new CompoundButton.OnCheckedChangeListener() {
+            @Override public void onCheckedChanged(CompoundButton b, boolean checked) {
+                gyroSwitch.setText(checked ? "On" : "Off");
+                prefs().edit().putBoolean(PREF_GYRO_AIM, checked).apply();
+            }
+        });
+        col.addView(gyroSwitch);
+        label(col, "In play, turning or twisting the device turns the view, and tilting it looks up and down.", 12f, 0xFF9AA0A8, 2);
+        new NumberRow(col, "Horizontal sensitivity", PREF_GYRO_YAW, GyroAim.SCALE_MIN, GyroAim.SCALE_MAX, 0.05f, GyroAim.SCALE_DEFAULT) {
+            @Override String describe(float v) {
+                return String.format(Locale.US, "The view turns %.2f degrees for each degree the device turns", v);
+            }
+        };
+        new NumberRow(col, "Vertical sensitivity", PREF_GYRO_PITCH, GyroAim.SCALE_MIN, GyroAim.SCALE_MAX, 0.05f, GyroAim.SCALE_DEFAULT) {
+            @Override String describe(float v) {
+                return String.format(Locale.US, "The view tilts %.2f degrees for each degree the device tilts", v);
+            }
+        };
+    }
+
     /**
      * A number setting: a slider over its steps, a field for the exact value and a line on what it does, saved as it
      * changes. limit() keeps a value inside bounds another setting sets; changed() tells the settings that depend on it.
@@ -454,8 +490,10 @@ public class MainActivity extends Activity {
         }
     }
 
+    /** Up to two decimals, without trailing zeros. */
     private static String format(float v) {
-        return v == Math.rint(v) ? String.format(Locale.US, "%.0f", v) : String.format(Locale.US, "%.1f", v);
+        String s = String.format(Locale.US, "%.2f", v);
+        return s.replaceAll("0+$", "").replaceAll("\\.$", "");
     }
 
     // ---- start and the countdown ----------------------------------------------------------------
@@ -518,6 +556,9 @@ public class MainActivity extends Activity {
         i.putExtra(GameActivity.EXTRA_RENDER_SCALE, scale);
         i.putExtra(GameActivity.EXTRA_MOVE_FULL_TILT_DP, fullTilt);
         i.putExtra(GameActivity.EXTRA_MOVE_DEAD_ZONE_DP, deadZone);
+        i.putExtra(GyroAim.EXTRA_GYRO_AIM, prefs().getBoolean(PREF_GYRO_AIM, false));
+        i.putExtra(GyroAim.EXTRA_GYRO_YAW_SCALE, GyroAim.scale(prefs().getFloat(PREF_GYRO_YAW, GyroAim.SCALE_DEFAULT)));
+        i.putExtra(GyroAim.EXTRA_GYRO_PITCH_SCALE, GyroAim.scale(prefs().getFloat(PREF_GYRO_PITCH, GyroAim.SCALE_DEFAULT)));
         // An engine command line this launcher was started with (adb: GameActivity is not exported).
         String extraArgs = getIntent() != null ? getIntent().getStringExtra(GameActivity.EXTRA_ARGS) : null;
         // The renderer chosen below goes after them (an adb command line's own -*RENDERER switch comes first).

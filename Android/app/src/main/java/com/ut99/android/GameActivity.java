@@ -109,12 +109,15 @@ public class GameActivity extends SDLActivity {
     static native void nativeTouchAxis(int axis, float value);
     static native void nativeTouchLook(float dx, float dy);
     static native void nativeTouchButton(int button, boolean down);
+    // Gyro aiming (GyroAim): the view's turn in degrees, to the right and up, which the engine adds up and applies in play.
+    static native void nativeGyroLook(float yawDegrees, float pitchDegrees);
 
     // The button ids of nativeTouchButton.
     private static final int BTN_FIRE = 0, BTN_ALTFIRE = 1, BTN_JUMP = 2, BTN_CROUCH = 3,
             BTN_NEXTWEAPON = 4, BTN_MENU = 5;
 
     private Ut99TouchOverlayView touchControls;
+    private GyroAim gyro;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -150,6 +153,20 @@ public class GameActivity extends SDLActivity {
         } catch (Throwable t) {
             Log.e(TAG, "could not add the touch controls", t);
         }
+        gyro = GyroAim.fromIntent(this);
+    }
+
+    // The gyro is read while the game is in front.
+    @Override
+    protected void onResume() {
+        super.onResume();
+        if (gyro != null) gyro.start();
+    }
+
+    @Override
+    protected void onPause() {
+        if (gyro != null) gyro.stop();
+        super.onPause();
     }
 
     // A real pad's input hides the touch controls (Ut99TouchOverlayView.onRealPadInput); SDL still gets every event.
