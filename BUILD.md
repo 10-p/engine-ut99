@@ -127,6 +127,8 @@ system and the network transport at run time.
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
   user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
   (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
+- **Fullscreen** (native desktop). Alt+Enter and `ToggleFullscreen` switch between the window and fullscreen (the
+  Enter press does not reach the game), and `[NSDLDrv.NSDLClient] StartupFullscreen` starts in fullscreen.
 - **Settings from outside.** `-ini:<File>:[<Section>]:<Key>=<Value>` (`User`/`System` name the user and system inis)
   sets any config key right after the config cache loads, and the value is written into the ini.
 - **Frame cap.** `[Engine.Engine] FrameRateCap` (120; 0 or less is uncapped) when the engine sets no max tick rate;

@@ -1793,6 +1793,15 @@ UBOOL UNSDLViewport::TickInput()
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+				// Alt+Enter toggles fullscreen, once per press; its Enter press does not reach the game.
+				if( Ev.type == SDL_KEYDOWN && Ev.key.keysym.sym == SDLK_RETURN && ( Ev.key.keysym.mod & KMOD_ALT ) )
+				{
+					if( !Ev.key.repeat )
+						Exec( TEXT("ToggleFullscreen"), *GLog );
+					break;
+				}
+#endif
 				CauseInputEvent( KeyMap[Ev.key.keysym.scancode], ( Ev.type == SDL_KEYDOWN ) ? IST_Press : IST_Release );
 				break;
 			case SDL_MOUSEBUTTONDOWN:
