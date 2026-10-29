@@ -26,6 +26,8 @@ this engine are under `#if ENGINE_VERSION==400`:
 - The device creates no GL context: it adopts the one NSDLViewport made current (on the threaded web build through
   `emscripten_webgl_get_current_context`, since SDL does not own it), `Unlock` does not swap and `Exit` does not
   delete it.
+- Init fails, before its first GL 3 call, on a context it cannot use (none current, one the loader cannot read, or
+  one below OpenGL 3.3, ES 3.0 on an ES profile), so NSDLViewport's SoftDrv fallback takes over.
 - v400's three-argument `DECLARE_CLASS` and package registration; `RenderPrivate.h` instead of a second `UnRender.h`;
   shims for what v400's Core lacks (`BOOL`, `PF_None`, `NAME_DevGraphics`, `appMsgf`, `FTime`, `GUglyHackFlags`); the
   UT469 texture-format and poly-flag names mapped to v400's values (`TEXF_BC1` is `TEXF_DXT1`; `PF_AlphaBlend` is 0,
