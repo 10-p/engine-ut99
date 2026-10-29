@@ -127,6 +127,10 @@ system and the network transport at run time.
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
   user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
   (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
+- **Software fallback.** A render device that cannot start (a window or GL context the driver cannot give, no WebGL
+  context in the browser, or a failed Init) gives way to SoftDrv for the rest of the run, in a window without GL:
+  `Render device <device> cannot start: falling back to SoftDrv.SoftwareRenderDevice for this run`, once.
+  `ToggleFullscreen` keeps SoftDrv. Nothing is written to the ini, so the next start tries the chosen device again.
 - **Fullscreen** (native desktop). Alt+Enter and `ToggleFullscreen` switch between the window and fullscreen (the
   Enter press does not reach the game), and `[NSDLDrv.NSDLClient] StartupFullscreen` starts in fullscreen. With
   `BorderlessFullscreen` (True) fullscreen is SDL's desktop fullscreen: the window covers its display at the display's
