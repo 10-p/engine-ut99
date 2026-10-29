@@ -33,6 +33,14 @@ static UBOOL ufrontCanvasDevicePixelSize( INT& OutW, INT& OutH )
 }
 #endif
 
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+// Whether the window is in SDL's desktop fullscreen: borderless, over its display at the display's own mode.
+static UBOOL DesktopFullscreen( SDL_Window* Window )
+{
+	return Window && ( SDL_GetWindowFlags( Window ) & SDL_WINDOW_FULLSCREEN_DESKTOP ) == SDL_WINDOW_FULLSCREEN_DESKTOP;
+}
+#endif
+
 IMPLEMENT_CLASS( UNSDLViewport );
 
 /*-----------------------------------------------------------------------------
@@ -951,6 +959,11 @@ void UNSDLViewport::SetClientSize( INT NewX, INT NewY, UBOOL UpdateProfile )
 
 	if( hWnd )
 	{
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+		// A borderless fullscreen window keeps the display's size; SDL would keep a size given now as the one the
+		// window returns to.
+		if( !DesktopFullscreen( hWnd ) )
+#endif
 		SDL_SetWindowSize( hWnd, NewX, NewY );
 		// Resize output texture if required.
 		if( SDLRen && SDLTex )
@@ -995,6 +1008,27 @@ void UNSDLViewport::MakeFullscreen( INT NewX, INT NewY, UBOOL UpdateProfile )
 {
 	guard(UNSDLViewport::MakeFullscreen);
 
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+	if( Client->BorderlessFullscreen )
+	{
+		// SDL's desktop fullscreen: the display keeps its mode and the viewport takes the window's size. The size
+		// asked for and the profile's fullscreen size are left as they are.
+		if( !DesktopFullscreen( hWnd ) )
+		{
+			Client->EndFullscreen();
+			SavedX = SizeX;
+			SavedY = SizeY;
+			SDL_SetWindowFullscreen( hWnd, SDL_WINDOW_FULLSCREEN_DESKTOP );
+		}
+		INT W = 0, H = 0;
+		SDL_GetWindowSize( hWnd, &W, &H );
+		if( W > 0 && H > 0 )
+			SetClientSize( Align( W, 4 ), H, false );
+		debugf( NAME_Log, TEXT("NSDLViewport: borderless fullscreen at %ix%i"), SizeX, SizeY );
+		return;
+	}
+#endif
+
 	// If someone else is fullscreen, stop them.
 	// Note: FullscreenViewport tracking removed - Unreal 1 specific
 	Client->EndFullscreen();
@@ -1008,7 +1042,7 @@ void UNSDLViewport::MakeFullscreen( INT NewX, INT NewY, UBOOL UpdateProfile )
 	SDL_SetWindowFullscreen( hWnd, SDL_WINDOW_FULLSCREEN_DESKTOP );
 	(void)NewX; (void)NewY;
 #else
-	// Fullscreen rendering. For now no borderless.
+	// Exclusive fullscreen: the display changes to the mode nearest the window's size.
 	// Note: FullscreenViewport tracking removed - Unreal 1 specific
 	SetClientSize( NewX, NewY, false );
 	SDL_SetWindowFullscreen( hWnd, SDL_WINDOW_FULLSCREEN );
@@ -1793,6 +1827,15 @@ UBOOL UNSDLViewport::TickInput()
 				break;
 			case SDL_KEYDOWN:
 			case SDL_KEYUP:
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
+				// Alt+Enter toggles fullscreen, once per press; its Enter press does not reach the game.
+				if( Ev.type == SDL_KEYDOWN && Ev.key.keysym.sym == SDLK_RETURN && ( Ev.key.keysym.mod & KMOD_ALT ) )
+				{
+					if( !Ev.key.repeat )
+						Exec( TEXT("ToggleFullscreen"), *GLog );
+					break;
+				}
+#endif
 				CauseInputEvent( KeyMap[Ev.key.keysym.scancode], ( Ev.type == SDL_KEYDOWN ) ? IST_Press : IST_Release );
 				break;
 			case SDL_MOUSEBUTTONDOWN:
@@ -2064,7 +2107,10 @@ UBOOL UNSDLViewport::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 			MakeFullscreen( X, Y, 1 );
 #else
 			// The render device takes the size in the current mode, windowed or fullscreen; if it cannot, fullscreen ends.
-			if( RenDev && !RenDev->SetRes( X, Y, ColorBytes, IsFullscreen() ) )
+			// Borderless fullscreen keeps the display's size.
+			if( Client->BorderlessFullscreen && DesktopFullscreen( hWnd ) )
+				debugf( NAME_Log, TEXT("SetRes %ix%i not applied: borderless fullscreen stays at %ix%i"), X, Y, SizeX, SizeY );
+			else if( RenDev && !RenDev->SetRes( X, Y, ColorBytes, IsFullscreen() ) )
 				EndFullscreen();
 #endif
 		}

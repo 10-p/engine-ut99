@@ -19,9 +19,10 @@ IMPLEMENT_CLASS( UNSDLClient );
 void UNSDLClient::StaticConstructor()
 {
 	guard(UNSDLClient::StaticConstructor);
-	// The driver's eleven config options (v400's IMPLEMENT_CLASS calls StaticConstructor once per class).
+	// The driver's twelve config options (v400's IMPLEMENT_CLASS calls StaticConstructor once per class).
 	new(GetClass(), "DefaultDisplay",    RF_Public)UIntProperty(CPP_PROPERTY(DefaultDisplay),     "Display",  CPF_Config );
 	new(GetClass(), "StartupFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(StartupFullscreen), "Display",  CPF_Config );
+	new(GetClass(), "BorderlessFullscreen", RF_Public)UBoolProperty(CPP_PROPERTY(BorderlessFullscreen), "Display", CPF_Config );
 	new(GetClass(), "UseJoystick",       RF_Public)UBoolProperty(CPP_PROPERTY(UseJoystick),       "Joystick", CPF_Config );
 	new(GetClass(), "DeadZoneXYZ",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneXYZ),      "Joystick", CPF_Config );
 	new(GetClass(), "DeadZoneRUV",       RF_Public)UFloatProperty(CPP_PROPERTY(DeadZoneRUV),      "Joystick", CPF_Config );
@@ -34,7 +35,8 @@ void UNSDLClient::StaticConstructor()
 
 	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
 	// [NSDLDrv.NSDLClient] section a zero would mean no decals, a black picture and a 0x0 window. They match the
-	// section in Config/System/web/Default.ini but for the stick scales; the ini overrides any of them.
+	// section in Config/System/web/Default.ini but for the stick scales and BorderlessFullscreen (native desktop
+	// only); the ini overrides any of them.
 	CaptureMouse        = 1;
 	CurvedSurfaces      = 1;
 	ScreenFlashes       = 1;
@@ -57,10 +59,11 @@ void UNSDLClient::StaticConstructor()
 	TextureLODSet[1]    = 0;   // TextureDetail = High
 	TextureLODSet[2]    = 0;   // SkinDetail    = High
 
-	// This driver's own eleven. The stick scales are Unreal 1's: an ini without this section is a retail one, and
+	// This driver's own twelve. The stick scales are Unreal 1's: an ini without this section is a retail one, and
 	// its User.ini's pad bindings (speed 2 and 5.9) turn at Unreal 1's rate with them (web: 200/500 with speed 1).
 	DefaultDisplay      = 0;
 	StartupFullscreen   = 0;
+	BorderlessFullscreen = 1;
 	UseJoystick         = 1;
 	DeadZoneXYZ         = 0.1f;
 	DeadZoneRUV         = 0.1f;
@@ -439,8 +442,16 @@ void UNSDLClient::TryRenderDevice( UViewport* Viewport, const char* ClassName, U
 			Engine->Audio->SetViewport( NULL );
 		INT NewX = Viewport->SizeX, NewY = Viewport->SizeY;
 #if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__)
-		// Fullscreen opens at the profile's fullscreen size.
-		if( Fullscreen && FullscreenViewportX > 0 && FullscreenViewportY > 0 )
+		// Fullscreen opens at the size of the display the window is on when borderless, else at the profile's
+		// fullscreen size.
+		SDL_DisplayMode Desktop;
+		if( Fullscreen && BorderlessFullscreen && SDLViewport->GetWindow()
+			&& SDL_GetDesktopDisplayMode( SDL_GetWindowDisplayIndex( (SDL_Window*)SDLViewport->GetWindow() ), &Desktop ) == 0 )
+		{
+			NewX = Desktop.w;
+			NewY = Desktop.h;
+		}
+		else if( Fullscreen && FullscreenViewportX > 0 && FullscreenViewportY > 0 )
 		{
 			NewX = FullscreenViewportX;
 			NewY = FullscreenViewportY;

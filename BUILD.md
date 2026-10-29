@@ -154,6 +154,14 @@ system and the network transport at run time.
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
   user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
   (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
+- **Fullscreen** (native desktop). Alt+Enter and `ToggleFullscreen` switch between the window and fullscreen (the
+  Enter press does not reach the game), and `[NSDLDrv.NSDLClient] StartupFullscreen` starts in fullscreen. With
+  `BorderlessFullscreen` (True) fullscreen is SDL's desktop fullscreen: the window covers its display at the display's
+  own resolution, the game renders at that size (`NSDLViewport: borderless fullscreen at <w>x<h>`),
+  `FullscreenViewportX/Y` are left as they are, and `SetRes` (the menus' resolution list) is not applied there
+  (`SetRes <w>x<h> not applied: borderless fullscreen stays at <w>x<h>`). With `False` fullscreen is exclusive: the
+  display changes to the mode nearest `FullscreenViewportX/Y`, and `SetRes` changes the mode and keeps its size there.
+  Leaving fullscreen gives the window back its size. The web and Android builds do not read the key.
 - **Settings from outside.** `-ini:<File>:[<Section>]:<Key>=<Value>` (`User`/`System` name the user and system inis)
   sets any config key right after the config cache loads, and the value is written into the ini.
 - **Frame cap.** `[Engine.Engine] FrameRateCap` (120; 0 or less is uncapped) when the engine sets no max tick rate;
@@ -326,6 +334,21 @@ the held point follows the finger. It never walks. A real pad's button, or a sti
 (Android's input events, `GameActivity.dispatchKeyEvent`/`dispatchGenericMotionEvent`), hides the overlay; a touch on
 the screen shows it again (in play that touch does nothing else; in a menu it is still the menu's mouse click). The
 system's Back key is Escape.
+
+Gyro aiming is the launcher's "Gyro aiming" switch (off by default) and its horizontal and vertical sensitivities (0.1
+to 5, 1 by default), saved with the other settings and handed to the game when it starts (`GyroAim.EXTRA_GYRO_AIM`,
+`EXTRA_GYRO_YAW_SCALE`, `EXTRA_GYRO_PITCH_SCALE`). A sensitivity is view degrees per device degree: at 1 the view
+turns as far as the device. `GyroAim.java` reads the gyroscope and gravity while the game is in front, in either
+landscape: tilting the device's top edge towards the player looks up; left and right is the turn about the world's
+vertical ("player space": turning the device, and twisting it like a wheel once it is tilted back), never more than
+the device's own turn and twist. In play `NSDLAndroid.cpp` adds the turn to the player's `aTurn` and `aLookUp` in
+whole rotation units (65536 a turn, the rest carried to the next tick), past ReadInput's, PlayerInput's and the player
+state's scales, so the mouse's sensitivity, smoothing and inversion do not change it. The zoom slows it as it slows the
+mouse: the turn is times `DesiredFOV / DefaultFOV` (the sniper rifle's zoom; 1 unzoomed, at any aspect ratio, since
+AutoFOV widens only the drawn view). While a menu is up, or over a load (the game not ticking for half a second), it is
+dropped. There is no smoothing, acceleration or dead zone. With `-UFRONTLOG` the log has the totals once the gyro
+rests (`Gyro: <yaw> degrees right and <pitch> up in play in all, <n> yaw and <n> pitch units (zoom <z>)`: the degrees
+before the zoom, the units after it, the zoom of the last turn).
 
 In the background (the home screen, the recent apps, another app on top) the game is suspended. SDL's activity
 pauses on `onStop`, and its event pump then blocks the game thread until the app returns, so nothing ticks;
