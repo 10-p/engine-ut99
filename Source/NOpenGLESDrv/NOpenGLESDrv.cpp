@@ -628,20 +628,24 @@ void UNOpenGLESRenderDevice::ReadPixels( FColor* Pixels )
 {
 	guard(UNOpenGLESRenderDevice::ReadPixels);
 
+	// The frame drawn so far, batched triangles included.
+	FlushTriangles();
+
 	// A read packs rows: PACK alignment, 1 (RGBA rows are 4-byte aligned anyway).
 	glPixelStorei( GL_PACK_ALIGNMENT, 1 );
 	glReadPixels( 0, 0, Viewport->SizeX, Viewport->SizeY, GL_RGBA, GL_UNSIGNED_BYTE, (void*)Pixels );
 
-	// Swap RGBA -> BGRA.
-	FColor* Ptr = Pixels;
-	for( INT Y = 0; Y < Viewport->SizeY; ++Y )
+	// GL reads rows bottom-up; SHOT takes them top-down, in BGRA. Flip the rows and swap RGBA -> BGRA in one pass.
+	const INT SizeX = Viewport->SizeX, SizeY = Viewport->SizeY;
+	for( INT Y = 0; Y < ( SizeY + 1 ) / 2; ++Y )
 	{
-		for( INT X = 0; X < Viewport->SizeX; ++X, ++Ptr )
+		FColor* Top    = Pixels + Y * SizeX;
+		FColor* Bottom = Pixels + ( SizeY - 1 - Y ) * SizeX;
+		for( INT X = 0; X < SizeX; ++X )
 		{
-			FColor Old = *Ptr;
-			Ptr->R = Old.B;
-			Ptr->G = Old.G;
-			Ptr->B = Old.R;
+			const FColor T = Top[X], B = Bottom[X];
+			Top[X].R    = B.B; Top[X].G    = B.G; Top[X].B    = B.R; Top[X].A    = B.A;
+			Bottom[X].R = T.B; Bottom[X].G = T.G; Bottom[X].B = T.R; Bottom[X].A = T.A;
 		}
 	}
 
