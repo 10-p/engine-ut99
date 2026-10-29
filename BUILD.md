@@ -127,6 +127,14 @@ system and the network transport at run time.
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
   user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
   (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
+- **Fullscreen** (native desktop). Alt+Enter and `ToggleFullscreen` switch between the window and fullscreen (the
+  Enter press does not reach the game), and `[NSDLDrv.NSDLClient] StartupFullscreen` starts in fullscreen. With
+  `BorderlessFullscreen` (True) fullscreen is SDL's desktop fullscreen: the window covers its display at the display's
+  own resolution, the game renders at that size (`NSDLViewport: borderless fullscreen at <w>x<h>`),
+  `FullscreenViewportX/Y` are left as they are, and `SetRes` (the menus' resolution list) is not applied there
+  (`SetRes <w>x<h> not applied: borderless fullscreen stays at <w>x<h>`). With `False` fullscreen is exclusive: the
+  display changes to the mode nearest `FullscreenViewportX/Y`, and `SetRes` changes the mode and keeps its size there.
+  Leaving fullscreen gives the window back its size. The web and Android builds do not read the key.
 - **Settings from outside.** `-ini:<File>:[<Section>]:<Key>=<Value>` (`User`/`System` name the user and system inis)
   sets any config key right after the config cache loads, and the value is written into the ini.
 - **Frame cap.** `[Engine.Engine] FrameRateCap` (120; 0 or less is uncapped) when the engine sets no max tick rate;
