@@ -293,6 +293,10 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   and Software; Null for debugging), adds that render device's `-*RENDERER` switch after any command line the
   launcher was started with. UTGLR draws through gl4es on an OpenGL ES 2 context. The game keeps the device it last
   started with, also under "The game's choice": a device whose GPU draws the default wrong is switched once.
+- gl4es, UTGLR's GL layer, starts without a precompiled-shader archive (`LIBGL_NOPSA`: nothing is written into the
+  home folder), and on the Android emulator (`ro.kernel.qemu` 1, or `ro.hardware` goldfish or ranchu) with
+  `LIBGL_NOBGRA`, so gl4es swizzles BGRA uploads itself (`OpenGLDrv: Android emulator detected -> LIBGL_NOBGRA=1` in
+  the log). `Source/UnrealTournament/Src/Launch.cpp` sets both before the render device starts.
 
 Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; a trigger
 that sends only its L2 or R2 key, which SDL maps to no trigger, is pulled all the way while the key is down; in the

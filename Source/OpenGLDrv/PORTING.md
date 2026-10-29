@@ -31,5 +31,6 @@ folder holds the build glue (`CMakeLists.txt`) and these notes. `BUILD_UTGLR` bu
 
 NSDLDrv opens a GL window when the render device's name contains `OPENGL`; on the desktop every GL device gets a
 compatibility-profile context, and on Android this one gets an OpenGL ES 2 context, which gl4es draws on (its
-`Init` hands gl4es `SDL_GL_GetProcAddress`). Keep `OpenGL` in the package or class name. Settings are the
+`Init` hands gl4es `SDL_GL_GetProcAddress`; the launcher has set `LIBGL_NOPSA`, and `LIBGL_NOBGRA` on the emulator,
+BUILD.md "Android"). Keep `OpenGL` in the package or class name. Settings are the
 `[OpenGLDrv.OpenGLRenderDevice]` section the retail ini already has.
