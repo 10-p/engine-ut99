@@ -52,7 +52,7 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 | `BUILD_UNREALTOURNAMENT` | ON | the game launcher (`android-*-ucc` turn it off) |
 | `USE_SDL` | ON | the SDL2 client (NSDLDrv); off for the Dreamcast's KOSDrv and the headless `android-*-ucc` presets. On Android with it on, the playable set is forced (below) |
 | `BUILD_XOPENGLDRV`, `BUILD_UTGLR`, `BUILD_NOPENGLESDRV` | OFF, OFF, ON (the presets turn on what they build) | the hardware render devices: XOpenGLDrv, OpenGLDrv/UTGLR, NOpenGLESDrv |
-| `USE_GL4ES` | OFF (ON on the web) | build UTGLR against gl4es (desktop GL → GLES2); implies `BUILD_UTGLR` |
+| `USE_GL4ES` | OFF (ON on the web and Android) | build UTGLR against gl4es (desktop GL → GLES2); implies `BUILD_UTGLR` |
 | `BUILD_SOFTDRV`, `BUILD_NULLDRV` | ON, ON | the software and null render devices |
 | `BUILD_NOPENALDRV`, `BUILD_NULLSOUNDDRV` | OFF, ON (both ON in the playable presets) | audio: OpenAL Soft + libxmp, and the silent subsystem |
 | `SOFTDRV_MAX_SCREEN` | 4096 (8192 on the web presets) | the bound of SoftDrv's screen-sized tables |
@@ -62,8 +62,8 @@ it links the headless package set (Core, Engine, Render, IpDrv, UWeb, Fire, Edit
 The web (`if(EMSCRIPTEN)` in `Source/CMakeLists.txt`) forces its own set: static, SDL, Editor, XOpenGLDrv, UTGLR
 through gl4es, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv, the silent audio subsystem, `ASM=0`, `-pthread` and
 `-sUSE_SDL=2` at compile time, `-fpack-struct=4`. The Android client (`if(ANDROID AND USE_SDL)`) forces static,
-Editor, XOpenGLDrv, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv and the silent audio subsystem, no UTGLR (desktop
-GL) and no `ucc-bin`, defines `UE_ANDROID_APP` for the app's own platform paths, and adds
+Editor, XOpenGLDrv, UTGLR through gl4es, NOpenGLESDrv, SoftDrv, NullDrv, NOpenALDrv and the silent audio subsystem,
+and no `ucc-bin`, defines `UE_ANDROID_APP` for the app's own platform paths, and adds
 `-fno-delete-null-pointer-checks` and clang's non-POD-varargs leniency.
 
 ## Fetched libraries
@@ -76,7 +76,7 @@ The first configure of a preset fetches (FetchContent; the cache variables name 
 | etcpak | [wolfpld/etcpak](https://github.com/wolfpld/etcpak), commit `3d716e1` | `ETCPAK_GIT_REPOSITORY`, `ETCPAK_GIT_TAG` | XOpenGLDrv's ETC2 encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
 | astc-encoder | [ARM-software/astc-encoder](https://github.com/ARM-software/astc-encoder), 5.7.0 (`baff485`) | `ASTCENC_GIT_REPOSITORY`, `ASTCENC_GIT_TAG` | XOpenGLDrv's ASTC encoder (`Source/XOpenGLDrv/ENGINE_CHANGES.md`, "Textures") |
 | OpenGLDrv/UTGLR | [10-p/utglr-copy](https://github.com/10-p/utglr-copy), branch `main` | `UTGLR_GIT_REPOSITORY`, `UTGLR_GIT_TAG` | `Source/OpenGLDrv` (build glue) |
-| gl4es | [10-p/gl4es](https://github.com/10-p/gl4es) (a fork of ptitSeb/gl4es), branch `ufront` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web |
+| gl4es | [10-p/gl4es](https://github.com/10-p/gl4es) (a fork of ptitSeb/gl4es), branch `ufront` | `GL4ES_GIT_REPOSITORY`, `GL4ES_GIT_TAG`, `GL4ES_SOURCE_DIR` | UTGLR on the web and Android |
 | openal-soft | [10-p/openal-soft-web](https://github.com/10-p/openal-soft-web), branch `ufront/web` | `OPENALSOFT_GIT_REPOSITORY`, `OPENALSOFT_GIT_TAG` | NOpenALDrv: static on the web, `libopenal.so.1` on native Linux (`Source/cmake/OpenALSoft.cmake`) |
 | libxmp | `libxmp-4.7.1` | `LIBXMP_GIT_REPOSITORY`, `LIBXMP_GIT_TAG`, `LIBXMP_SOURCE_DIR` | NOpenALDrv (`Source/NOpenALDrv/CMakeLists.txt`) |
 | SDL2 | [libsdl-org/SDL](https://github.com/libsdl-org/SDL), branch `release-2.32.x` | `SDL2_GIT_REPOSITORY`, `SDL2_GIT_TAG`, `FETCHCONTENT_SOURCE_DIR_SDL2` | the Android client, built shared as `libSDL2.so` (the Gradle project passes its own checkout, whose Java it compiles) |
@@ -293,10 +293,14 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   which Android scales to the screen; the engine sees the scaled size as its window. SDL's surface view
   (`FrameSurface`) scales every touch and mouse position from the screen to that buffer before SDL reads it, so a
   tap lands where it is drawn at every scale.
-- The launcher's renderer selection, at the bottom of its page (the game's choice, then NOpenGLES, XOpenGL and
-  Software; Null for debugging), adds that render device's `-*RENDERER` switch after any command line the launcher
-  was started with. The game keeps the device it last started with, also under "The game's choice": a device whose
-  GPU draws the default wrong is switched once.
+- The launcher's renderer selection, at the bottom of its page (the game's choice, then NOpenGLES, XOpenGL, UTGLR
+  and Software; Null for debugging), adds that render device's `-*RENDERER` switch after any command line the
+  launcher was started with. UTGLR draws through gl4es on an OpenGL ES 2 context. The game keeps the device it last
+  started with, also under "The game's choice": a device whose GPU draws the default wrong is switched once.
+- gl4es, UTGLR's GL layer, starts without a precompiled-shader archive (`LIBGL_NOPSA`: nothing is written into the
+  home folder), and on the Android emulator (`ro.kernel.qemu` 1, or `ro.hardware` goldfish or ranchu) with
+  `LIBGL_NOBGRA`, so gl4es swizzles BGRA uploads itself (`OpenGLDrv: Android emulator detected -> LIBGL_NOBGRA=1` in
+  the log). `Source/UnrealTournament/Src/Launch.cpp` sets both before the render device starts.
 
 Controls: a pad through NSDLDrv's game-controller path (`UseJoystick`, the pad layout of `DefUser.ini`; a trigger
 that sends only its L2 or R2 key, which SDL maps to no trigger, is pulled all the way while the key is down; in the

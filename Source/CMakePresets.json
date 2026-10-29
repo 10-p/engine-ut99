@@ -40,7 +40,7 @@
     {
       "name": "android-arm64",
       "displayName": "Android arm64 -- the game as libUT99.so",
-      "description": "The playable client as one shared library for arm64-v8a (SDL2 fetched and built shared beside it, openal-soft and libxmp static, XOpenGLDrv on GLES 3, NOpenGLESDrv on GLES 2, SoftDrv, NullDrv): the same configure the Gradle project in Android/ runs, for a build without the APK. Needs ANDROID_NDK_HOME. Builds in build-android-arm64-client/.",
+      "description": "The playable client as one shared library for arm64-v8a (SDL2 fetched and built shared beside it, openal-soft and libxmp static, XOpenGLDrv on GLES 3, OpenGLDrv/UTGLR through gl4es and NOpenGLESDrv on GLES 2, SoftDrv, NullDrv): the same configure the Gradle project in Android/ runs, for a build without the APK. Needs ANDROID_NDK_HOME. Builds in build-android-arm64-client/.",
       "generator": "Unix Makefiles",
       "binaryDir": "${sourceDir}/../build-android-arm64-client",
       "toolchainFile": "$env{ANDROID_NDK_HOME}/build/cmake/android.toolchain.cmake",

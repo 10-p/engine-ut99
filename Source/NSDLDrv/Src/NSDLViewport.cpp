@@ -423,8 +423,8 @@ void UNSDLViewport::OpenWindow( PTRINT InParentWindow, UBOOL Temporary, INT NewX
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
 #elif defined(__ANDROID__)
-			// Android has GLES only: GLES 3.0 for XOpenGLDrv, GLES 2.0 for NOpenGLESDrv (WebGLESMajor, from the
-			// device name above), with a 24-bit depth buffer (SDL's default asks for 16).
+			// Android has GLES only: GLES 3.0 for XOpenGLDrv, GLES 2.0 for NOpenGLESDrv and OpenGLDrv/UTGLR's gl4es
+			// (WebGLESMajor, from the device name above), with a 24-bit depth buffer (SDL's default asks for 16).
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_MAJOR_VERSION, WebGLESMajor );
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_MINOR_VERSION, 0 );
 			SDL_GL_SetAttribute( SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES );
