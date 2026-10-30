@@ -41,6 +41,7 @@
 #ifndef PLATFORM_WIN32
 #include <sys/wait.h>	// waitpid (appCreateProc)
 #include <signal.h>
+#include <errno.h>
 #endif
 #ifndef UNREAL_STATIC
 #include <dlfcn.h>
@@ -51,7 +52,7 @@
 #ifdef PLATFORM_WIN32
 #include <winsock2.h>
 #include <windows.h>
-#include <process.h>	// _spawnl / _spawnv
+#include <process.h>	// _spawnv
 #else
 #include <netdb.h>
 #endif
@@ -117,6 +118,112 @@ void USystem::StaticConstructor()
 
 	unguard;
 }
+
+#if !defined(__EMSCRIPTEN__) && !defined(__ANDROID__) && !defined(PLATFORM_DREAMCAST)
+#define UE_RELAUNCH_SPAWNS 1
+
+// What RELAUNCH starts once this process has exited: the running executable and the command's arguments.
+static ANSICHAR GRelaunchPath[1024] = "";
+static ANSICHAR GRelaunchArgs[4096] = "";
+
+// Remember the relaunch; false when the running executable's path is unknown.
+static UBOOL RelaunchRequest( const TCHAR* Args )
+{
+#ifdef PLATFORM_WIN32
+	const DWORD Len = GetModuleFileNameA( NULL, GRelaunchPath, ARRAY_COUNT(GRelaunchPath) );
+	GRelaunchPath[ (Len>0 && Len<ARRAY_COUNT(GRelaunchPath)) ? Len : 0 ] = 0;
+#else
+	const ssize_t Len = readlink( "/proc/self/exe", GRelaunchPath, ARRAY_COUNT(GRelaunchPath)-1 );
+	GRelaunchPath[ Len>0 ? Len : 0 ] = 0;
+#endif
+	appStrncpy( GRelaunchArgs, Args, ARRAY_COUNT(GRelaunchArgs) );
+	return GRelaunchPath[0] != 0;
+}
+
+// Start the remembered relaunch; appPlatformExit calls it after a clean shutdown.
+static void RelaunchStart()
+{
+	debugf( NAME_Exit, TEXT("Relaunching %s %s"), GRelaunchPath, GRelaunchArgs );
+#ifdef PLATFORM_WIN32
+	// The new process may start before this one has ended, so the inis are written first.
+	if( GConfig )
+		GConfig->Flush( 0 );
+	static ANSICHAR Line[ARRAY_COUNT(GRelaunchPath) + ARRAY_COUNT(GRelaunchArgs) + 4];
+	appSprintf( Line, TEXT("\"%s\" %s"), GRelaunchPath, GRelaunchArgs );
+	STARTUPINFOA Startup;
+	appMemzero( &Startup, sizeof(Startup) );
+	Startup.cb = sizeof(Startup);
+	PROCESS_INFORMATION Process;
+	if( CreateProcessA( GRelaunchPath, Line, NULL, NULL, FALSE, 0, NULL, NULL, &Startup, &Process ) )
+	{
+		CloseHandle( Process.hThread );
+		CloseHandle( Process.hProcess );
+	}
+	else debugf( NAME_Warning, TEXT("Relaunch: CreateProcess failed (error %u)"), (DWORD)GetLastError() );
+#else
+	// The arguments split as a shell splits them: at spaces, a double-quoted run keeping its spaces.
+	static ANSICHAR Args[ARRAY_COUNT(GRelaunchArgs)];
+	static ANSICHAR* Argv[256];
+	INT Argc = 0;
+	Argv[Argc++] = GRelaunchPath;
+	appStrcpy( Args, GRelaunchArgs );
+	for( ANSICHAR* Read=Args; Argc<(INT)ARRAY_COUNT(Argv)-1; )
+	{
+		while( *Read==' ' )
+			Read++;
+		if( !*Read )
+			break;
+		ANSICHAR* Write = Read;
+		Argv[Argc++] = Write;
+		UBOOL Quoted = 0;
+		for( ; *Read && (Quoted || *Read!=' '); Read++ )
+		{
+			if( *Read=='"' )
+				Quoted = !Quoted;
+			else
+				*Write++ = *Read;
+		}
+		if( *Read )
+			Read++;
+		*Write = 0;
+	}
+	Argv[Argc] = NULL;
+
+	// A child waits until this process has ended (the pipe's write end closes with it), then becomes the new
+	// game. Only async-signal-safe calls run in the child: the engine's other threads are not copied.
+	int Pipe[2];
+	if( pipe( Pipe ) != 0 )
+	{
+		debugf( NAME_Warning, TEXT("Relaunch: pipe failed: %s"), strerror(errno) );
+		return;
+	}
+	const pid_t Child = fork();
+	if( Child == 0 )
+	{
+		signal( SIGTERM, SIG_DFL );
+		signal( SIGHUP,  SIG_DFL );
+		signal( SIGINT,  SIG_DFL );
+		close( Pipe[1] );
+		ANSICHAR Byte;
+		while( read( Pipe[0], &Byte, 1 ) < 0 && errno == EINTR )
+			;
+		close( Pipe[0] );
+		execv( Argv[0], Argv );
+		static const char Failed[] = "Relaunch: execv failed.\n";
+		ssize_t Written = write( 2, Failed, sizeof(Failed)-1 );
+		(void)Written;
+		_exit( 127 );
+	}
+	close( Pipe[0] );
+	if( Child < 0 )
+	{
+		close( Pipe[1] );
+		debugf( NAME_Warning, TEXT("Relaunch: fork failed: %s"), strerror(errno) );
+	}
+#endif
+}
+#endif
+
 UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 {
 	if( ParseCommand(&Cmd,TEXT("MEMSTAT")) )
@@ -137,30 +244,18 @@ UBOOL USystem::Exec( const TCHAR* Cmd, FOutputDevice& Ar )
 #ifndef PLATFORM_DREAMCAST
 		debugf( TEXT("Relaunch: %s"), Cmd );
 		GConfig->Flush( 0 );
-
-		// Fork out a new process using Cmd as arguments.
-		TCHAR* EndArg0 = appStrstr( Cmd, " " );
-		INT CmdLen = appStrlen( Cmd );
-		INT RestLen = appStrlen( EndArg0 );
-		TCHAR Arg0[256];
-		appStrncpy( Arg0, Cmd, (CmdLen - RestLen) + 1 );
-
-#ifdef PLATFORM_WIN32
-		// No fork() on Windows: _spawnl starts a new process and keeps going, then this one exits.
-		if( _spawnl( _P_NOWAIT, "./ucc.exe", "ucc", "server", Arg0, (char*)NULL ) == -1 )
-			appErrorf( TEXT("Failed to launch process.") );
+#if UE_RELAUNCH_SPAWNS
+		// The running executable starts again with the command's arguments once this process has exited; with
+		// -server the game itself is the dedicated server.
+		if( !RelaunchRequest( Cmd ) )
+			appErrorf( TEXT("Failed to launch process. Relaunch: %s"), Cmd );
 		appRequestExit( 0 );
-#else
-		pid_t pid = fork();
-		if (pid != 0)
-		{
-			appSleep(3);
-			INT error = execl("./ucc-bin", "ucc-bin", "server", Arg0, (char*)NULL );
-			if (error == -1)
-				appErrorf( TEXT("Failed to launch process.") );
-		} else {
-			appRequestExit( 0 );
-		}
+#elif defined(__EMSCRIPTEN__)
+		// A page cannot start a process: a fatal error that names the command's arguments.
+		appErrorf( TEXT("Failed to launch process. Relaunch: %s"), Cmd );
+#elif defined(__ANDROID__)
+		// An app cannot start itself again: the game closes.
+		appRequestExit( 0 );
 #endif
 #endif
 		return 1;
@@ -233,7 +328,7 @@ CORE_API void appRequestExit( UBOOL Force )
 		//!UNIX No quit message in UNIX.
 		GIsRequestingExit = 1;
 #ifdef __EMSCRIPTEN__
-		// A normal exit (the Exit menu, the `exit` command, RELAUNCH; a crash takes the Force branch above)
+		// A normal exit (the Exit menu, the `exit` command; a crash takes the Force branch above)
 		// sends the page back to the launcher: navigate to location.pathname, which drops any autostart query.
 		// Deferred with setTimeout(0), so it fires after the Asyncify main loop unwinds. Only the browser main
 		// thread can navigate, hence MAIN_THREAD_EM_ASM on the threaded build.
@@ -969,6 +1064,11 @@ void appPlatformPreExit()
 
 void appPlatformExit()
 {
+#if UE_RELAUNCH_SPAWNS
+	// A RELAUNCH starts the game again after a clean shutdown, never after a crash.
+	if( GRelaunchPath[0] && !GIsCriticalError )
+		RelaunchStart();
+#endif
 }
 
 void appEnableFastMath( UBOOL Enable )
