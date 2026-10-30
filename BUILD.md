@@ -156,6 +156,11 @@ system and the network transport at run time.
 - **Console commands.** `FLUSHCONFIG` writes the config cache to disk; `WHEREAMI` and `TELEPORT <x> <y> <z> [<yaw>
   [<pitch>]]` (standalone and listen host; a client needs `[Engine.GameEngine] AllowNetCheats=True`, a test setting);
   `FPSLOG <seconds>` or `[Engine.GameEngine] FpsLogSeconds` for an `FPS:` line per interval.
+  `RELAUNCH <arguments>` (Epic's command; Preferences' video driver change sends `-changevideo`, the Start Game
+  window's Dedicated button `<url> -server log=<file>`): the game exits, and once it has, its running executable
+  starts again with the arguments on Linux and Windows; with `-server` the game binary is the dedicated server. The
+  SDL launcher has no driver wizard, so `-changevideo` restarts the game on its render device. An Android app closes;
+  on the web it is a fatal error, `Failed to launch process. Relaunch: <arguments>`.
 - **Game pads.** `[NSDLDrv.NSDLClient] UseJoystick` (on) is read every tick, so the game's own option opens or closes
   the pad at once (`NSDLClient: game pads on|off (UseJoystick)`); the first pad connected is used, with hot-plug
   (`NSDLClient: game pad connected: <name>`). Sticks and triggers are read from the pad's state every tick. On the web
@@ -381,7 +386,7 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 
 `ucc.exe` is the console tool, the retail UCC's name, with the system DLLs only: it reads its arguments as `ucc-bin`
 does on Linux and writes `ucc.log` (`wine ucc.exe help`, `wine ucc.exe server "DM-Deck16][?game=Botpack.DeathMatchPlus"`),
-the menus' dedicated-server relaunch starts it, and a SIGINT to the wine process reaches it as Ctrl-C.
+and a SIGINT to the wine process reaches it as Ctrl-C.
 
 ## Test tools
 
