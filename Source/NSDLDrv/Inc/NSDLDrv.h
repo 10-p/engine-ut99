@@ -72,6 +72,10 @@ private:
 	SDL_Texture* SDLTex; // for use with the above renderer
 	DWORD SDLTexFormat;
 	SDL_GLContext GLCtx; // for OpenGLDrv
+	// The configured render device could not start (no GL window or context, or its Init failed): SoftDrv renders
+	// for the rest of the run, in a window without GL. The ini keeps the configured device.
+	UBOOL SoftwareFallback;
+	UBOOL FallBackToSoftware();
 #if defined(__EMSCRIPTEN__) && defined(__EMSCRIPTEN_PTHREADS__)
 	// On a worker there is no SDL renderer (SDL's proxied eglCreateContext would deadlock the engine thread):
 	// SoftDrv renders into this buffer, which is blitted to the transferred OffscreenCanvas through a 2D context.

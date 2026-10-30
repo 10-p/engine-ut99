@@ -12,9 +12,11 @@ retail file it carries `[WebRTCDrv.WebRTCNetDriver]`, `[ProxyNetDrv.ProxyNetDriv
 `[XOpenGLDrv.XOpenGLRenderDevice]`, `[NOpenGLESDrv.NOpenGLESRenderDevice]`, `[NOpenALDrv.NOpenALAudioSubsystem]`,
 `[NullDrv.NullRenderDevice]`, `[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`, the net drivers' `DownloadManagers`, and
 the community master servers in `[Engine.GameEngine]` and `[UBrowserAll]`, and sets `[UMenu.UMenuRootWindow]
-GUIScale=2` (the menus' Font Size at 2x: the retail 1x suits a 1280x1024 screen, not a 1080p one). `DefUser.ini` adds
-the game-pad bindings (Unreal 1's layout) and `[Engine.PlayerPawn] bMaxMouseSmoothing=False`: the view stops on the
-frame the mouse stops (the script's default keeps turning for up to `MouseSmoothThreshold` after it).
+GUIScale=2` (the menus' Font Size at 2x: the retail 1x suits a 1280x1024 screen, not a 1080p one) and XOpenGL's
+`GammaCorrectScreenshots=False` (the canvas has no display gamma ramp, so a shot is the frame as the present pass
+shows it). `DefUser.ini` adds the game-pad bindings (Unreal 1's layout) and `[Engine.PlayerPawn]
+bMaxMouseSmoothing=False`: the view stops on the frame the mouse stops (the script's default keeps turning for up to
+`MouseSmoothThreshold` after it).
 
 `../*.ini` is ut99dc's Dreamcast config (with the same master-server lists and `DownloadManagers`); no build preloads
 or installs it.

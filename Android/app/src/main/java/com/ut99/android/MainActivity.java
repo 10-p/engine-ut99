@@ -883,6 +883,7 @@ public class MainActivity extends Activity {
             { "", "The game's choice" },
             { "-NOPENGLESRENDERER", "NOpenGLES (OpenGL ES 2)" },
             { "-XOPENGLRENDERER", "XOpenGL (OpenGL ES 3)" },
+            { "-UTGLRRENDERER", "UTGLR (OpenGL through gl4es, OpenGL ES 2)" },
             { "-SOFTWARERENDERER", "Software (drawn by the CPU)" },
             { "-NULLRENDERER", "Null (draws nothing: for debugging)" }
     };

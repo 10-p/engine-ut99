@@ -52,8 +52,8 @@ option(BUILD_NOPENGLESDRV "Build NOpenGLESDrv (GLES2 -> WebGL1)" ${_UFRONT_DEF_N
 option(BUILD_XOPENGLDRV "Build XOpenGLDrv (OldUnreal GL -> WebGL2/GLES3)" ${_UFRONT_DEF_XOPENGL})
 option(BUILD_SOFTDRV "Build SoftDrv (CPU software renderer; -SOFTWARERENDERER). Pure software, no glad -> coexists with XOpenGL." ON)
 option(BUILD_NULLDRV "Build NullDrv (GPU-free no-op render device; -NULLRENDERER). No GL context -> headless / dedicated-server run." ON)
-option(USE_GL4ES "Build OpenGLDrv (UTGLR) against gl4es (desktop GL -> GLES2) for the WebGL path" ${_UFRONT_DEF_GL4ES})
-# BUILD_UTGLR builds OpenGLDrv/UTGLR; USE_GL4ES (its WebGL backend) implies it.
+option(USE_GL4ES "Build OpenGLDrv (UTGLR) against gl4es (desktop GL -> GLES2): the web and Android" ${_UFRONT_DEF_GL4ES})
+# BUILD_UTGLR builds OpenGLDrv/UTGLR; USE_GL4ES (its GLES backend) implies it.
 if(USE_GL4ES)
   set(BUILD_UTGLR ON)
 endif()
@@ -124,8 +124,8 @@ endif()
 # Android: the playable client as one shared library, libUT99.so, loaded by the Gradle project's SDLActivity
 # (Android/). USE_SDL OFF is the headless ucc-bin of the android-*-ucc presets, which this block leaves alone.
 # SDL2 is fetched and built shared beside it (the Dependencies section), openal-soft and libxmp link in
-# statically, and the render devices are those that run on a GLES context: XOpenGLDrv (GLES 3), NOpenGLESDrv
-# (GLES 2), SoftDrv and NullDrv; OpenGLDrv/UTGLR needs desktop GL.
+# statically, and the render devices are XOpenGLDrv (GLES 3), OpenGLDrv/UTGLR through gl4es (GLES 2),
+# NOpenGLESDrv (GLES 2), SoftDrv and NullDrv.
 if(ANDROID AND USE_SDL)
   set(BUILD_STATIC ON)
   set(BUILD_EDITOR ON)            # a runtime dependency (see the option)
@@ -133,9 +133,11 @@ if(ANDROID AND USE_SDL)
   set(BUILD_PVRDRV OFF)
   set(BUILD_AICADRV OFF)
   set(BUILD_XOPENGLDRV ON)
+  set(USE_GL4ES ON)
+  set(BUILD_UTGLR ON)
   set(BUILD_NOPENGLESDRV ON)
-  set(BUILD_UTGLR OFF)
-  set(USE_GL4ES OFF)
+  set(BUILD_SOFTDRV ON)
+  set(BUILD_NULLDRV ON)
   set(BUILD_NULLSOUNDDRV ON)
   set(BUILD_NOPENALDRV ON)
   set(UE_ANDROID_CLIENT ON)
@@ -507,8 +509,8 @@ endif()
 # gives its externals a private prefix (glad_symbol_prefix.h), so the two co-link.
 
 if(BUILD_UTGLR)
-  # gl4es (desktop GL -> GLES2) for the OpenGLDrv/UTGLR WebGL path, fetched when USE_GL4ES or on Emscripten;
-  # GL4ES_SOURCE_DIR names a local checkout. See Source/OpenGLDrv/PORTING.md.
+  # gl4es (desktop GL -> GLES2) for OpenGLDrv/UTGLR on a GLES context (the web, Android), fetched when USE_GL4ES
+  # or on Emscripten; GL4ES_SOURCE_DIR names a local checkout. See Source/OpenGLDrv/PORTING.md.
   if(USE_GL4ES OR EMSCRIPTEN)
     set(GL4ES_SOURCE_DIR "" CACHE PATH "Local gl4es checkout (vanilla or fork). Empty => fetch from git.")
     set(GL4ES_GIT_REPOSITORY "https://github.com/10-p/gl4es.git" CACHE STRING "gl4es git repo (the 10-p fork)")

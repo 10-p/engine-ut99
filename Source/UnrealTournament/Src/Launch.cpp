@@ -18,6 +18,7 @@ Revision history:
 #if defined(__ANDROID__)
 #include <android/log.h>
 #include <pthread.h>
+#include <sys/system_properties.h>
 #include <unistd.h>
 
 // stdout and stderr on logcat (tag UT99-stdio): both are a pipe that a thread reads line by line. GLog's own
@@ -545,6 +546,19 @@ static UEngine* InitEngine()
 	// The stats logging ends in appCreateProc, a fork/exec of a batcher an app does not carry.
 	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bWorldLog"), TEXT("False") );
 	GConfig->SetString( TEXT("Engine.GameInfo"),           TEXT("bLocalLog"), TEXT("False") );
+	// gl4es, OpenGLDrv/UTGLR's GL layer, reads these when the device starts it: no precompiled-shader archive in the
+	// home folder, and on the emulator, whose GLES translator corrupts GL_BGRA uploads, BGRA swizzled by gl4es.
+	setenv( "LIBGL_NOPSA", "1", 1 );
+	{
+		char Qemu[PROP_VALUE_MAX] = {0}, Hardware[PROP_VALUE_MAX] = {0};
+		__system_property_get( "ro.kernel.qemu", Qemu );
+		__system_property_get( "ro.hardware", Hardware );
+		if( Qemu[0]=='1' || strstr( Hardware, "goldfish" ) || strstr( Hardware, "ranchu" ) )
+		{
+			debugf( TEXT("OpenGLDrv: Android emulator detected -> LIBGL_NOBGRA=1 (gl4es swizzles BGRA uploads)") );
+			setenv( "LIBGL_NOBGRA", "1", 1 );
+		}
+	}
 #endif
 
 	// Replace the subsystems the ini names but this build lacks (the retail WinDrv.WindowsClient and

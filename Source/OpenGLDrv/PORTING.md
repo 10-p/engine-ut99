@@ -4,7 +4,7 @@
 device for UT v436, on Daniel Vogel's (Loki) OpenGLDrv. The source is fetched from the fork
 [10-p/utglr-copy](https://github.com/10-p/utglr-copy) (`UTGLR_GIT_REPOSITORY`, `UTGLR_GIT_TAG`, branch `main`); this
 folder holds the build glue (`CMakeLists.txt`) and these notes. `BUILD_UTGLR` builds it on native Linux and Windows,
-`USE_GL4ES` (on for the web) builds it against gl4es. `-UTGLRRENDERER` selects it. The web path:
+`USE_GL4ES` (on for the web and Android) builds it against gl4es. `-UTGLRRENDERER` selects it. The web path:
 `WEB-INTEGRATION.md`.
 
 ## Build glue
@@ -29,6 +29,8 @@ folder holds the build glue (`CMakeLists.txt`) and these notes. `BUILD_UTGLR` bu
 
 ## Context
 
-NSDLDrv opens a GL window when the render device's name contains `OPENGL`; natively every GL device gets a
-compatibility-profile context. Keep `OpenGL` in the package or class name. Settings are the
+NSDLDrv opens a GL window when the render device's name contains `OPENGL`; on the desktop every GL device gets a
+compatibility-profile context, and on Android this one gets an OpenGL ES 2 context, which gl4es draws on (its
+`Init` hands gl4es `SDL_GL_GetProcAddress`; the launcher has set `LIBGL_NOPSA`, and `LIBGL_NOBGRA` on the emulator,
+BUILD.md "Android"). Keep `OpenGL` in the package or class name. Settings are the
 `[OpenGLDrv.OpenGLRenderDevice]` section the retail ini already has.
