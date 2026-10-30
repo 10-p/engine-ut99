@@ -146,6 +146,17 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		InitialConnectTimeout = 600.f;
 	}
 
+	// Read and drop every datagram queued on the client slot (glue conn 0).
+	static void DiscardQueuedClientData()
+	{
+		BYTE Data[WEBRTC_RECV_BUFFER];
+		INT Discarded = 0;
+		while( ue_net_recv( 0, Data, sizeof(Data) ) > 0 )
+			Discarded++;
+		if( Discarded )
+			debugf( NAME_DevNet, TEXT("[WebRTC] InitConnect: discarded %i datagram(s) queued for the previous client connection"), Discarded );
+	}
+
 	// UNetDriver interface.
 	UBOOL InitConnect( FNetworkNotify* InNotify, FURL& ConnectURL, FString& Error )
 	{
@@ -186,6 +197,9 @@ class DLL_EXPORT_CLASS UWebRTCNetDriver : public UNetDriver
 		}
 		GClientDriver = this;
 		ue_net_connect( appToAnsi(*ServerPeerId) );
+		// The new session's pipe opens later, so every datagram already queued on the client slot belongs to an
+		// earlier connection; the pending connection must not parse it as its own.
+		DiscardQueuedClientData();
 
 		// Pending server connection + control channel (channel 0) — like UTcpNetDriver::InitConnect.
 		ServerConnection = new UWebRTCConnection( 0, this, USOCK_Pending, 1, ConnectURL );
