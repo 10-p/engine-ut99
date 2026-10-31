@@ -2,7 +2,7 @@
 
 The engine source of Unreal Tournament (1999), Unreal Engine 1 v400, for the browser and for native Linux, Windows
 and Android. This branch, `feat/v436-compat`, is the same engine for retail v436 content: it carries all of `main`
-plus the v436-specific changes only, and is rebased on `main` (a general change goes to `main` first). The web build
+plus the v436-specific changes only, and takes `main` by a merge (a general change goes to `main` first). The web build
 produces a WebAssembly artifact that the frontend repository
 ([10-p/unreal-frontend-arch-private](https://github.com/10-p/unreal-frontend-arch-private)) serves as its
 `ut99-436-compat` target; game assets (a retail UT99 v436 install) live outside this repository and no build reads
