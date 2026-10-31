@@ -13,10 +13,9 @@ see its README). No `upstream` remote is configured: compare against `820b25c` o
 **Features** are listed in the frontend's `docs/14-change-inventory.md`; a new feature adds its line there.
 
 **`feat/v436-compat`** (cloned as `engine-ut99-436-compat`) is this engine for retail v436 content and holds
-v436-specific changes only. A general engine change goes to `main`, and the 436 branch is then rebased on top
-(`git fetch origin && git rebase --onto origin/main <old-base>`; a rebase is agreed before it is made, since it
-rewrites a pushed branch). Never commit a general change directly to it. Keep general and v436-specific work in
-separate commits.
+v436-specific changes only. A general engine change goes to `main`, and the 436 branch then takes it by a merge
+(`git fetch origin && git merge origin/main` on `feat/v436-compat`), never by a rebase: it is a pushed branch. Never
+commit a general change directly to it. Keep general and v436-specific work in separate commits.
 
 ## Map
 | Thing | Where | Role |

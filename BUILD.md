@@ -5,7 +5,7 @@ and Android. The web build produces a WebAssembly artifact that the frontend rep
 ([10-p/unreal-frontend-arch-private](https://github.com/10-p/unreal-frontend-arch-private)) serves; game assets (a
 retail UT99 v400 install) live outside this repository and no build reads them. The base is
 [maximqaxd/ut99dc](https://github.com/maximqaxd/ut99dc) at `820b25c`; `feat/v436-compat` is the same engine for v436
-content, rebased on `main`.
+content, taking `main` by merges.
 
 ## Presets
 
