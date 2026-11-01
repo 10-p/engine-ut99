@@ -17,7 +17,8 @@ The operations, applied in order:
     ("trim", file, section, [keys kept], ["Key=Value" dropped, ...])
                                                            remove the listed lines; every line of the section is
                                                            in one of the two lists
-    ("add", file, section, after key, "Key=Value")         insert after that key (None: after the last key)
+    ("add", file, section, after key, "Key=Value", ...)    insert these lines after that key (None: after the
+                                                           last key); the web section has none of their keys
     ("drop-section", file, section)                        remove the section with the comment block above it
     ("add-section", file, before section, [lines])         insert a section before that one (None: at the end)
     ("comment", file, section, web text or None, [lines])  replace the comment block above the section's header,
@@ -185,11 +186,12 @@ def apply(lines, web_lines, delta, where):
             del lines[hits[0]]
             n -= 1
     elif op == "add":
-        after, line = delta[3], delta[4]
-        if any(key_of(lines[i]) == key_of(line) for i in range(h + 1, n)):
-            fail(where, f"[{section}] {key_of(line)} is already there")
+        after, added = delta[3], list(delta[4:])
+        for line in added:
+            if key_of(line) is not None and any(key_of(lines[i]) == key_of(line) for i in range(h + 1, n)):
+                fail(where, f"[{section}] {key_of(line)} is already there")
         i = last_key(lines, h, n) if after is None else find_key(lines, h, n, after, where, section)
-        lines.insert(i + 1, line)
+        lines[i + 1:i + 1] = added
     elif op == "drop-section":
         e = last_key(lines, h, n)
         while e + 1 < len(lines) and not lines[e + 1].strip():
