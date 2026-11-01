@@ -562,7 +562,7 @@ public class MainActivity extends Activity {
         // An engine command line this launcher was started with (adb: GameActivity is not exported).
         String extraArgs = getIntent() != null ? getIntent().getStringExtra(GameActivity.EXTRA_ARGS) : null;
         // The renderer chosen below goes after them (an adb command line's own -*RENDERER switch comes first).
-        String args = ((extraArgs != null ? extraArgs.trim() : "") + " " + prefs().getString(PREF_RENDERER, "")).trim();
+        String args = ((extraArgs != null ? extraArgs.trim() : "") + " " + prefs().getString(PREF_RENDERER, DEFAULT_RENDERER)).trim();
         if (!args.isEmpty()) i.putExtra(GameActivity.EXTRA_ARGS, args);
         startActivity(i);
         // This activity stays: Back from the game comes here.
@@ -874,6 +874,8 @@ public class MainActivity extends Activity {
     // ---- the renderer ---------------------------------------------------------------------------
 
     private static final String PREF_RENDERER = "renderer";
+    /** The renderer selected until the player picks one: XOpenGL, the game's default device. */
+    private static final String DEFAULT_RENDERER = "-XOPENGLRENDERER";
 
     /**
      * The render devices of this build, as the engine's -*RENDERER switches. The first, no switch, leaves the choice
@@ -881,8 +883,8 @@ public class MainActivity extends Activity {
      */
     private static final String[][] RENDERERS = {
             { "", "The game's choice" },
-            { "-NOPENGLESRENDERER", "NOpenGLES (OpenGL ES 2)" },
             { "-XOPENGLRENDERER", "XOpenGL (OpenGL ES 3)" },
+            { "-NOPENGLESRENDERER", "NOpenGLES (OpenGL ES 2)" },
             { "-UTGLRRENDERER", "UTGLR (OpenGL through gl4es, OpenGL ES 2)" },
             { "-SOFTWARERENDERER", "Software (drawn by the CPU)" },
             { "-NULLRENDERER", "Null (draws nothing: for debugging)" }
@@ -891,7 +893,7 @@ public class MainActivity extends Activity {
     private void buildRendererRow(LinearLayout col) {
         label(col, "Renderer", 14f, 0xFFB8BCC2, 20);
         RadioGroup group = new RadioGroup(this);
-        String current = prefs().getString(PREF_RENDERER, "");
+        String current = prefs().getString(PREF_RENDERER, DEFAULT_RENDERER);
         int checked = -1;
         for (int k = 0; k < RENDERERS.length; k++) {
             RadioButton b = new RadioButton(this);
