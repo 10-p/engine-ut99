@@ -415,6 +415,41 @@ the assets rather than symlinking them (`cp -rL`): under wine a symlinked packag
 does on Linux and writes `ucc.log` (`wine ucc.exe help`, `wine ucc.exe server "DM-Deck16][?game=Botpack.DeathMatchPlus"`),
 and a SIGINT to the wine process reaches it as Ctrl-C.
 
+## Release archives
+
+`vendor/release/package.py` makes the release archives, the same way in CI and for a versioned release. It is
+vendored from the frontend (`packages/build/engine-release/package.py`, written and checked by its
+`packages/build/bin/vendor-release.mjs`): re-vendor it, never edit it here. The game data is `release/release.json`,
+one file for `main` and `feat/v436-compat`: it lists both games and picks `ut99` or `ut99-v436` by
+`ENGINE_VERSION` (`Source/Core/Inc/UnObjVer.h`), and it names each platform's files in its build tree, the default
+inis the archives ship and the text of their `README.txt`.
+
+```bash
+python3 vendor/release/package.py check                     # release.json names files that exist
+python3 vendor/release/package.py version                   # 1.2.0 at a release tag (v1.2.0, v1.2.0-v436), else git describe
+python3 vendor/release/package.py archive linux-x86_64 --version 1.2.0 --out <dir> --kind release
+python3 vendor/release/package.py notes --version 1.2.0 --kind release   # the release text's install part
+```
+
+`archive <platform>` writes `<game>-<version>-<platform>`: `linux-x86` and `linux-x86_64` (`.tar.gz`, from
+`build-native` and `build-native64`: `UnrealTournament`, `libopenal.so.1` and `ucc-bin`), `windows-x86` and
+`windows-x86_64` (`.zip`, from `build-windows` and `build-windows64`: `UnrealTournament.exe`, `OpenAL32.dll` and
+`ucc.exe`). Each holds `System/` with those files and `Config/System/native/Default.ini` and `DefUser.ini`, and a
+`README.txt` for its platform. `archive android` copies the APK Gradle's `assembleRelease` wrote as
+`<game>-<version>-android-test.apk`, or `-android-release.apk` with `--kind release`.
+
+## CI
+
+`.github/workflows/build.yml` runs on every push and pull request. It checks the generated inis (every
+`tools/dev/sync-*ini.py --check`) and `release/release.json`; builds `native` and `native64` (in an `ubuntu:24.04`
+container), `windows` and `windows64`, `wasm` and the Android APK; checks that each Linux build is one engine binary,
+that each Windows program imports only system DLLs (the exe also `OpenAL32.dll`), that `meta.json` names the commit
+built and that the APK packages all three ABIs and is signed with the key the job made; and uploads each platform's
+release archive, the APK (`<game>-<version>-android-test.apk`, `assembleRelease` signed with that throwaway key: it
+cannot update an installed release) and the web build for 7 days. The version is `package.py version`'s. A push to
+`main` or `feat/v436-compat` also replaces the branch's rolling release (`latest`, `latest-feat-v436-compat`) with
+those files and the packer's notes. CI does not run the game, and it makes no versioned release.
+
 ## Test tools
 
 | Tool | What it does |
