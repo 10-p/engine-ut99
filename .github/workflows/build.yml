@@ -1,10 +1,15 @@
 name: build
 
-# CI for the engine build matrix: builds native, windows and wasm on every push and pull request, uploads the
-# binaries as workflow artifacts, and keeps the newest build of a tracked branch in a rolling `latest` release.
+# CI for the engine build matrix: on every push and pull request it builds every release platform (Linux x86 and
+# x86_64, Windows x86 and x86_64, Android), the web artifact, and checks the generated inis. Each desktop job packs
+# its build into the release's own archive with the vendored packer (vendor/release/package.py, the game's data in
+# release/release.json, which picks v400 or v436 by ENGINE_VERSION): System/ with the client, the UCC, the bundled
+# OpenAL library and the default inis, and README.txt, named <game>-<version>-<platform>, exactly as the versioned
+# releases name theirs. The archives are workflow artifacts; the newest build of a tracked branch is also kept as
+# its rolling `latest` release. The versioned releases are made outside CI.
 #
 # It does not run the game (the web E2E suite needs a GPU, which a hosted runner lacks): it proves every target
-# builds, that the Windows exe is self-contained and that the web artifact's provenance is right.
+# builds, that the Windows programs are self-contained and that the web artifact's provenance is right.
 
 on:
   push:
@@ -15,8 +20,57 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # The version every archive of the run is named with: X.Y.Z on a release tag (v1.2.0, v1.2.0-v436), else
+  # `git describe` from the newest release tag (1.2.0-14-g54485b0). The describe needs the tags: the whole
+  # history, blobless.
+  version:
+    name: version
+    runs-on: ubuntu-24.04
+    outputs:
+      version: ${{ steps.v.outputs.version }}
+      game: ${{ steps.v.outputs.game }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          filter: blob:none
+
+      - name: Version and game
+        id: v
+        run: |
+          set -euo pipefail
+          version=$(python3 vendor/release/package.py version)
+          game=$(python3 vendor/release/package.py game)
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "game=$game" >> "$GITHUB_OUTPUT"
+          echo "$game $version"
+
+  # The generated inis are what their generators write, and the release data names files that exist.
+  inis:
+    name: inis and release data
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Check the generated inis
+        run: |
+          set -uo pipefail
+          shopt -s nullglob
+          rc=0; n=0
+          for s in tools/dev/sync-*ini.py; do
+            echo "== $s --check"
+            python3 "$s" --check || rc=1
+            n=$((n + 1))
+          done
+          [ "$n" -gt 0 ] || { echo "::error::no tools/dev/sync-*ini.py to run"; exit 1; }
+          exit $rc
+
+      - name: Check the release data
+        run: python3 vendor/release/package.py check
+
   linux:
-    name: linux (32-bit, one static binary)
+    name: linux ${{ matrix.platform }} (one static binary)
+    needs: version
     runs-on: ubuntu-24.04
     # A container, not the bare runner: the runner image's preinstalled amd64 -dev packages make
     # `libsdl2-dev:i386` uninstallable (libglib2.0-dev-bin is Multi-Arch: foreign). A stock ubuntu:24.04
@@ -26,88 +80,89 @@ jobs:
     defaults:
       run:
         shell: bash
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          # The 32-bit build (-m32) links the :i386 dev packages; the 64-bit one the native ones.
+          - preset: native
+            platform: linux-x86
+            packages: gcc-multilib g++-multilib libsdl2-dev:i386 libopenal-dev:i386
+          - preset: native64
+            platform: linux-x86_64
+            packages: libsdl2-dev libopenal-dev
     steps:
-      # The image is bare: even git has to be installed before checkout can use it.
+      # The image is bare: even git has to be installed before checkout can use it; python3 runs the packer.
       - name: Base tools
         run: |
           apt-get update
           apt-get install -y --no-install-recommends \
-            git ca-certificates cmake make g++ pkg-config
+            git ca-certificates cmake make g++ pkg-config python3
 
       - uses: actions/checkout@v4
 
-      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
-      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
-      - name: Identify the engine variant
-        id: variant
-        run: |
-          set -euo pipefail
-          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
-          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Engine variant: v$v"
-
-      # The engine is a 32-bit build (-m32), so every dev package it links has to be the :i386 one.
-      - name: Install the 32-bit toolchain
+      - name: Install the build dependencies
         run: |
           dpkg --add-architecture i386
           apt-get update
-          apt-get install -y --no-install-recommends \
-            gcc-multilib g++-multilib libsdl2-dev:i386 libopenal-dev:i386
+          apt-get install -y --no-install-recommends ${{ matrix.packages }}
 
       # FetchContent clones into the build dir, so cache that rather than a home directory. Keyed on the
       # files that decide what is fetched — a pin bump invalidates it, an unrelated source edit does not.
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
-          path: build-native/_deps
-          key: deps-native-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
+          path: build-${{ matrix.preset }}/_deps
+          key: deps-${{ matrix.preset }}-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
 
       - name: Configure
-        run: cmake --preset native
+        run: cmake --preset ${{ matrix.preset }}
         working-directory: Source
 
       - name: Build
-        run: cmake --build --preset native -j$(nproc)
+        run: cmake --build --preset ${{ matrix.preset }} -j$(nproc)
         working-directory: Source
 
       - name: Check it really is one binary
         run: |
-          test -x build-native/UnrealTournament/UnrealTournament
-          test -x build-native/UCC/ucc-bin   # the command-line tool (dedicated server / commandlets)
+          test -x build-${{ matrix.preset }}/UnrealTournament/UnrealTournament
+          test -x build-${{ matrix.preset }}/UCC/ucc-bin   # the command-line tool (dedicated server / commandlets)
           # BUILD_STATIC means no engine packages beside the executable; system libraries (SDL2, libGL,
-          # libc) stay dynamic.
-          if ls build-native/*/*.so >/dev/null 2>&1; then
+          # libc) and the bundled libopenal.so.1 stay dynamic.
+          if ls build-${{ matrix.preset }}/*/*.so >/dev/null 2>&1; then
             echo "::error::engine .so modules were produced — BUILD_STATIC is not in effect"; exit 1
           fi
 
+      # The release archive: System/ (the client, ucc-bin, the libopenal.so.1 the client loads from its own
+      # directory, Default.ini and DefUser.ini) and README.txt.
+      - name: Pack the release archive
+        run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-${{ steps.variant.outputs.version }}-linux
-          path: |
-            build-native/UnrealTournament/UnrealTournament
-            build-native/UCC/ucc-bin
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+          path: out/
           if-no-files-found: error
           # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
           # newest build stays downloadable through the `latest` job at the end of this file.
           retention-days: 7
 
   windows:
-    name: windows (MinGW-w64 cross, one self-contained .exe)
+    name: windows ${{ matrix.platform }} (MinGW-w64 cross, one self-contained .exe)
+    needs: version
     runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - preset: windows
+            platform: windows-x86
+            objdump: i686-w64-mingw32-objdump
+          - preset: windows64
+            platform: windows-x86_64
+            objdump: x86_64-w64-mingw32-objdump
     steps:
       - uses: actions/checkout@v4
-
-      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
-      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
-      - name: Identify the engine variant
-        id: variant
-        run: |
-          set -euo pipefail
-          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
-          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Engine variant: v$v"
 
       - name: Install MinGW-w64
         run: |
@@ -117,15 +172,15 @@ jobs:
       - name: Cache fetched dependencies
         uses: actions/cache@v4
         with:
-          path: build-windows/_deps
-          key: deps-windows-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
+          path: build-${{ matrix.preset }}/_deps
+          key: deps-${{ matrix.preset }}-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
 
       - name: Configure
-        run: cmake --preset windows
+        run: cmake --preset ${{ matrix.preset }}
         working-directory: Source
 
       - name: Build
-        run: cmake --build --preset windows -j$(nproc)
+        run: cmake --build --preset ${{ matrix.preset }} -j$(nproc)
         working-directory: Source
 
       # The exe must import only system DLLs (without -static-libgcc / -static-libstdc++ it would need
@@ -133,30 +188,31 @@ jobs:
       - name: Assert the exe imports nothing but system DLLs
         run: |
           set -euo pipefail
-          imports=$(i686-w64-mingw32-objdump -p build-windows/UnrealTournament/UnrealTournament.exe \
+          imports=$(${{ matrix.objdump }} -p build-${{ matrix.preset }}/UnrealTournament/UnrealTournament.exe \
                     | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
           # OpenAL32.dll is the one library this build ships beside the exe (Source/cmake/OpenALMingw.cmake).
           bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|OPENGL32|OpenAL32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
-          test -f build-windows/UnrealTournament/OpenAL32.dll
+          test -f build-${{ matrix.preset }}/UnrealTournament/OpenAL32.dll
 
       # ucc.exe, the console tool, needs no DLL beside it: system DLLs only.
       - name: Assert ucc.exe imports nothing but system DLLs
         run: |
           set -euo pipefail
-          imports=$(i686-w64-mingw32-objdump -p build-windows/UCC/ucc.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
+          imports=$(${{ matrix.objdump }} -p build-${{ matrix.preset }}/UCC/ucc.exe | sed -n 's/^\tDLL Name: //p' | sort -u)
           echo "$imports"
           bad=$(echo "$imports" | grep -viE '^(ADVAPI32|GDI32|IMM32|KERNEL32|msvcrt|ole32|OLEAUT32|SETUPAPI|SHELL32|USER32|VERSION|WINMM|WS2_32)\.dll$' || true)
           if [ -n "$bad" ]; then echo "::error::non-system DLL imports: $bad"; exit 1; fi
 
+      # The release archive: System/ (the exe, OpenAL32.dll, ucc.exe, Default.ini and DefUser.ini) and README.txt.
+      - name: Pack the release archive
+        run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
+
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-${{ steps.variant.outputs.version }}-windows
-          path: |
-            build-windows/UnrealTournament/UnrealTournament.exe
-            build-windows/UnrealTournament/OpenAL32.dll
-            build-windows/UCC/ucc.exe
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
+          path: out/
           if-no-files-found: error
           # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
           # newest build stays downloadable through the `latest` job at the end of this file.
@@ -164,20 +220,10 @@ jobs:
 
   web:
     name: web (Emscripten)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
-
-      # The engine variant comes from the source (ENGINE_VERSION in UnObjVer.h), not from the branch name.
-      # `tail -1`: on the 436 branch the define sits inside an #ifndef.
-      - name: Identify the engine variant
-        id: variant
-        run: |
-          set -euo pipefail
-          v=$(sed -n 's/^#define ENGINE_VERSION[[:space:]]\+\([0-9]\+\).*/\1/p' Source/Core/Inc/UnObjVer.h | tail -1)
-          test -n "$v" || { echo "::error::could not read ENGINE_VERSION from Source/Core/Inc/UnObjVer.h"; exit 1; }
-          echo "version=$v" >> "$GITHUB_OUTPUT"
-          echo "Engine variant: v$v"
 
       # emsdk must be on PATH before cmake configures (emcc is probed then); the preset's toolchain
       # file also reads $EMSDK.
@@ -216,25 +262,14 @@ jobs:
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-${{ steps.variant.outputs.version }}-web
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-web
           path: build-wasm/SDLLaunch/
           if-no-files-found: error
-          # Seven days keeps the artifact storage under its quota (the default 90 days fills it); the
-          # newest build stays downloadable through the `latest` job at the end of this file.
           retention-days: 7
 
-  # ---------------------------------------------------------------------------
-  # The rolling "latest" release: the newest build of a tracked branch, kept until
-  # the next one replaces it. Artifacts expire by age only; release assets do not.
-  #
-  # Delete-then-create: a rolling tag has to move, and `gh release edit --target`
-  # does not move a published release's tag; recreating it also drops assets that
-  # are no longer produced.
-  #
-  # `permissions: contents: write` is required: the default workflow token is
-  # read-only.
   android:
-    name: android (arm64 + arm32 APK)
+    name: android (release APK, test key)
+    needs: version
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4
@@ -259,28 +294,60 @@ jobs:
           sdkmanager --install "ndk;28.2.13676358" "cmake;4.1.2" >/dev/null
           printf 'sdk.dir=%s\nndk.dir=%s/ndk/28.2.13676358\n' "$ANDROID_HOME" "$ANDROID_HOME" > Android/local.properties
 
-      # The Gradle project's ABI set (armeabi-v7a, arm64-v8a, x86_64).
-      - name: Build the APK
-        run: ./gradlew assembleDebug --console=plain
-        working-directory: Android
-
-      - name: Assert both ABIs are packaged
+      # The release variant, signed with a key made here and dropped with the runner (UE_ANDROID_SIGNING, as
+      # app/build.gradle reads it): a test APK that cannot update an installed release, which our release key
+      # signs outside CI.
+      - name: Make a throwaway signing key
         run: |
           set -euo pipefail
-          apk=Android/app/build/outputs/apk/debug/app-debug.apk
-          unzip -l "$apk" | grep -q "lib/arm64-v8a/libUT99.so" || { echo "::error::missing arm64-v8a"; exit 1; }
-          unzip -l "$apk" | grep -q "lib/armeabi-v7a/libUT99.so" || { echo "::error::missing armeabi-v7a"; exit 1; }
+          pw=$(openssl rand -hex 16)
+          echo "::add-mask::$pw"
+          keytool -genkeypair -keystore "$RUNNER_TEMP/test.jks" -storepass "$pw" -keypass "$pw" -alias test \
+            -keyalg RSA -keysize 2048 -validity 3650 -dname "CN=Test build" >/dev/null
+          printf 'storeFile=%s\nstorePassword=%s\nkeyAlias=test\nkeyPassword=%s\n' "$RUNNER_TEMP/test.jks" "$pw" "$pw" \
+            > "$RUNNER_TEMP/test-signing.properties"
+          echo "UE_ANDROID_SIGNING=$RUNNER_TEMP/test-signing.properties" >> "$GITHUB_ENV"
+
+      # The Gradle project's ABI set (armeabi-v7a, arm64-v8a, x86_64).
+      - name: Build the APK
+        run: ./gradlew assembleRelease --console=plain
+        working-directory: Android
+
+      # Every ABI must be in there, and the signature must be the test key's, not the debug key's.
+      - name: Assert every ABI is packaged and the test key signs it
+        run: |
+          set -euo pipefail
+          apk=$(ls Android/app/build/outputs/apk/release/*.apk)
+          for abi in armeabi-v7a arm64-v8a x86_64; do
+            unzip -l "$apk" | grep -q "lib/$abi/libUT99.so" || { echo "::error::missing $abi"; exit 1; }
+          done
+          apksigner=$(ls "$ANDROID_HOME"/build-tools/*/apksigner | sort -V | tail -1)
+          "$apksigner" verify --print-certs "$apk" | tee "$RUNNER_TEMP/certs.txt"
+          grep -q 'CN=Test build' "$RUNNER_TEMP/certs.txt" || { echo "::error::the APK is not signed with the test key"; exit 1; }
+
+      - name: Name the APK
+        run: python3 vendor/release/package.py archive android --version "${{ needs.version.outputs.version }}" --out out
 
       - uses: actions/upload-artifact@v4
         with:
-          name: ut99-android
-          path: Android/app/build/outputs/apk/debug/app-debug.apk
+          name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-android-test
+          path: out/
           if-no-files-found: error
           retention-days: 7
 
+  # ---------------------------------------------------------------------------
+  # The rolling "latest" release: the newest build of a tracked branch, kept until
+  # the next one replaces it. Artifacts expire by age only; release assets do not.
+  #
+  # Delete-then-create: a rolling tag has to move, and `gh release edit --target`
+  # does not move a published release's tag; recreating it also drops assets that
+  # are no longer produced.
+  #
+  # `permissions: contents: write` is required: the default workflow token is
+  # read-only.
   latest:
     name: rolling "latest" release
-    needs: [linux, windows, web, android]
+    needs: [version, inis, linux, windows, web, android]
     if: github.event_name == 'push' && (github.ref_name == 'main' || github.ref_name == 'feat/v436-compat')
     runs-on: ubuntu-24.04
     permissions:
@@ -288,30 +355,36 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # Every artifact this run produced, each in its own directory named after it.
+      # This run's archives, each artifact in its own directory named after it.
       - uses: actions/download-artifact@v4
         with:
           path: artifacts
+          pattern: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-*
 
-      - name: Pack one zip per build
+      # An archive artifact holds its one file, published as it is; the web artifact is a folder, published as
+      # <name>.zip.
+      - name: Collect the release assets
         run: |
           set -euo pipefail
           mkdir -p out
           shopt -s nullglob
-          n=0
           for d in artifacts/*/; do
             name=$(basename "$d")
-            ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
-            n=$((n + 1))
+            files=("$d"*)
+            if [ ${#files[@]} -eq 1 ] && [ -f "${files[0]}" ] && [[ $(basename "${files[0]}") == "$name".* ]]; then
+              mv "${files[0]}" out/
+            else
+              ( cd "$d" && zip -qr "$GITHUB_WORKSPACE/out/$name.zip" . )
+            fi
           done
           # A release that publishes nothing fails the job.
-          [ "$n" -gt 0 ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
-          echo "packed $n build(s):"
+          [ -n "$(ls out)" ] || { echo "::error::no artifacts were downloaded — nothing to publish"; exit 1; }
           ls -la out/
 
       - name: Publish (replacing the previous one)
         env:
           GH_TOKEN: ${{ github.token }}
+          VERSION: ${{ needs.version.outputs.version }}
         run: |
           set -euo pipefail
           # One rolling tag per tracked branch, so branches cannot overwrite each
@@ -322,16 +395,21 @@ jobs:
             tag="latest-$(echo "$GITHUB_REF_NAME" | tr '/' '-')"
           fi
           echo "tag: $tag"
-          gh release delete "$tag" --yes --cleanup-tag || true
-          gh release create "$tag" out/*.zip \
-            --target "$GITHUB_SHA" \
-            --prerelease \
-            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
-            --notes "$(printf '%s\n' \
-              "The newest UT99 engine build of \`$GITHUB_REF_NAME\`, rebuilt and replaced on every push." \
+          {
+            printf '%s\n' \
+              "The newest build of \`$GITHUB_REF_NAME\`, $VERSION, rebuilt and replaced on every push: a development build, not a release." \
               "" \
               "Commit: \`$GITHUB_SHA\`" \
               "Built: $(date -u '+%Y-%m-%d %H:%M UTC')" \
               "Run: $GITHUB_SERVER_URL/$GITHUB_REPOSITORY/actions/runs/$GITHUB_RUN_ID" \
               "" \
-              "These assets do not expire. The per-push artifacts on the run page do, after 7 days.")"
+              "These assets do not expire. The per-push artifacts on the run page do, after 7 days." \
+              ""
+            python3 vendor/release/package.py notes --version "$VERSION" --glibc-from out/*.tar.gz
+          } > "$RUNNER_TEMP/notes.md"
+          gh release delete "$tag" --yes --cleanup-tag || true
+          gh release create "$tag" out/* \
+            --target "$GITHUB_SHA" \
+            --prerelease \
+            --title "$tag — $(git log -1 --format=%s | cut -c1-72)" \
+            --notes-file "$RUNNER_TEMP/notes.md"
