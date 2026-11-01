@@ -7,7 +7,8 @@ a player's first boot. The frontend leaves the asset install's copies of all fou
 when the web config changes, never an asset tree.
 
 `Default.ini` keeps the retail subsystem names (`WinDrv.WindowsClient`, `Galaxy.GalaxyAudioSubsystem`,
-`IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). On top of the
+`IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). It names
+XOpenGL as the render device (`GameRenderDevice`, `WindowedRenderDevice`, `RenderDevice`). On top of the
 retail file it carries `[WebRTCDrv.WebRTCNetDriver]`, `[XOpenGLDrv.XOpenGLRenderDevice]`,
 `[NOpenGLESDrv.NOpenGLESRenderDevice]`, `[NOpenALDrv.NOpenALAudioSubsystem]`, `[NullDrv.NullRenderDevice]`,
 `[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`, and the community master servers in `[Engine.GameEngine]` and
