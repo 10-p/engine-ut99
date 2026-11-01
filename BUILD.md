@@ -120,6 +120,12 @@ system and the network transport at run time.
 
 ## Run time
 
+- **Default inis.** The engine derives `UnrealTournament.ini` and `User.ini` from `Default.ini` and `DefUser.ini` when
+  they are missing. `Config/System/web/` holds the web pair; `tools/dev/sync-native-ini.py` writes the native pair,
+  `Config/System/native/{Default,DefUser}.ini`, from it with the deltas the script lists (antialiasing off, the TCP
+  driver's 120 ticks and client rate, the renderers' compiled defaults for the WebGL keys; `--check` verifies them).
+  The native release archives ship the native pair in `System/`. `Config/System/*.ini` is ut99dc's Dreamcast config,
+  which no build installs.
 - **Subsystems.** Before `Engine->Init()` the launcher replaces a viewport client, audio subsystem or net driver
   the ini names but the build lacks (the retail `WinDrv.WindowsClient`, `Galaxy.GalaxyAudioSubsystem`) with the first
   present one of its list, and logs it; on the web a stock `IpDrv.TcpNetDriver` becomes `WebRTCDrv.WebRTCNetDriver`.
@@ -165,10 +171,10 @@ system and the network transport at run time.
   the pad at once (`NSDLClient: game pads on|off (UseJoystick)`); the first pad connected is used, with hot-plug
   (`NSDLClient: game pad connected: <name>`). Sticks and triggers are read from the pad's state every tick. On the web
   the press that made the browser list the pad is read from `navigator.getGamepads()` at the connect and given to the
-  game as a tap. The pad's buttons are the `Joy` keys, and `Config/System/web/DefUser.ini` binds them to Unreal 1's
+  game as a tap. The pad's buttons are the `Joy` keys, and `DefUser.ini` (web, native and Android) binds them to Unreal 1's
   pad layout: Back (`Joy5`) shows the scores, Start (`Joy7`) opens UWindow with `MenuCmd 0 -1` (UT99 has no menu for
   `ShowMenu`, which would only pause the game). The stick scales `ScaleXYZ`/`ScaleRUV` default to Unreal 1's 100/100,
-  which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web and Android inis set 200/500 for
+  which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web, native and Android inis set 200/500 for
   `DefUser.ini`'s speed 1. In play the left stick is the move stick: its dead zone (`DeadZoneXYZ`, 0.1) is radial, so
   every direction between the axes keeps both of its parts, and a tilt out of it but below
   `[NSDLDrv.NSDLClient] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks, as the Walking button does: the stick keeps a bit of its own set in the player's
