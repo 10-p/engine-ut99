@@ -52,6 +52,10 @@ commit a general change directly to it. Keep general and v436-specific work in s
   version 2. Only these thin forwarders and `Source/UnrealTournament/msaa-backbuffer.js` are baked into the wasm;
   the transport, the file system and storage are injected by the host at run time. A change to the ABI is a
   cross-engine change owned by the frontend: re-vendor, never edit here.
+- **Release archives:** `vendor/release/package.py` packs them, in CI and for a versioned release, from the game
+  data in `release/release.json`, which serves both branches (it picks `ut99` or `ut99-v436` by `ENGINE_VERSION`;
+  BUILD.md, "Release archives"). The packer is vendored from the frontend (`packages/build/engine-release/`):
+  re-vendor, never edit here.
 - **The log reaches stdout on every build** (`Core/Inc/FOutputDeviceFile.h`, the same lines as the log file); the
   frontend's E2E reads engine milestones from the browser console. Do not remove it, and do not reword a log line
   the frontend matches (grep `packages/e2e` and `targets/` in the frontend first).

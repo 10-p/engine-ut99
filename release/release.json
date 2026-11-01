@@ -1,0 +1,59 @@
+{
+  "variant": {
+    "file": "Source/Core/Inc/UnObjVer.h",
+    "pattern": "^#define ENGINE_VERSION[ \\t]+([0-9]+)",
+    "match": "last"
+  },
+  "tagSuffixes": ["v436"],
+  "common": {
+    "androidVersion": "7.0",
+    "linuxLibraries": "SDL2 and OpenGL",
+    "linuxPackages32": "libsdl2-2.0-0:i386 libgl1:i386",
+    "server": "DM-Deck16][?game=Botpack.DeathMatchPlus",
+    "inis": ["Config/System/native/Default.ini", "Config/System/native/DefUser.ini"],
+    "liveInis": ["UnrealTournament.ini", "User.ini"],
+    "apk": "Android/app/build/outputs/apk/release",
+    "platforms": {
+      "linux-x86": {
+        "build": "build-native",
+        "client": "UnrealTournament/UnrealTournament",
+        "ucc": "UCC/ucc-bin",
+        "files": ["UnrealTournament/libopenal.so.1"]
+      },
+      "linux-x86_64": {
+        "build": "build-native64",
+        "client": "UnrealTournament/UnrealTournament",
+        "ucc": "UCC/ucc-bin",
+        "files": ["UnrealTournament/libopenal.so.1"]
+      },
+      "windows-x86": {
+        "build": "build-windows",
+        "client": "UnrealTournament/UnrealTournament.exe",
+        "ucc": "UCC/ucc.exe",
+        "files": ["UnrealTournament/OpenAL32.dll"]
+      },
+      "windows-x86_64": {
+        "build": "build-windows64",
+        "client": "UnrealTournament/UnrealTournament.exe",
+        "ucc": "UCC/ucc.exe",
+        "files": ["UnrealTournament/OpenAL32.dll"]
+      }
+    }
+  },
+  "games": [
+    {
+      "id": "ut99",
+      "variant": "400",
+      "title": "Unreal Tournament (v400)",
+      "gameFiles": "Unreal Tournament with the version 400 patch",
+      "androidFolder": "UT99"
+    },
+    {
+      "id": "ut99-v436",
+      "variant": "436",
+      "title": "Unreal Tournament (v436)",
+      "gameFiles": "Unreal Tournament with the version 436 patch",
+      "androidFolder": "UT99-436"
+    }
+  ]
+}
