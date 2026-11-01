@@ -158,8 +158,8 @@ system and the network transport at run time.
   (333networks, errorist, oldunreal, gonespy, noccer, openspy, hypercoop).
 - **Render device.** `-XOPENGLRENDERER`, `-UTGLRRENDERER`, `-NOPENGLESRENDERER`, `-SOFTWARERENDERER`,
   `-NULLRENDERER` select a device; without a switch the persisted device is kept when it is a hardware default or the
-  user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order
-  (on Android NOpenGLES, then XOpenGL). A switch whose device survives Init is persisted.
+  user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES in that order. The
+  web, native and Android `Default.ini` name XOpenGL. A switch whose device survives Init is persisted.
 - **Software fallback.** A render device that cannot start (a window or GL context the driver cannot give, no WebGL
   context in the browser, or a failed Init) gives way to SoftDrv for the rest of the run, in a window without GL:
   `Render device <device> cannot start: falling back to SoftDrv.SoftwareRenderDevice for this run`, once.
@@ -331,10 +331,11 @@ before SDL starts `SDL_main`, and the launcher (`MainActivity`) chooses which fo
   which Android scales to the screen; the engine sees the scaled size as its window. SDL's surface view
   (`FrameSurface`) scales every touch and mouse position from the screen to that buffer before SDL reads it, so a
   tap lands where it is drawn at every scale.
-- The launcher's renderer selection, at the bottom of its page (the game's choice, then NOpenGLES, XOpenGL, UTGLR
-  and Software; Null for debugging), adds that render device's `-*RENDERER` switch after any command line the
-  launcher was started with. UTGLR draws through gl4es on an OpenGL ES 2 context. The game keeps the device it last
-  started with, also under "The game's choice": a device whose GPU draws the default wrong is switched once.
+- The launcher's renderer selection, at the bottom of its page (the game's choice, then XOpenGL, NOpenGLES, UTGLR
+  and Software; Null for debugging; XOpenGL until the player picks another), adds that render device's `-*RENDERER`
+  switch after any command line the launcher was started with. UTGLR draws through gl4es on an OpenGL ES 2 context.
+  The game keeps the device it last started with, also under "The game's choice": a device whose GPU draws the
+  default wrong is switched once.
 - gl4es, UTGLR's GL layer, starts without a precompiled-shader archive (`LIBGL_NOPSA`: nothing is written into the
   home folder), and on the Android emulator (`ro.kernel.qemu` 1, or `ro.hardware` goldfish or ranchu) with
   `LIBGL_NOBGRA`, so gl4es swizzles BGRA uploads itself (`OpenGLDrv: Android emulator detected -> LIBGL_NOBGRA=1` in

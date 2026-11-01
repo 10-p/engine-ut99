@@ -73,8 +73,9 @@ side misses. General and v436-specific work stay in separate commits so a merge 
   release archives ship in `System/`) and the Android pair are generated from it (`tools/dev/sync-native-ini.py`,
   `tools/dev/sync-android-ini.py`, each with `--check`). `Config/System/*.ini` is ut99dc's Dreamcast config.
 - **Render device at startup:** a `-*RENDERER` switch, else the persisted choice when it is a hardware default or
-  the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES (on Android
-  NOpenGLES, then XOpenGL).
+  the user's marked pick (`[Engine.Engine] ufrontUserRenderDevice`), else XOpenGL, UTGLR, NOpenGLES, on every
+  target. Every default ini names XOpenGL, and the Android launcher passes `-XOPENGLRENDERER` until the player
+  picks another.
 
 ## This branch: v436 compatibility
 - **Version.** `Core/Inc/UnObjVer.h`: `ENGINE_VERSION` 436 (behind `#ifndef`, so a translation unit may override it),
