@@ -7,7 +7,8 @@ a player's first boot. The frontend leaves the asset install's copies of all fou
 when the web config changes, never an asset tree.
 
 `Default.ini` keeps the retail subsystem names (`WinDrv.WindowsClient`, `Galaxy.GalaxyAudioSubsystem`,
-`IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). On top of the
+`IpDrv.TcpNetDriver`); the launcher replaces each with the one the build has (`BUILD.md`, Run time). It names
+XOpenGL as the render device (`GameRenderDevice`, `WindowedRenderDevice`, `RenderDevice`). On top of the
 retail file it carries `[WebRTCDrv.WebRTCNetDriver]`, `[ProxyNetDrv.ProxyNetDriver]`,
 `[XOpenGLDrv.XOpenGLRenderDevice]`, `[NOpenGLESDrv.NOpenGLESRenderDevice]`, `[NOpenALDrv.NOpenALAudioSubsystem]`,
 `[NullDrv.NullRenderDevice]`, `[NSDLDrv.NSDLClient]` and `[ufront.AutoFOV]`, the net drivers' `DownloadManagers`, and
@@ -18,5 +19,8 @@ shows it). `DefUser.ini` adds the game-pad bindings (Unreal 1's layout) and `[En
 bMaxMouseSmoothing=False`: the view stops on the frame the mouse stops (the script's default keeps turning for up to
 `MouseSmoothThreshold` after it).
 
-`../*.ini` is ut99dc's Dreamcast config (with the same master-server lists and `DownloadManagers`); no build preloads
-or installs it.
+`../native/` is the native pair, which the native release archives ship in `System/`, and `../android/` the
+Android pair: `tools/dev/sync-native-ini.py` and `tools/dev/sync-android-ini.py` write them from this folder with the
+deltas each script lists (`--check` verifies them), so a change here reaches them by running the scripts, never by
+editing them. `../*.ini` is ut99dc's Dreamcast config (with the same master-server lists and `DownloadManagers`); no
+build preloads or installs it.
