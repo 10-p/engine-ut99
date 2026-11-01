@@ -93,6 +93,14 @@ DELTAS = [
     # NOpenGLES: antialiasing off; the vertex arrays and texture format take the driver's compiled defaults.
     ("set", "Default.ini", NOPENGLES, "NumAASamples", "4", "0"),
     ("drop", "Default.ini", NOPENGLES, "UseVAO=False", "UseBGRA=True"),
+    # v436: the retail download managers on the TCP driver (a redirect, then the game connection) with the redirect's
+    # section, and the retail team balancing; the web's proxy driver section goes.
+    ("add", "Default.ini", "IpDrv.TcpNetDriver", None,
+     "DownloadManagers=IpDrv.HTTPDownload", "DownloadManagers=Engine.ChannelDownload"),
+    ("add-section", "Default.ini", "Engine.DemoRecDriver",
+     ["[IpDrv.HTTPDownload]", "RedirectToURL=", "ProxyServerHost=", "ProxyServerPort=3128", "UseCompression=True"]),
+    ("drop-section", "Default.ini", "ProxyNetDrv.ProxyNetDriver"),
+    ("add", "Default.ini", "Botpack.TeamGamePlus", None, "bPlayersBalanceTeams=True"),
 ]
 
 HEADER = re.compile(r"\[(.+)\]\s*$")
