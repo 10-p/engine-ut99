@@ -2483,6 +2483,14 @@ void UObject::ResetLoaders( UObject* Pkg, UBOOL DynamicOnly, UBOOL ForceLazyLoad
 	File saving.
 -----------------------------------------------------------------------------*/
 
+// Reverses the entries one step of an explicit-stack walk pushed, so the first of them is visited first, as a
+// recursive walk visits them.
+template< class T > static void ReversePushed( TArray<T>& Stack, INT First )
+{
+	for( INT i=First, j=Stack.Num()-1; i<j; i++, j-- )
+		Exchange( Stack(i), Stack(j) );
+}
+
 //
 // Archive for tagging objects and names that must be exported
 // to the file.  It tags the objects passed to it, and recursively
@@ -2493,6 +2501,7 @@ class FArchiveSaveTagExports : public FArchive
 public:
 	FArchiveSaveTagExports( UObject* InOuter )
 	: Parent(InOuter)
+	, Walking(0)
 	{
 		ArIsSaving = ArIsPersistent = 1;
 	}
@@ -2502,26 +2511,69 @@ public:
 		// v436: a pending-kill object is reported and not exported.
 		if( Obj && Obj->IsPendingKill() )
 			debugf( NAME_Warning, TEXT("trying to archive deleted object: %s"), Obj->GetName() );
+		// The visit is deferred to Walk, which keeps the stack flat however long the reference chains are.
 		if( Obj && !Obj->IsPendingKill() && Obj->IsIn(Parent) && !(Obj->GetFlags() & (RF_Transient|RF_TagExp)) )
 		{
-			// Set flags.
-			Obj->SetFlags(RF_TagExp);
-			if( !(Obj->GetFlags() & RF_NotForEdit  ) ) Obj->SetFlags(RF_LoadForEdit);
-			if( !(Obj->GetFlags() & RF_NotForClient) ) Obj->SetFlags(RF_LoadForClient);
-			if( !(Obj->GetFlags() & RF_NotForServer) ) Obj->SetFlags(RF_LoadForServer);
-
-			// Recurse with this object's class and package.
-			UClass*  Class  = Obj->GetClass();
-			UObject* Parent = Obj->GetOuter();
-			*this << Class << Parent;
-
-			// Recurse with this object's children.
-			Obj->Serialize( *this );
+			FPendingVisit& Visit = Pending(Pending.Add());
+			Visit.Obj       = Obj;
+			Visit.Serialize = 0;
+			if( !Walking )
+				Walk();
 		}
 		return *this;
 		unguard;
 	}
 	UObject* Parent;
+private:
+	// An object to tag or, with Serialize set, a tagged object whose own references are visited next.
+	struct FPendingVisit
+	{
+		UObject* Obj;
+		UBOOL    Serialize;
+	};
+	// Depth-first walk with an explicit stack, in the order of a recursive walk: a reached object is tagged, then
+	// its class and its package are visited, then the objects its Serialize finds, each before the next.
+	void Walk()
+	{
+		guard(FArchiveSaveTagExports::Walk);
+		Walking = 1;
+		while( Pending.Num() )
+		{
+			FPendingVisit Visit = Pending(Pending.Num()-1);
+			Pending.Remove( Pending.Num()-1 );
+			UObject* Obj = Visit.Obj;
+			INT First = Pending.Num();
+			if( Visit.Serialize )
+			{
+				// Recurse with this object's children.
+				Obj->Serialize( *this );
+				ReversePushed( Pending, First );
+			}
+			else if( Obj->IsIn(Parent) && !(Obj->GetFlags() & (RF_Transient|RF_TagExp)) )
+			{
+				// Set flags.
+				Obj->SetFlags(RF_TagExp);
+				if( !(Obj->GetFlags() & RF_NotForEdit  ) ) Obj->SetFlags(RF_LoadForEdit);
+				if( !(Obj->GetFlags() & RF_NotForClient) ) Obj->SetFlags(RF_LoadForClient);
+				if( !(Obj->GetFlags() & RF_NotForServer) ) Obj->SetFlags(RF_LoadForServer);
+
+				FPendingVisit& Children = Pending(Pending.Add());
+				Children.Obj       = Obj;
+				Children.Serialize = 1;
+				First = Pending.Num();
+
+				// Recurse with this object's class and package.
+				UClass*  Class  = Obj->GetClass();
+				UObject* Parent = Obj->GetOuter();
+				*this << Class << Parent;
+				ReversePushed( Pending, First );
+			}
+		}
+		Walking = 0;
+		unguard;
+	}
+	TArray<FPendingVisit> Pending;
+	UBOOL Walking;
 };
 
 //
