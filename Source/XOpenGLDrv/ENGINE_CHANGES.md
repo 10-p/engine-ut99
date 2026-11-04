@@ -66,3 +66,12 @@ context has `GL_EXT_texture_compression_astc_decode_mode`; ETC2 keeps the size b
 sub-block, which shows on dark, low-contrast surfaces. The ASTC encoder (`Src/ASTCEncoder.cpp`) shares a texture of
 256x256 and up among one thread a core, up to 8; it is the slower of the two encoders, most without SIMD (32-bit
 ARM, wasm). `Init` logs the choice (`XOpenGL: no S3TC: DXT1 textures ...`).
+
+## Lightmap filter
+
+`UseBicubicLightmaps` in `[XOpenGLDrv.XOpenGLRenderDevice]` is read at start-up and is True when the key is absent; no
+shipped ini sets it. True: the BSP shader samples each lightmap with a cubic B-spline filter built from four bilinear
+taps over the lightmap's written texels (`UClamp` x `VClamp` of its power-of-two texture), so static lighting shows no
+texel lattice; False: one bilinear tap. With `NoFiltering` lightmaps are unfiltered either way. `Init` logs the filter
+in use, `XOpenGL: lightmap filter bicubic|bilinear|unfiltered (UseBicubicLightmaps=True|False)`. Light and fog maps
+clamp to their edge (on their sampler objects). The same code runs on every build: native, Windows, Android and web.
