@@ -111,9 +111,10 @@ system and the network transport at run time.
   `-fexceptions`), so loading fails soft there: `GetPackageLinker`, `StaticLoadObject`, `SafeLoadError`, a missing
   nested import and `LoadMap` resolve to NULL or a failed join, and a bad startup map falls back to the menu.
   `appThrowf` writes `[appThrowf] <reason>` to stdout on every build.
-- **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`) is vendored from the frontend at ABI
-  version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*` imports; the engine
-  exports `ue_exec_command`, which runs a console command and returns its output.
+- **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`, `webgl-shim.js`) is vendored from the
+  frontend at ABI version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*`
+  imports; the engine exports `ue_exec_command`, which runs a console command and returns its output.
+  `webgl-shim.js` replaces Emscripten's canvas resize with one that survives a lost WebGL context.
 - **`meta.json`** records the ABI version, the target, the git commit and build time, the Emscripten version, the
   link flags and every fetched library as `<repo>@<branch|tag>` (a local checkout as `local:<path>`), with checksums
   of the loader files (`Source/UnrealTournament/cmake/emit-artifact-meta.mjs`, `Source/cmake/ArtifactDeps.cmake`).
