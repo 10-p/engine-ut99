@@ -140,6 +140,10 @@ if(EMSCRIPTEN)
     # openal-soft reports AL errors by throwing and catching them, so catching is linked in; only its objects
     # are compiled with -fexceptions (Source/CMakeLists.txt).
     -sNO_DISABLE_EXCEPTION_CATCHING
+    # A C++ exception nothing catches (an appThrowf, an appError's throw) reaches the page as an Error named after
+    # the thrown type, with what() as its message and the stack from the throw site, so the crash report says what
+    # was thrown where. The stack is captured at a throw only.
+    -sEXCEPTION_STACK_TRACES
     # The thin net shim: defines the ABI's ue_net_* imports and forwards them to the host's Module.UE.net.
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/net-shim.js"
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
