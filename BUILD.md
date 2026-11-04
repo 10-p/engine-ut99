@@ -110,7 +110,9 @@ system and the network transport at run time.
 - **Exceptions.** The engine's objects do not catch exceptions on the web (only openal-soft's objects are built with
   `-fexceptions`), so loading fails soft there: `GetPackageLinker`, `StaticLoadObject`, `SafeLoadError`, a missing
   nested import and `LoadMap` resolve to NULL or a failed join, and a bad startup map falls back to the menu.
-  `appThrowf` writes `[appThrowf] <reason>` to stdout on every build.
+  `appThrowf` writes `[appThrowf] <reason>` to stdout on every build. The web link has `-sEXCEPTION_STACK_TRACES`:
+  a throw nothing catches (an `appThrowf`'s `char*`) reaches the page as an Error named after the thrown type, with
+  `what()` as its message and the stack from the throw site, which the page's crash record keeps.
 - **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`, `webgl-shim.js`) is vendored from the
   frontend at ABI version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*`
   imports; the engine exports `ue_exec_command`, which runs a console command and returns its output.
