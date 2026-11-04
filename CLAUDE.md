@@ -48,8 +48,8 @@ commit a general change directly to it. Keep general and v436-specific work in s
 - **Files:** the engine uses libc `fopen`/`opendir` (`FFileManagerLinux`); on the web WasmFS's JSImpl backend
   (`vendor/glue/wasmfs-shim.js`) serves them from the host. Do not write an engine-side web file manager.
   `appBaseDir()` is the working directory (the launcher `chdir`s to `System`).
-- **Glue ABI:** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`) is vendored from the frontend at ABI
-  version 2. Only these thin forwarders and `Source/UnrealTournament/msaa-backbuffer.js` are baked into the wasm;
+- **Glue ABI:** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`, `webgl-shim.js`) is vendored from the
+  frontend at ABI version 2. Only these thin shims and `Source/UnrealTournament/msaa-backbuffer.js` are baked in;
   the transport, the file system and storage are injected by the host at run time. A change to the ABI is a
   cross-engine change owned by the frontend: re-vendor, never edit here.
 - **Release archives:** `vendor/release/package.py` packs them, in CI and for a versioned release, from the game
