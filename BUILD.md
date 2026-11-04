@@ -117,11 +117,12 @@ system and the network transport at run time.
   `-fexceptions`), so loading fails soft there: `GetPackageLinker`, `StaticLoadObject`, `SafeLoadError`, a missing
   nested import and `LoadMap` resolve to NULL or a failed join, and a bad startup map falls back to the menu.
   `appThrowf` writes `[appThrowf] <reason>` to stdout on every build.
-- **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`) is vendored from the frontend at ABI
-  version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*` imports; the engine
-  exports `ue_exec_command`, which runs a console command and returns its output. Two optional modules are
-  versioned on their own: pkgguid (`ue_pkgguid_abi.h`, `pkgguid-shim.js`: a package's GUID from the page's manifest;
-  linked into every web build, it answers "unknown" when the host has no such module) and proxynet
+- **Glue ABI.** `vendor/glue/` (`ue_abi.h`, `net-shim.js`, `wasmfs-shim.js`, `webgl-shim.js`) is vendored from the
+  frontend at ABI version 2; `meta.json`'s `abiVersion` is read from `ue_abi.h`. WebRTCDrv calls the `ue_net_*`
+  imports; the engine exports `ue_exec_command`, which runs a console command and returns its output.
+  `webgl-shim.js` replaces Emscripten's canvas resize with one that survives a lost WebGL context. Two optional
+  modules are versioned on their own: pkgguid (`ue_pkgguid_abi.h`, `pkgguid-shim.js`: a package's GUID from the
+  page's manifest; linked into every web build, it answers "unknown" when the host has no such module) and proxynet
   (`ue_proxynet_abi.h`, `proxynet-shim.js`: ProxyNetDrv's transport, linked with `UE_WITH_PROXYNET`).
 - **`meta.json`** records the ABI version, the target, the git commit and build time, the Emscripten version, the
   link flags and every fetched library as `<repo>@<branch|tag>` (a local checkout as `local:<path>`), with checksums

@@ -145,6 +145,8 @@ if(EMSCRIPTEN)
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
     # The optional pkgguid module: a package's GUID from the page's manifest (Core/Src/UnMisc.cpp).
     "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/pkgguid-shim.js"
+    # Emscripten's canvas resize with the viewport read guarded: a lost WebGL context answers it with null.
+    "SHELL:--js-library ${CMAKE_SOURCE_DIR}/../vendor/glue/webgl-shim.js"
     # The multisampled emulated back buffer (ufront_backbuffer_samples) for the render devices that draw into
     # framebuffer 0 (NOpenGLESDrv, OpenGLDrv/UTGLR).
     "SHELL:--js-library ${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js"
@@ -175,6 +177,7 @@ if(EMSCRIPTEN)
     "${CMAKE_SOURCE_DIR}/../vendor/glue/net-shim.js"
     "${CMAKE_SOURCE_DIR}/../vendor/glue/wasmfs-shim.js"
     "${CMAKE_SOURCE_DIR}/../vendor/glue/pkgguid-shim.js"
+    "${CMAKE_SOURCE_DIR}/../vendor/glue/webgl-shim.js"
     "${CMAKE_CURRENT_SOURCE_DIR}/msaa-backbuffer.js")
   # ProxyNetDrv's own shim (the optional proxynet ABI module), a separate --js-library so that a build without
   # UE_WITH_PROXYNET has no ue_proxynet_* imports at all.
