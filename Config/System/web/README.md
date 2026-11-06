@@ -22,3 +22,29 @@ stops (the script's default keeps turning for up to `MouseSmoothThreshold` after
 Android pair: `tools/dev/sync-native-ini.py` and `tools/dev/sync-android-ini.py` write them from this folder with the
 deltas each script lists (`--check` verifies them), so a change here reaches them by running the scripts, never by
 editing them. `../*.ini` is ut99dc's Dreamcast config; no build preloads or installs it.
+
+## Config version
+
+Every default ini a build ships (this pair, `../native/` and `../android/`) opens with a section of its own:
+
+```ini
+[ConfigVersion]
+Version=1
+```
+
+The engine makes a player's `UnrealTournament.ini` and `User.ini` as byte copies of `Default.ini` and `DefUser.ini` on
+the first run and never refreshes them, so the `Version` they keep says which defaults they were copied from; a live
+ini without the section was made before the number and is version 0. No class owns the section, so no `SaveConfig`
+or `ResetConfig` touches it and the config cache writes it back as it is. Nothing reads the number to change anything:
+a player's ini is never migrated. All six files carry the same number; the generators keep the section first. `../*.ini` (the Dreamcast config) has none. `feat/v436-compat` shares this number: it merges `main`,
+and a bump made there alone is merged back by taking the higher number plus one.
+
+The rule: a commit that adds a default, changes a default value or removes a key in one of these inis, or adds or
+changes a compiled or script default of a setting the engine saves to the ini, bumps `Version` by one in all of them
+and adds the new number's row below, saying what a player on the version before lacks. Comment-only and
+whitespace-only changes do not bump. The frontend's `ini-config-version` pre-commit gate checks the inis; its
+`docs/CONVENTIONS.md` § Ini config version has the rule in full.
+
+| Version | What a player on the version before lacks |
+|---------|-------------------------------------------|
+| 1 | The defaults when the number was introduced: a live ini without the section may lack any of them. |
