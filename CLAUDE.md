@@ -130,6 +130,8 @@ side misses. General and v436-specific work stay in separate commits so a merge 
 - **Names** follow behaviour. Shared CMake options take the `UE_` prefix; the `UTGLR_*` gates are the fork's own.
   Do not rename ini sections or keys players may have saved (e.g. `ufrontUserRenderDevice`), exported ABI symbols,
   or log lines the frontend matches. "ufront" as a namespace stays (`[ufront.AutoFOV]`, `ufront_pacing`).
+- **Ini config version:** a commit that adds, changes or removes a default the engine keeps in the ini bumps
+  `[ConfigVersion] Version` in every default ini and adds its row (`Config/System/web/README.md`, "Config version").
 - Commit subjects name the feature (Conventional Commits), never a stage number or a date.
 - The Dreamcast target's code (KOSDrv, PVRDrv, AICADrv, DCUtil, the FATFS paths, the stdio file pool,
   `LOW_MEMORY`) stays on that target; do not take Android device workarounds from UT99-Android.
