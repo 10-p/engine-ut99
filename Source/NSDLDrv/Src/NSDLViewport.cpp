@@ -1764,25 +1764,37 @@ void UNSDLViewport::TickPadCursor( FLOAT DeltaTime )
 static const BYTE PadWalkBit = 0x40;
 
 //
-// The left stick in play (the menu cursor has it while the pad has the cursor). Its dead zone is radial, so a direction
-// between the axes keeps both parts; out of it, X and Y go to their bindings, and a tilt below PadWalkTilt walks.
+// The left stick in play (the menu cursor has it while the pad has the cursor). Its dead zone is radial; out of it, a
+// player with physics gets the direction at full length on the X and Y bindings, so it sets off at once as on a key, and
+// the tilt sets the speed. Where this machine decides the player's movement, the tilt past the dead zone is that share of
+// full speed; a client's server decides it, so there a tilt below PadWalkTilt walks. A spectator, moved directly by its
+// input, gets X and Y as they are.
 //
 void UNSDLViewport::TickMoveStick( FLOAT DeltaTime )
 {
 	guard(UNSDLViewport::TickMoveStick);
 	UBOOL Walk = 0;
+	GMoveStickPawn = NULL;
 	if( !PadCursor )
 	{
 		const FLOAT X = MoveStick[0] / 32767.f, Y = MoveStick[1] / 32767.f;
-		const FLOAT Tilt = Min( (FLOAT)appSqrt( X*X + Y*Y ), 1.f );
+		const FLOAT Length = appSqrt( X*X + Y*Y );
+		const FLOAT Tilt = Min( Length, 1.f );
 		if( Tilt > 0.f && Tilt >= Client->DeadZoneXYZ )
 		{
-			const FLOAT Scale = Client->ScaleXYZ * DeltaTime;
+			const UBOOL HasPhysics = Actor && Actor->Physics != PHYS_None;
+			const FLOAT Scale = Client->ScaleXYZ * DeltaTime / ( HasPhysics ? Length : 1.f );
 			if( X != 0.f )
 				CauseInputEvent( IK_JoyX, IST_Axis, X * Scale * JoyAxisDefaultScale[SDL_CONTROLLER_AXIS_LEFTX] );
 			if( Y != 0.f )
 				CauseInputEvent( IK_JoyY, IST_Axis, Y * Scale * JoyAxisDefaultScale[SDL_CONTROLLER_AXIS_LEFTY] * ( Client->InvertY ? -1.f : 1.f ) );
-			Walk = Tilt < Client->PadWalkTilt;
+			if( HasPhysics && Actor->Role == ROLE_Authority )
+			{
+				GMoveStickPawn = Actor;
+				GMoveStickSpeed = ( Tilt - Client->DeadZoneXYZ ) / Max( 1.f - Client->DeadZoneXYZ, 0.01f );
+			}
+			else
+				Walk = Tilt < Client->PadWalkTilt;
 		}
 	}
 	if( Actor )
