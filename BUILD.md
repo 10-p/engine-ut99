@@ -180,8 +180,7 @@ system and the network transport at run time.
   which a retail `User.ini`'s pad bindings (speed 2 and 5.9) are turned with; the web, native and Android inis set 200/500 for
   `DefUser.ini`'s speed 1. In play the left stick is the move stick: its dead zone (`DeadZoneXYZ`, 0.1) is radial, so
   every direction between the axes keeps both of its parts. Out of it a player with physics gets the direction at full
-  length on the bindings, so it sets off at once as on a key, and the tilt sets the speed: where this machine decides the player's movement (a standalone game, a listen server's host), the tilt past the dead zone is that share of full speed (`GMoveStickPawn`, `GMoveStickSpeed`, read in `APawn::calcVelocity`). A client's server
-  decides its speed, so there a tilt below `[NSDLDrv.NSDLClient] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks,
+  length on the bindings, so it sets off at once as on a key, and, with `[NSDLDrv.NSDLClient] PadTiltSpeed` (on unless the ini says False), the tilt past the dead zone is that share of full speed (`GMoveStickPawn`, `GMoveStickSpeed`, read in `APawn::calcVelocity`). On a client of a server the server moves the player at its own speed and corrects the client. With the switch off, a tilt below `[NSDLDrv.NSDLClient] PadWalkTilt` (0.5 of the stick's travel; 0 never) walks,
   as the Walking button does: the stick keeps a bit of its own set in the player's `bRun` (the Walking key writes the
   whole byte; the stick sets its bit again the next tick), and the moves a client sends to its server carry `bRun`. A
   spectator, moved directly by its input, gets X and Y as they are. The right stick keeps a dead zone per axis (`DeadZoneRUV`). While UWindow shows

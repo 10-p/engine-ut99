@@ -1765,10 +1765,10 @@ static const BYTE PadWalkBit = 0x40;
 
 //
 // The left stick in play (the menu cursor has it while the pad has the cursor). Its dead zone is radial; out of it, a
-// player with physics gets the direction at full length on the X and Y bindings, so it sets off at once as on a key, and
-// the tilt sets the speed. Where this machine decides the player's movement, the tilt past the dead zone is that share of
-// full speed; a client's server decides it, so there a tilt below PadWalkTilt walks. A spectator, moved directly by its
-// input, gets X and Y as they are.
+// player with physics gets the direction at full length on the X and Y bindings, so it sets off at once as on a key. With
+// PadTiltSpeed the tilt past the dead zone is that share of full speed; off, a tilt below PadWalkTilt walks. A client's
+// server moves the player at its own speed and corrects the client. A spectator, moved directly by its input, gets X and
+// Y as they are.
 //
 void UNSDLViewport::TickMoveStick( FLOAT DeltaTime )
 {
@@ -1788,7 +1788,7 @@ void UNSDLViewport::TickMoveStick( FLOAT DeltaTime )
 				CauseInputEvent( IK_JoyX, IST_Axis, X * Scale * JoyAxisDefaultScale[SDL_CONTROLLER_AXIS_LEFTX] );
 			if( Y != 0.f )
 				CauseInputEvent( IK_JoyY, IST_Axis, Y * Scale * JoyAxisDefaultScale[SDL_CONTROLLER_AXIS_LEFTY] * ( Client->InvertY ? -1.f : 1.f ) );
-			if( HasPhysics && Actor->Role == ROLE_Authority )
+			if( HasPhysics && Client->PadTiltSpeed )
 			{
 				GMoveStickPawn = Actor;
 				GMoveStickSpeed = ( Tilt - Client->DeadZoneXYZ ) / Max( 1.f - Client->DeadZoneXYZ, 0.01f );
