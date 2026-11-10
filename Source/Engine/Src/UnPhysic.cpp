@@ -974,6 +974,9 @@ bounds acceleration and velocity, adds effects of friction and momentum
 // fixme - what is right for air turn rate - make it a pawn var?
 // e.g. Max(bFluid * airbraking, friction)
 */
+ENGINE_API APawn* GMoveStickPawn = NULL;
+ENGINE_API FLOAT GMoveStickSpeed = 1.f;
+
 void APawn::calcVelocity(FVector AccelDir, FLOAT deltaTime, FLOAT maxSpeed, FLOAT friction, INT bFluid, INT bBrake, INT bBuoyant)
 {
 	guard(APawn::calcVelocity);
@@ -1019,6 +1022,8 @@ void APawn::calcVelocity(FVector AccelDir, FLOAT deltaTime, FLOAT maxSpeed, FLOA
 
 	if (!this->IsA(APlayerPawn::StaticClass()))
 		maxSpeed *= DesiredSpeed;
+	else if ( this == GMoveStickPawn )
+		maxSpeed *= GMoveStickSpeed;
 
 	if ( bBuoyant )
 		Velocity = Velocity + Region.Zone->ZoneGravity * deltaTime * (1.0 - Buoyancy/Mass);
