@@ -31,6 +31,7 @@ void UNSDLClient::StaticConstructor()
 	new(GetClass(), "InvertY",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertY),           "Joystick", CPF_Config );
 	new(GetClass(), "InvertV",           RF_Public)UBoolProperty(CPP_PROPERTY(InvertV),           "Joystick", CPF_Config );
 	new(GetClass(), "PadCursorSeconds",  RF_Public)UFloatProperty(CPP_PROPERTY(PadCursorSeconds), "Joystick", CPF_Config );
+	new(GetClass(), "PadTiltSpeed",      RF_Public)UBoolProperty(CPP_PROPERTY(PadTiltSpeed),      "Joystick", CPF_Config );
 	new(GetClass(), "PadWalkTilt",       RF_Public)UFloatProperty(CPP_PROPERTY(PadWalkTilt),      "Joystick", CPF_Config );
 
 	// Compiled defaults, for these options and the ones UClient registers without a value (UnCamMgr.cpp): with no
@@ -72,7 +73,8 @@ void UNSDLClient::StaticConstructor()
 	InvertY             = 0;
 	InvertV             = 0;
 	PadCursorSeconds    = 3.0f;	// across the viewport's width at full tilt
-	PadWalkTilt         = 0.5f;	// the move stick walks below half its travel
+	PadTiltSpeed        = 1;	// the move stick's tilt sets the player's speed
+	PadWalkTilt         = 0.5f;	// with PadTiltSpeed off, the move stick walks below half its travel
 
 	unguard;
 }

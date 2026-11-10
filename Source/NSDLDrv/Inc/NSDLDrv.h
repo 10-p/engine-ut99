@@ -141,7 +141,8 @@ class NSDLDRV_API UNSDLClient : public UClient, public FNotifyHook
 	UBOOL InvertY;
 	UBOOL InvertV;
 	FLOAT PadCursorSeconds;	// seconds for the pad's left stick at full tilt to take the menu cursor across the viewport
-	FLOAT PadWalkTilt;	// the move stick out of its dead zone but tilted less than this (0..1) walks; 0: never
+	UBOOL PadTiltSpeed;	// the move stick's tilt past its dead zone is that share of full speed
+	FLOAT PadWalkTilt;	// with PadTiltSpeed off, the move stick out of its dead zone but tilted less than this (0..1) walks; 0: never
 	FLOAT ScaleXYZ;
 	FLOAT ScaleRUV;
 	FLOAT DeadZoneXYZ;
