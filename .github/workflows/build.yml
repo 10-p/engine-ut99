@@ -30,7 +30,7 @@ jobs:
       version: ${{ steps.v.outputs.version }}
       game: ${{ steps.v.outputs.game }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           fetch-depth: 0
           filter: blob:none
@@ -50,7 +50,7 @@ jobs:
     name: inis and release data
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Check the generated inis
         run: |
@@ -103,7 +103,7 @@ jobs:
           apt-get install -y --no-install-recommends \
             git ca-certificates cmake make g++ pkg-config python3
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install the build dependencies
         run: |
@@ -115,7 +115,7 @@ jobs:
       # FetchContent clones into the build dir, so cache that rather than a home directory. Keyed on the
       # files that decide what is fetched — a pin bump invalidates it, an unrelated source edit does not.
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-${{ matrix.preset }}/_deps
           key: deps-${{ matrix.preset }}-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
@@ -143,7 +143,7 @@ jobs:
       - name: Pack the release archive
         run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
           path: out/
@@ -167,7 +167,7 @@ jobs:
             platform: windows-x86_64
             objdump: x86_64-w64-mingw32-objdump
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Install MinGW-w64
         run: |
@@ -175,7 +175,7 @@ jobs:
           sudo apt-get install -y --no-install-recommends mingw-w64
 
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-${{ matrix.preset }}/_deps
           key: deps-${{ matrix.preset }}-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
@@ -214,7 +214,7 @@ jobs:
       - name: Pack the release archive
         run: python3 vendor/release/package.py archive ${{ matrix.platform }} --version "${{ needs.version.outputs.version }}" --out out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-${{ matrix.platform }}
           path: out/
@@ -228,11 +228,11 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # emsdk must be on PATH before cmake configures (emcc is probed then); the preset's toolchain
       # file also reads $EMSDK.
-      - uses: mymindstorm/setup-emsdk@v14
+      - uses: emscripten-core/setup-emsdk@v16
         with:
           version: 5.0.7
           actions-cache-folder: emsdk-cache
@@ -243,7 +243,7 @@ jobs:
         run: embuilder build sdl2
 
       - name: Cache fetched dependencies
-        uses: actions/cache@v4
+        uses: actions/cache@v6
         with:
           path: build-wasm/_deps
           key: deps-wasm-${{ hashFiles('Source/CMakeLists.txt', 'Source/*/CMakeLists.txt', 'Source/cmake/*.cmake') }}
@@ -265,7 +265,7 @@ jobs:
           echo "meta.json gitSha=$sha  HEAD=$GITHUB_SHA"
           case "$GITHUB_SHA" in "$sha"*) ;; *) echo "::error::meta.json gitSha does not match HEAD"; exit 1;; esac
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-web
           path: build-wasm/SDLLaunch/
@@ -277,17 +277,16 @@ jobs:
     needs: version
     runs-on: ubuntu-24.04
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # JDK 17: the Gradle daemon's (Android/gradle/gradle-daemon-jvm.properties).
-      - uses: actions/setup-java@v4
+      - uses: actions/setup-java@v6
         with:
           distribution: temurin
           java-version: '17'
 
-      # Only platform-tools: the action's default list names `tools`, which the current SDK repository does not
-      # have. The NDK and CMake come from the next step.
-      - uses: android-actions/setup-android@v3
+      # The command-line tools (sdkmanager) and platform-tools; the NDK and CMake come from the next step.
+      - uses: android-actions/setup-android@v4
         with:
           packages: platform-tools
 
@@ -333,7 +332,7 @@ jobs:
       - name: Name the APK
         run: python3 vendor/release/package.py archive android --version "${{ needs.version.outputs.version }}" --out out
 
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-android-test
           path: out/
@@ -358,10 +357,10 @@ jobs:
     permissions:
       contents: write
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # This run's archives, each artifact in its own directory named after it.
-      - uses: actions/download-artifact@v4
+      - uses: actions/download-artifact@v8
         with:
           path: artifacts
           pattern: ${{ needs.version.outputs.game }}-${{ needs.version.outputs.version }}-*
